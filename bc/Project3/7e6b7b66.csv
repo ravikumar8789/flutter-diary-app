@@ -1,0 +1,11 @@
+Component,Technology,Purpose,Estimated_Cost_Monthly
+Frontend Framework,Flutter (Dart),Cross-platform mobile app development for iOS and Android,$0 (Open Source)
+Backend Service,Supabase,Backend-as-a-Service for rapid development and scalability,$0-25 (Free tier)
+Database,PostgreSQL (via Supabase),Relational database for structured user data and journal entries,$0-10 (Included in Supabase)
+Authentication,Supabase Auth,"User registration, login, and session management",$0 (Included in Supabase)
+AI/ML Services,OpenAI GPT API / Custom NLP,"Sentiment analysis, pattern recognition, and personalized insights",$50-200 (API usage based)
+Push Notifications,Firebase Cloud Messaging,Daily reminders and engagement notifications,$0-20 (Firebase free tier)
+File Storage,Supabase Storage,"User profile images, voice recordings, and data backups",$0-15 (Included in Supabase)
+Analytics,Supabase Analytics + Custom Dashboard,User behavior tracking and app performance monitoring,$0-25 (Basic analytics)
+State Management,Provider/Riverpod,Efficient UI state management and data flow,$0 (Open Source)
+API Integration,RESTful APIs,Integration with external AI services and third-party tools,$0-50 (Various APIs)

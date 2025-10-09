@@ -1,0 +1,4 @@
+---
+alwaysApply: true
+---
+While implementing any new functionality or working on any functionality dont alter the other functionality, if nneeded inform user first.

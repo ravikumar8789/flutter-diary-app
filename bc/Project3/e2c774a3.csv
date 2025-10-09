@@ -1,0 +1,7 @@
+Model,Description,Revenue_Potential,User_Experience,Recommended_Pricing
+Freemium (Recommended),Free basic journaling with premium AI insights and advanced analytics,"High - Low barrier to entry, converts free users","Excellent - Try before buy, gradual value demonstration","Free basic, $4.99/month or $49.99/year premium"
+Subscription Premium,Monthly/yearly subscription for full AI features and unlimited entries,Medium-High - Recurring revenue from engaged users,Good - Clear value proposition for committed users,$9.99/month or $99/year for full access
+One-time Purchase,Single purchase for full app access (higher barrier to entry),"Medium - One-time revenue, no recurring income","Good - No ongoing costs, full access",$29.99-49.99 one-time purchase
+In-App Purchases,"Individual feature purchases (AI insights, custom themes, etc.)",Low-Medium - May fragment user experience,Poor - May feel nickel-and-dimed,$1.99-9.99 per feature
+Data Insights (Premium),Advanced personality analysis and growth recommendations,Medium - Appeals to growth-focused users,Good - Optional premium insights,$2.99/month add-on to premium
+Corporate/Educational License,"Bulk licenses for schools, therapy clinics, corporate wellness",High - B2B sales with higher per-user value,Excellent - Full features for institutional users,$5-15 per user/month for institutions
