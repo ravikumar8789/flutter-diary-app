@@ -10,6 +10,23 @@
 
 Implement Google Keep-style auto-save functionality across all journaling screens with offline-first architecture using SQLite for local caching and Supabase for cloud sync. No explicit save buttons - changes sync automatically after user stops typing with visual feedback.
 
+## ⚠️ Schema Correction Notice
+
+**IMPORTANT**: This plan has been updated to match the actual Supabase database schema which uses **dynamic JSONB arrays** instead of fixed fields. The database stores:
+- `entry_affirmations.affirmations` as `jsonb` array
+- `entry_priorities.priorities` as `jsonb` array  
+- `entry_gratitude.grateful_items` as `jsonb` array
+- `entry_tomorrow_notes.tomorrow_notes` as `jsonb` array
+
+This allows users to add/remove items dynamically (not limited to fixed counts like 5 affirmations, 6 priorities, etc.).
+
+### Benefits of Dynamic JSONB Approach:
+- **Flexible UI**: Users can add/remove items as needed
+- **Better UX**: No artificial limits on user creativity
+- **Easier Analytics**: JSONB queries for complex analysis
+- **Future-Proof**: Easy to add new fields without schema changes
+- **Consistent with Supabase**: Matches actual database implementation
+
 ---
 
 ## Storage Strategy Decision: SQLite vs Hive
@@ -85,17 +102,17 @@ CREATE TABLE entries (
   last_sync_at TEXT
 );
 
--- Entry affirmations
+-- Entry affirmations (DYNAMIC LIST - matches Supabase JSONB)
 CREATE TABLE entry_affirmations (
   entry_id TEXT PRIMARY KEY,
-  affirmations TEXT NOT NULL, -- JSONB array as text
+  affirmations TEXT NOT NULL, -- JSONB array as text: [{"text": "I am strong", "order": 1}, ...]
   FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
 );
 
--- Entry priorities
+-- Entry priorities (DYNAMIC LIST - matches Supabase JSONB)
 CREATE TABLE entry_priorities (
   entry_id TEXT PRIMARY KEY,
-  priorities TEXT NOT NULL, -- JSONB array as text
+  priorities TEXT NOT NULL, -- JSONB array as text: [{"text": "Complete project", "order": 1}, ...]
   FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
 );
 
@@ -109,10 +126,10 @@ CREATE TABLE entry_meals (
   FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
 );
 
--- Entry gratitude
+-- Entry gratitude (DYNAMIC LIST - matches Supabase JSONB)
 CREATE TABLE entry_gratitude (
   entry_id TEXT PRIMARY KEY,
-  grateful_items TEXT NOT NULL, -- JSONB array as text
+  grateful_items TEXT NOT NULL, -- JSONB array as text: [{"text": "Family support", "order": 1}, ...]
   FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
 );
 
@@ -140,10 +157,10 @@ CREATE TABLE entry_shower_bath (
   FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
 );
 
--- Entry tomorrow notes
+-- Entry tomorrow notes (DYNAMIC LIST - matches Supabase JSONB)
 CREATE TABLE entry_tomorrow_notes (
   entry_id TEXT PRIMARY KEY,
-  tomorrow_notes TEXT NOT NULL, -- JSONB array as text
+  tomorrow_notes TEXT NOT NULL, -- JSONB array as text: [{"text": "Call mom", "order": 1}, ...]
   FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
 );
 
@@ -168,12 +185,60 @@ CREATE TABLE sync_queue (
 
 ### 1.1 Dependencies & Setup
 
-**Add to `pubspec.yaml`:**
+**✅ Dependencies Added (Latest Versions):**
 ```yaml
 dependencies:
-  sqflite: ^2.3.0
-  path_provider: ^2.1.1
-  path: ^1.8.3
+  # Auto-save & Offline Storage
+  sqflite: ^2.4.2                    # SQLite database for offline storage
+  path_provider: ^2.1.5             # File system paths for database location
+  path: ^1.9.1                      # Path manipulation utilities
+  uuid: ^4.5.1                      # Generate unique IDs for entries
+  connectivity_plus: ^7.0.0         # Network connectivity monitoring
+```
+
+**Built-in Dart Libraries (No Installation Needed):**
+- `dart:async` - Timer, StreamController for debouncing
+- `dart:io` - InternetAddress for connectivity checks
+- `dart:convert` - JSON serialization for JSONB data
+
+### 1.1.1 Integration with Existing App
+
+**Current App Structure:**
+- ✅ Authentication system with Supabase
+- ✅ User data loading in HomeScreen
+- ✅ Riverpod state management
+- ✅ All journaling screens (Morning Rituals, Wellness, Gratitude, Diary)
+- ✅ Dynamic field sections for affirmations/priorities
+
+**Integration Points:**
+- **No breaking changes** to existing functionality
+- **Enhance existing screens** with auto-save
+- **Preserve current UI/UX** patterns
+- **Add offline-first** capabilities
+
+### 1.1.2 Dynamic Fields Implementation Strategy
+
+**Current Dynamic Field Sections:**
+- `DynamicFieldSection` widget already supports adding/removing fields
+- Users can add unlimited affirmations, priorities, gratitude items
+- UI already handles dynamic field counts
+
+**Auto-Save Integration:**
+- **Preserve existing UI** - no changes to `DynamicFieldSection`
+- **Add auto-save listeners** to each text field
+- **Debounce changes** - save after 600ms of no typing
+- **JSONB serialization** - convert dynamic lists to JSON for database
+
+**Implementation Pattern:**
+```dart
+// Each text field gets a listener
+controller.addListener(() {
+  // Debounced auto-save
+  _debounceTimer?.cancel();
+  _debounceTimer = Timer(Duration(milliseconds: 600), () {
+    _saveToDatabase();
+  });
+});
 ```
 
 ### 1.2 Database Manager
@@ -204,6 +269,119 @@ class DatabaseManager {
   
   Future<void> _onCreate(Database db, int version) async {
     // Create all tables with schema above
+    await _createTables(db);
+  }
+  
+  Future<void> _createTables(Database db) async {
+    // Main entries table
+    await db.execute('''
+      CREATE TABLE entries (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        entry_date TEXT NOT NULL,
+        diary_text TEXT,
+        mood_score INTEGER CHECK (mood_score >= 1 AND mood_score <= 5),
+        tags TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        is_synced INTEGER DEFAULT 0,
+        last_sync_at TEXT
+      )
+    ''');
+    
+    // Entry affirmations (JSONB format)
+    await db.execute('''
+      CREATE TABLE entry_affirmations (
+        entry_id TEXT PRIMARY KEY,
+        affirmations TEXT NOT NULL,
+        FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
+      )
+    ''');
+    
+    // Entry priorities (JSONB format)
+    await db.execute('''
+      CREATE TABLE entry_priorities (
+        entry_id TEXT PRIMARY KEY,
+        priorities TEXT NOT NULL,
+        FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
+      )
+    ''');
+    
+    // Entry meals
+    await db.execute('''
+      CREATE TABLE entry_meals (
+        entry_id TEXT PRIMARY KEY,
+        breakfast TEXT,
+        lunch TEXT,
+        dinner TEXT,
+        water_cups INTEGER DEFAULT 0 CHECK (water_cups >= 0 AND water_cups <= 8),
+        FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
+      )
+    ''');
+    
+    // Entry gratitude (JSONB format)
+    await db.execute('''
+      CREATE TABLE entry_gratitude (
+        entry_id TEXT PRIMARY KEY,
+        grateful_items TEXT NOT NULL,
+        FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
+      )
+    ''');
+    
+    // Entry self care
+    await db.execute('''
+      CREATE TABLE entry_self_care (
+        entry_id TEXT PRIMARY KEY,
+        sleep INTEGER DEFAULT 0,
+        get_up_early INTEGER DEFAULT 0,
+        fresh_air INTEGER DEFAULT 0,
+        learn_new INTEGER DEFAULT 0,
+        balanced_diet INTEGER DEFAULT 0,
+        podcast INTEGER DEFAULT 0,
+        me_moment INTEGER DEFAULT 0,
+        hydrated INTEGER DEFAULT 0,
+        read_book INTEGER DEFAULT 0,
+        exercise INTEGER DEFAULT 0,
+        FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
+      )
+    ''');
+    
+    // Entry shower/bath
+    await db.execute('''
+      CREATE TABLE entry_shower_bath (
+        entry_id TEXT PRIMARY KEY,
+        took_shower INTEGER DEFAULT 0,
+        note TEXT,
+        FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
+      )
+    ''');
+    
+    // Entry tomorrow notes (JSONB format)
+    await db.execute('''
+      CREATE TABLE entry_tomorrow_notes (
+        entry_id TEXT PRIMARY KEY,
+        tomorrow_notes TEXT NOT NULL,
+        FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
+      )
+    ''');
+    
+    // Sync queue for offline changes
+    await db.execute('''
+      CREATE TABLE sync_queue (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entry_id TEXT NOT NULL,
+        table_name TEXT NOT NULL,
+        operation TEXT NOT NULL,
+        data TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        retry_count INTEGER DEFAULT 0
+      )
+    ''');
+    
+    // Create indexes for performance
+    await db.execute('CREATE INDEX idx_entries_user_date ON entries(user_id, entry_date)');
+    await db.execute('CREATE INDEX idx_entries_sync ON entries(is_synced, updated_at)');
+    await db.execute('CREATE INDEX idx_sync_queue_entry ON sync_queue(entry_id, created_at)');
   }
 }
 ```
@@ -236,6 +414,23 @@ class EntryAffirmations {
     'entry_id': entryId,
     'affirmations': affirmations.map((a) => a.toJson()).toList(),
   };
+  
+  // For Supabase JSONB format
+  Map<String, dynamic> toSupabaseJson() => {
+    'entry_id': entryId,
+    'affirmations': affirmations.map((a) => a.toJson()).toList(),
+  };
+  
+  factory EntryAffirmations.fromSupabaseJson(Map<String, dynamic> json) {
+    final affirmationsList = (json['affirmations'] as List?)
+        ?.map((item) => AffirmationItem.fromJson(item))
+        .toList() ?? [];
+    
+    return EntryAffirmations(
+      entryId: json['entry_id'],
+      affirmations: affirmationsList,
+    );
+  }
 }
 
 class AffirmationItem {
@@ -243,9 +438,16 @@ class AffirmationItem {
   final int order;
   
   Map<String, dynamic> toJson() => {'text': text, 'order': order};
+  
+  factory AffirmationItem.fromJson(Map<String, dynamic> json) {
+    return AffirmationItem(
+      text: json['text'] ?? '',
+      order: json['order'] ?? 0,
+    );
+  }
 }
 
-// Similar models for Priorities, Gratitude, TomorrowNotes
+// Similar models for Priorities, Gratitude, TomorrowNotes with dynamic lists
 ```
 
 ### 1.4 Sync Status Provider
@@ -391,7 +593,7 @@ class SupabaseSyncService {
     }
   }
   
-  // Sync affirmations to Supabase
+  // Sync affirmations to Supabase (JSONB format)
   Future<bool> syncAffirmations(EntryAffirmations affirmations) async {
     try {
       await _supabase.from('entry_affirmations').upsert({
@@ -1401,4 +1603,37 @@ This plan implements robust, Google Keep-style auto-save functionality with offl
 **Timeline:** 8 weeks for complete implementation  
 **Team:** 1-2 developers  
 **Priority:** High (core user experience feature)
+
+---
+
+## 🚀 Implementation Priority & Quick Wins
+
+### **Phase 1 - Foundation (Week 1) - HIGH PRIORITY**
+- ✅ Dependencies already added
+- 🔄 Database manager setup
+- 🔄 Entry models with JSONB support
+- 🔄 Sync status provider
+
+### **Phase 2 - Core Auto-Save (Week 2) - HIGH PRIORITY**
+- 🔄 Daily Diary screen auto-save (simplest case)
+- 🔄 Local SQLite operations
+- 🔄 Basic sync to Supabase
+
+### **Phase 3 - Dynamic Fields (Week 3) - MEDIUM PRIORITY**
+- 🔄 Morning Rituals auto-save
+- 🔄 Wellness Tracker auto-save
+- 🔄 Gratitude & Reflection auto-save
+
+### **Phase 4 - Advanced Features (Week 4+) - LOW PRIORITY**
+- 🔄 Offline sync queue
+- 🔄 Conflict resolution
+- 🔄 Background sync
+
+### **Quick Start Strategy:**
+1. **Start with Daily Diary** - simplest text field auto-save
+2. **Add Morning Rituals** - dynamic fields with JSONB
+3. **Expand to all screens** - consistent pattern
+4. **Add offline features** - sync queue and background processing
+
+**Ready to begin implementation!** 🎯
 

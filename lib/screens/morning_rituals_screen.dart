@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' as supabase;
 import '../providers/date_provider.dart';
+import '../providers/entry_provider.dart';
+import '../providers/sync_status_provider.dart';
+import '../models/entry_models.dart';
+import '../services/entry_service.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/dynamic_field_section.dart';
 import 'home_screen.dart';
@@ -24,19 +29,87 @@ class _MorningRitualsScreenState extends ConsumerState<MorningRitualsScreen>
   late AnimationController _affirmationAnimationController;
   late AnimationController _priorityAnimationController;
 
+  // Local loading state since we're not using global provider
+  bool _isLoading = true;
+
   int _selectedMood = 3; // 1-5 scale
 
   @override
   void initState() {
     super.initState();
-    _initializeFields();
     _setupAnimations();
+    // Load entry data when screen mounts
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadEntryData();
+    });
   }
 
-  void _initializeFields() {
-    // Start with 2 fields for each section
-    _affirmationControllers = List.generate(2, (_) => TextEditingController());
-    _priorityControllers = List.generate(2, (_) => TextEditingController());
+  Future<void> _loadEntryData() async {
+    final selectedDate = ref.read(selectedDateProvider);
+    final userId = supabase.Supabase.instance.client.auth.currentUser?.id;
+
+    if (userId != null) {
+      setState(() {
+        _isLoading = true;
+      });
+
+      // Clear existing controllers first
+      for (var controller in _affirmationControllers) {
+        controller.dispose();
+      }
+      for (var controller in _priorityControllers) {
+        controller.dispose();
+      }
+      _affirmationControllers.clear();
+      _priorityControllers.clear();
+
+      // Load fresh data from database directly (bypass global provider)
+      final entryService = EntryService();
+      final entryData = await entryService.loadEntryForDate(
+        userId,
+        selectedDate,
+      );
+
+      // Populate affirmations - if database has data, use it; otherwise use 2 defaults
+      if (entryData?.affirmations != null &&
+          entryData!.affirmations!.affirmations.isNotEmpty) {
+        // Database has data - use it
+        for (var item in entryData.affirmations!.affirmations) {
+          final controller = TextEditingController(text: item.text);
+          controller.addListener(() => _onAffirmationChanged());
+          _affirmationControllers.add(controller);
+        }
+      } else {
+        // No data - create 2 default empty fields
+        for (int i = 0; i < 2; i++) {
+          final controller = TextEditingController();
+          controller.addListener(() => _onAffirmationChanged());
+          _affirmationControllers.add(controller);
+        }
+      }
+
+      // Populate priorities - if database has data, use it; otherwise use 2 defaults
+      if (entryData?.priorities != null &&
+          entryData!.priorities!.priorities.isNotEmpty) {
+        // Database has data - use it
+        for (var item in entryData.priorities!.priorities) {
+          final controller = TextEditingController(text: item.text);
+          controller.addListener(() => _onPriorityChanged());
+          _priorityControllers.add(controller);
+        }
+      } else {
+        // No data - create 2 default empty fields
+        for (int i = 0; i < 2; i++) {
+          final controller = TextEditingController();
+          controller.addListener(() => _onPriorityChanged());
+          _priorityControllers.add(controller);
+        }
+      }
+
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   void _setupAnimations() {
@@ -66,8 +139,27 @@ class _MorningRitualsScreenState extends ConsumerState<MorningRitualsScreen>
   @override
   Widget build(BuildContext context) {
     final selectedDate = ref.watch(selectedDateProvider);
+    final syncState = ref.watch(syncStatusProvider);
     final size = MediaQuery.of(context).size;
     final isTablet = size.width > 600;
+
+    // Show loading state while entry data is being fetched
+    if (_isLoading) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Morning Rituals')),
+        drawer: const AppDrawer(currentRoute: 'morning'),
+        body: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Loading your morning rituals...'),
+            ],
+          ),
+        ),
+      );
+    }
 
     return WillPopScope(
       onWillPop: () async {
@@ -80,7 +172,13 @@ class _MorningRitualsScreenState extends ConsumerState<MorningRitualsScreen>
         return false; // Don't exit app
       },
       child: Scaffold(
-        appBar: AppBar(title: const Text('Morning Rituals')),
+        appBar: AppBar(
+          title: const Text('Morning Rituals'),
+          actions: [
+            // Sync status indicator
+            _buildSyncStatusIcon(syncState),
+          ],
+        ),
         drawer: const AppDrawer(currentRoute: 'morning'),
         body: Column(
           children: [
@@ -196,7 +294,7 @@ class _MorningRitualsScreenState extends ConsumerState<MorningRitualsScreen>
                       addButtonText: 'Add affirmation',
                       fieldLabelPrefix: 'Affirmation',
                       maxFields: 8,
-                      onSave: _saveAffirmations,
+                      onSave: null, // Auto-save enabled
                       showProgressCounter: false,
                     ),
                     const SizedBox(height: 16),
@@ -214,7 +312,7 @@ class _MorningRitualsScreenState extends ConsumerState<MorningRitualsScreen>
                       addButtonText: 'Add priority',
                       fieldLabelPrefix: 'Priority',
                       maxFields: 10,
-                      onSave: _savePriorities,
+                      onSave: null, // Auto-save enabled
                       showProgressCounter: false,
                     ),
 
@@ -384,10 +482,15 @@ class _MorningRitualsScreenState extends ConsumerState<MorningRitualsScreen>
   }
 
   void _addAffirmationField() {
+    final controller = TextEditingController();
+    controller.addListener(() => _onAffirmationChanged());
+
     setState(() {
-      _affirmationControllers.add(TextEditingController());
+      _affirmationControllers.add(controller);
     });
 
+    // Reset animation to beginning before playing
+    _affirmationAnimationController.reset();
     _affirmationAnimationController.forward().then((_) {
       // Focus on the new field
       FocusScope.of(context).requestFocus(FocusNode()..requestFocus());
@@ -395,10 +498,15 @@ class _MorningRitualsScreenState extends ConsumerState<MorningRitualsScreen>
   }
 
   void _addPriorityField() {
+    final controller = TextEditingController();
+    controller.addListener(() => _onPriorityChanged());
+
     setState(() {
-      _priorityControllers.add(TextEditingController());
+      _priorityControllers.add(controller);
     });
 
+    // Reset animation to beginning before playing
+    _priorityAnimationController.reset();
     _priorityAnimationController.forward().then((_) {
       // Focus on the new field
       FocusScope.of(context).requestFocus(FocusNode()..requestFocus());
@@ -413,7 +521,11 @@ class _MorningRitualsScreenState extends ConsumerState<MorningRitualsScreen>
       _affirmationControllers.removeAt(index);
     });
 
-    _affirmationAnimationController.reverse();
+    // Trigger auto-save after removing field
+    _onAffirmationChanged();
+
+    // Reset animation to avoid index issues
+    _affirmationAnimationController.reset();
   }
 
   void _removePriorityField(int index) {
@@ -424,50 +536,74 @@ class _MorningRitualsScreenState extends ConsumerState<MorningRitualsScreen>
       _priorityControllers.removeAt(index);
     });
 
-    _priorityAnimationController.reverse();
+    // Trigger auto-save after removing field
+    _onPriorityChanged();
+
+    // Reset animation to avoid index issues
+    _priorityAnimationController.reset();
   }
 
-  void _saveAffirmations() {
+  void _onAffirmationChanged() {
+    final userId = supabase.Supabase.instance.client.auth.currentUser?.id;
+    final selectedDate = ref.read(selectedDateProvider);
+
+    if (userId == null) return;
+
     final affirmations = _affirmationControllers
-        .where((controller) => controller.text.isNotEmpty)
+        .asMap()
+        .entries
+        .where((entry) => entry.value.text.isNotEmpty)
         .map(
-          (controller) => {
-            'text': controller.text.trim(),
-            'order': _affirmationControllers.indexOf(controller) + 1,
-          },
+          (entry) => AffirmationItem(
+            text: entry.value.text.trim(),
+            order: entry.key + 1,
+          ),
         )
         .toList();
 
-    print('Saving Affirmations: $affirmations');
-    // TODO: Save to Supabase with JSONB structure
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Affirmations saved!'),
-        duration: Duration(seconds: 2),
-      ),
-    );
+    ref
+        .read(entryProvider.notifier)
+        .updateAffirmations(userId, selectedDate, affirmations);
   }
 
-  void _savePriorities() {
+  void _onPriorityChanged() {
+    final userId = supabase.Supabase.instance.client.auth.currentUser?.id;
+    final selectedDate = ref.read(selectedDateProvider);
+
+    if (userId == null) return;
+
     final priorities = _priorityControllers
-        .where((controller) => controller.text.isNotEmpty)
+        .asMap()
+        .entries
+        .where((entry) => entry.value.text.isNotEmpty)
         .map(
-          (controller) => {
-            'text': controller.text.trim(),
-            'order': _priorityControllers.indexOf(controller) + 1,
-          },
+          (entry) =>
+              PriorityItem(text: entry.value.text.trim(), order: entry.key + 1),
         )
         .toList();
 
-    print('Saving Priorities: $priorities');
-    // TODO: Save to Supabase with JSONB structure
+    ref
+        .read(entryProvider.notifier)
+        .updatePriorities(userId, selectedDate, priorities);
+  }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Priorities saved!'),
-        duration: Duration(seconds: 2),
-      ),
-    );
+  Widget _buildSyncStatusIcon(SyncState syncState) {
+    switch (syncState.status) {
+      case SyncStatus.syncing:
+        return const Padding(
+          padding: EdgeInsets.all(16),
+          child: SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        );
+      case SyncStatus.saved:
+        return Icon(Icons.cloud_done, color: Colors.green[600]);
+      case SyncStatus.error:
+        return Icon(Icons.cloud_off, color: Colors.red[600]);
+      default:
+        return const SizedBox.shrink();
+    }
   }
 }

@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' as supabase;
 import '../providers/date_provider.dart';
+import '../providers/entry_provider.dart';
+import '../providers/sync_status_provider.dart';
+import '../models/entry_models.dart';
+import '../services/entry_service.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/dynamic_field_section.dart';
 import 'home_screen.dart';
@@ -25,17 +30,85 @@ class _GratitudeReflectionScreenState
   late AnimationController _gratitudeAnimationController;
   late AnimationController _tomorrowAnimationController;
 
+  // Local loading state since we're not using global provider
+  bool _isLoading = true;
+
   @override
   void initState() {
     super.initState();
-    _initializeFields();
     _setupAnimations();
+    // Load entry data when screen mounts
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadEntryData();
+    });
   }
 
-  void _initializeFields() {
-    // Start with 2 fields for each section
-    _gratitudeControllers = List.generate(2, (_) => TextEditingController());
-    _tomorrowControllers = List.generate(2, (_) => TextEditingController());
+  Future<void> _loadEntryData() async {
+    final selectedDate = ref.read(selectedDateProvider);
+    final userId = supabase.Supabase.instance.client.auth.currentUser?.id;
+
+    if (userId != null) {
+      setState(() {
+        _isLoading = true;
+      });
+
+      // Load fresh data from database directly (bypass global provider)
+      final entryService = EntryService();
+      final entryData = await entryService.loadEntryForDate(
+        userId,
+        selectedDate,
+      );
+
+      // Clear existing controllers
+      for (var controller in _gratitudeControllers) {
+        controller.dispose();
+      }
+      for (var controller in _tomorrowControllers) {
+        controller.dispose();
+      }
+      _gratitudeControllers.clear();
+      _tomorrowControllers.clear();
+
+      // Populate gratitude - if database has data, use it; otherwise use 2 defaults
+      if (entryData?.gratitude != null &&
+          entryData!.gratitude!.gratefulItems.isNotEmpty) {
+        // Database has data - use it
+        for (var item in entryData.gratitude!.gratefulItems) {
+          final controller = TextEditingController(text: item.text);
+          controller.addListener(() => _onGratitudeChanged());
+          _gratitudeControllers.add(controller);
+        }
+      } else {
+        // No data - create 2 default empty fields
+        for (int i = 0; i < 2; i++) {
+          final controller = TextEditingController();
+          controller.addListener(() => _onGratitudeChanged());
+          _gratitudeControllers.add(controller);
+        }
+      }
+
+      // Populate tomorrow notes - if database has data, use it; otherwise use 2 defaults
+      if (entryData?.tomorrowNotes != null &&
+          entryData!.tomorrowNotes!.tomorrowNotes.isNotEmpty) {
+        // Database has data - use it
+        for (var item in entryData.tomorrowNotes!.tomorrowNotes) {
+          final controller = TextEditingController(text: item.text);
+          controller.addListener(() => _onTomorrowChanged());
+          _tomorrowControllers.add(controller);
+        }
+      } else {
+        // No data - create 2 default empty fields
+        for (int i = 0; i < 2; i++) {
+          final controller = TextEditingController();
+          controller.addListener(() => _onTomorrowChanged());
+          _tomorrowControllers.add(controller);
+        }
+      }
+
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   void _setupAnimations() {
@@ -65,8 +138,27 @@ class _GratitudeReflectionScreenState
   @override
   Widget build(BuildContext context) {
     final selectedDate = ref.watch(selectedDateProvider);
+    final syncState = ref.watch(syncStatusProvider);
     final size = MediaQuery.of(context).size;
     final isTablet = size.width > 600;
+
+    // Show loading state while entry data is being fetched
+    if (_isLoading) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Gratitude & Reflection')),
+        drawer: const AppDrawer(currentRoute: 'gratitude'),
+        body: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Loading your gratitude data...'),
+            ],
+          ),
+        ),
+      );
+    }
 
     return WillPopScope(
       onWillPop: () async {
@@ -79,7 +171,13 @@ class _GratitudeReflectionScreenState
         return false; // Don't exit app
       },
       child: Scaffold(
-        appBar: AppBar(title: const Text('Gratitude & Reflection')),
+        appBar: AppBar(
+          title: const Text('Gratitude & Reflection'),
+          actions: [
+            // Sync status indicator
+            _buildSyncStatusIcon(syncState),
+          ],
+        ),
         drawer: const AppDrawer(currentRoute: 'gratitude'),
         body: Column(
           children: [
@@ -191,7 +289,7 @@ class _GratitudeReflectionScreenState
                       addButtonText: 'Add grateful item',
                       fieldLabelPrefix: 'Grateful',
                       maxFields: 8,
-                      onSave: _saveGratitude,
+                      onSave: null, // Auto-save enabled
                       showProgressCounter: false,
                     ),
                     const SizedBox(height: 16),
@@ -209,7 +307,7 @@ class _GratitudeReflectionScreenState
                       addButtonText: 'Add tomorrow note',
                       fieldLabelPrefix: 'Note',
                       maxFields: 6,
-                      onSave: _saveTomorrowNotes,
+                      onSave: null, // Auto-save enabled
                       showProgressCounter: false,
                     ),
 
@@ -225,10 +323,15 @@ class _GratitudeReflectionScreenState
   }
 
   void _addGratitudeField() {
+    final controller = TextEditingController();
+    controller.addListener(() => _onGratitudeChanged());
+
     setState(() {
-      _gratitudeControllers.add(TextEditingController());
+      _gratitudeControllers.add(controller);
     });
 
+    // Reset animation to beginning before playing
+    _gratitudeAnimationController.reset();
     _gratitudeAnimationController.forward().then((_) {
       // Focus on the new field
       FocusScope.of(context).requestFocus(FocusNode()..requestFocus());
@@ -236,10 +339,15 @@ class _GratitudeReflectionScreenState
   }
 
   void _addTomorrowField() {
+    final controller = TextEditingController();
+    controller.addListener(() => _onTomorrowChanged());
+
     setState(() {
-      _tomorrowControllers.add(TextEditingController());
+      _tomorrowControllers.add(controller);
     });
 
+    // Reset animation to beginning before playing
+    _tomorrowAnimationController.reset();
     _tomorrowAnimationController.forward().then((_) {
       // Focus on the new field
       FocusScope.of(context).requestFocus(FocusNode()..requestFocus());
@@ -254,7 +362,11 @@ class _GratitudeReflectionScreenState
       _gratitudeControllers.removeAt(index);
     });
 
-    _gratitudeAnimationController.reverse();
+    // Trigger auto-save after removing field
+    _onGratitudeChanged();
+
+    // Reset animation to avoid index issues
+    _gratitudeAnimationController.reset();
   }
 
   void _removeTomorrowField(int index) {
@@ -265,50 +377,76 @@ class _GratitudeReflectionScreenState
       _tomorrowControllers.removeAt(index);
     });
 
-    _tomorrowAnimationController.reverse();
+    // Trigger auto-save after removing field
+    _onTomorrowChanged();
+
+    // Reset animation to avoid index issues
+    _tomorrowAnimationController.reset();
   }
 
-  void _saveGratitude() {
-    final gratefulItems = _gratitudeControllers
-        .where((controller) => controller.text.isNotEmpty)
+  void _onGratitudeChanged() {
+    final userId = supabase.Supabase.instance.client.auth.currentUser?.id;
+    final selectedDate = ref.read(selectedDateProvider);
+
+    if (userId == null) return;
+
+    final gratitude = _gratitudeControllers
+        .asMap()
+        .entries
+        .where((entry) => entry.value.text.isNotEmpty)
         .map(
-          (controller) => {
-            'text': controller.text.trim(),
-            'order': _gratitudeControllers.indexOf(controller) + 1,
-          },
+          (entry) => GratitudeItem(
+            text: entry.value.text.trim(),
+            order: entry.key + 1,
+          ),
         )
         .toList();
 
-    print('Saving Grateful Items: $gratefulItems');
-    // TODO: Save to Supabase with JSONB structure
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Gratitude saved!'),
-        duration: Duration(seconds: 2),
-      ),
-    );
+    ref
+        .read(entryProvider.notifier)
+        .updateGratitude(userId, selectedDate, gratitude);
   }
 
-  void _saveTomorrowNotes() {
+  void _onTomorrowChanged() {
+    final userId = supabase.Supabase.instance.client.auth.currentUser?.id;
+    final selectedDate = ref.read(selectedDateProvider);
+
+    if (userId == null) return;
+
     final tomorrowNotes = _tomorrowControllers
-        .where((controller) => controller.text.isNotEmpty)
+        .asMap()
+        .entries
+        .where((entry) => entry.value.text.isNotEmpty)
         .map(
-          (controller) => {
-            'text': controller.text.trim(),
-            'order': _tomorrowControllers.indexOf(controller) + 1,
-          },
+          (entry) => TomorrowNoteItem(
+            text: entry.value.text.trim(),
+            order: entry.key + 1,
+          ),
         )
         .toList();
 
-    print('Saving Tomorrow Notes: $tomorrowNotes');
-    // TODO: Save to Supabase with JSONB structure
+    ref
+        .read(entryProvider.notifier)
+        .updateTomorrowNotes(userId, selectedDate, tomorrowNotes);
+  }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Tomorrow notes saved!'),
-        duration: Duration(seconds: 2),
-      ),
-    );
+  Widget _buildSyncStatusIcon(SyncState syncState) {
+    switch (syncState.status) {
+      case SyncStatus.syncing:
+        return const Padding(
+          padding: EdgeInsets.all(16),
+          child: SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        );
+      case SyncStatus.saved:
+        return Icon(Icons.cloud_done, color: Colors.green[600]);
+      case SyncStatus.error:
+        return Icon(Icons.cloud_off, color: Colors.red[600]);
+      default:
+        return const SizedBox.shrink();
+    }
   }
 }

@@ -8,17 +8,60 @@ import 'new_diary_screen.dart';
 import '../widgets/app_drawer.dart';
 import '../providers/user_data_provider.dart';
 
-class HomeScreen extends ConsumerWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends ConsumerState<HomeScreen> {
+  bool _hasLoadedUserData = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Load user data when HomeScreen mounts
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadUserData();
+    });
+  }
+
+  Future<void> _loadUserData() async {
+    if (!_hasLoadedUserData) {
+      _hasLoadedUserData = true;
+      await ref.read(userDataProvider.notifier).loadUserData();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final isTablet = size.width > 600;
 
     final user = supabase.Supabase.instance.client.auth.currentUser;
-    final userData = ref.watch(userDataProvider).userData;
+    final userDataState = ref.watch(userDataProvider);
+    final userData = userDataState.userData;
     final userStats = ref.watch(userStatsProvider);
+    final isLoading = userDataState.isLoading;
+
+    // Show loading state while user data is being fetched
+    if (isLoading && userData == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('My Diary')),
+        drawer: const AppDrawer(currentRoute: 'home'),
+        body: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Loading your data...'),
+            ],
+          ),
+        ),
+      );
+    }
 
     return WillPopScope(
       onWillPop: () async {

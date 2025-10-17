@@ -18,13 +18,16 @@ class AppDrawer extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final userData = ref.watch(userDataProvider).userData;
+    final userDataState = ref.watch(userDataProvider);
+    final userData = userDataState.userData;
     final userStats = ref.watch(userStatsProvider);
+    final isLoading = userDataState.isLoading;
 
     // Debug prints to see what data we're getting
     print('🔍 AppDrawer - userData: ${userData?.displayName ?? "NULL"}');
     print('🔍 AppDrawer - userData email: ${userData?.email ?? "NULL"}');
     print('🔍 AppDrawer - userStats: $userStats');
+    print('🔍 AppDrawer - isLoading: $isLoading');
     print(
       '🔍 AppDrawer - userDataProvider state: ${ref.watch(userDataProvider)}',
     );
@@ -69,41 +72,81 @@ class AppDrawer extends ConsumerWidget {
                   const SizedBox(height: 12),
 
                   // User Name
-                  Text(
-                    _getDisplayName(userData),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w600,
+                  if (isLoading && userData == null)
+                    Row(
+                      children: [
+                        const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Loading...',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    )
+                  else
+                    Text(
+                      _getDisplayName(userData),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                  ),
                   const SizedBox(height: 4),
 
                   // User Email
-                  Text(
-                    _getDisplayEmail(userData),
-                    style: const TextStyle(color: Colors.white70, fontSize: 14),
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  if (isLoading && userData == null)
+                    const Text(
+                      'Please wait...',
+                      style: TextStyle(color: Colors.white70, fontSize: 14),
+                    )
+                  else
+                    Text(
+                      _getDisplayEmail(userData),
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 14,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   const SizedBox(height: 12),
 
                   // Stats Row
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _buildStatBadge(
-                        context,
-                        '🔥',
-                        '${userStats?['current_streak'] ?? 0} days',
-                      ),
-                      _buildStatBadge(
-                        context,
-                        '📝',
-                        '${userStats?['entries_count'] ?? 0} entries',
-                      ),
-                    ],
-                  ),
+                  if (isLoading && userData == null)
+                    const Text(
+                      'Loading stats...',
+                      style: TextStyle(color: Colors.white70, fontSize: 12),
+                    )
+                  else
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _buildStatBadge(
+                          context,
+                          '🔥',
+                          '${userStats?['current_streak'] ?? 0} days',
+                        ),
+                        _buildStatBadge(
+                          context,
+                          '📝',
+                          '${userStats?['entries_count'] ?? 0} entries',
+                        ),
+                      ],
+                    ),
                 ],
               ),
             ),

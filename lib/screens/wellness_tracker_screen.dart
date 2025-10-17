@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' as supabase;
 import '../providers/date_provider.dart';
+import '../providers/entry_provider.dart';
+import '../providers/sync_status_provider.dart';
+import '../models/entry_models.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/saveable_section.dart';
 import 'home_screen.dart';
@@ -36,6 +40,65 @@ class _WellnessTrackerScreenState extends ConsumerState<WellnessTrackerScreen> {
   };
 
   bool _tookShower = false;
+  bool _isInitialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _setupAutoSaveListeners();
+    // Load entry data when screen mounts
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadEntryData();
+    });
+  }
+
+  void _setupAutoSaveListeners() {
+    _breakfastController.addListener(() => _onMealsChanged());
+    _lunchController.addListener(() => _onMealsChanged());
+    _dinnerController.addListener(() => _onMealsChanged());
+    _showerNoteController.addListener(() => _onShowerChanged());
+  }
+
+  Future<void> _loadEntryData() async {
+    final selectedDate = ref.read(selectedDateProvider);
+    final userId = supabase.Supabase.instance.client.auth.currentUser?.id;
+
+    if (userId != null && !_isInitialized) {
+      _isInitialized = true;
+      await ref.read(entryProvider.notifier).loadEntry(userId, selectedDate);
+
+      // Populate meals
+      final entryState = ref.read(entryProvider);
+      if (entryState.meals != null) {
+        _breakfastController.text = entryState.meals!.breakfast ?? '';
+        _lunchController.text = entryState.meals!.lunch ?? '';
+        _dinnerController.text = entryState.meals!.dinner ?? '';
+        _waterCups = entryState.meals!.waterCups;
+      }
+
+      // Populate self-care
+      if (entryState.selfCare != null) {
+        _selfCare['sleep'] = entryState.selfCare!.sleep;
+        _selfCare['get_up_early'] = entryState.selfCare!.getUpEarly;
+        _selfCare['fresh_air'] = entryState.selfCare!.freshAir;
+        _selfCare['learn_new'] = entryState.selfCare!.learnNew;
+        _selfCare['balanced_diet'] = entryState.selfCare!.balancedDiet;
+        _selfCare['podcast'] = entryState.selfCare!.podcast;
+        _selfCare['me_moment'] = entryState.selfCare!.meMoment;
+        _selfCare['hydrated'] = entryState.selfCare!.hydrated;
+        _selfCare['read_book'] = entryState.selfCare!.readBook;
+        _selfCare['exercise'] = entryState.selfCare!.exercise;
+      }
+
+      // Populate shower data
+      if (entryState.showerBath != null) {
+        _tookShower = entryState.showerBath!.tookShower;
+        _showerNoteController.text = entryState.showerBath!.note ?? '';
+      }
+
+      setState(() {});
+    }
+  }
 
   @override
   void dispose() {
@@ -49,8 +112,28 @@ class _WellnessTrackerScreenState extends ConsumerState<WellnessTrackerScreen> {
   @override
   Widget build(BuildContext context) {
     final selectedDate = ref.watch(selectedDateProvider);
+    final syncState = ref.watch(syncStatusProvider);
+    final entryState = ref.watch(entryProvider);
     final size = MediaQuery.of(context).size;
     final isTablet = size.width > 600;
+
+    // Show loading state while entry data is being fetched
+    if (entryState.isLoading && entryState.entry == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Wellness Tracker')),
+        drawer: const AppDrawer(currentRoute: 'wellness'),
+        body: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Loading your wellness data...'),
+            ],
+          ),
+        ),
+      );
+    }
 
     return WillPopScope(
       onWillPop: () async {
@@ -63,7 +146,13 @@ class _WellnessTrackerScreenState extends ConsumerState<WellnessTrackerScreen> {
         return false; // Don't exit app
       },
       child: Scaffold(
-        appBar: AppBar(title: const Text('Wellness Tracker')),
+        appBar: AppBar(
+          title: const Text('Wellness Tracker'),
+          actions: [
+            // Sync status indicator
+            _buildSyncStatusIcon(syncState),
+          ],
+        ),
         drawer: const AppDrawer(currentRoute: 'wellness'),
         body: Column(
           children: [
@@ -168,7 +257,7 @@ class _WellnessTrackerScreenState extends ConsumerState<WellnessTrackerScreen> {
                       subtitle: 'Track your daily meals',
                       icon: Icons.restaurant,
                       accentColor: Colors.orange[600]!,
-                      onSave: _saveMeals,
+                      onSave: null, // Auto-save enabled
                       child: _buildMealsContent(context),
                     ),
                     const SizedBox(height: 16),
@@ -179,7 +268,7 @@ class _WellnessTrackerScreenState extends ConsumerState<WellnessTrackerScreen> {
                       subtitle: 'Track your daily water consumption',
                       icon: Icons.water_drop,
                       accentColor: Colors.blue[600]!,
-                      onSave: _saveWaterIntake,
+                      onSave: null, // Auto-save enabled
                       child: _buildWaterIntakeContent(context),
                     ),
                     const SizedBox(height: 16),
@@ -190,7 +279,7 @@ class _WellnessTrackerScreenState extends ConsumerState<WellnessTrackerScreen> {
                       subtitle: 'Track your daily self-care activities',
                       icon: Icons.favorite,
                       accentColor: Colors.pink[600]!,
-                      onSave: _saveSelfCare,
+                      onSave: null, // Auto-save enabled
                       child: _buildSelfCareContent(context),
                     ),
                     const SizedBox(height: 16),
@@ -332,6 +421,7 @@ class _WellnessTrackerScreenState extends ConsumerState<WellnessTrackerScreen> {
                               setState(() {
                                 _waterCups--;
                               });
+                              _onWaterChanged();
                             }
                           : null,
                       icon: const Icon(Icons.remove),
@@ -364,6 +454,7 @@ class _WellnessTrackerScreenState extends ConsumerState<WellnessTrackerScreen> {
                               setState(() {
                                 _waterCups++;
                               });
+                              _onWaterChanged();
                             }
                           : null,
                       icon: const Icon(Icons.add),
@@ -483,6 +574,7 @@ class _WellnessTrackerScreenState extends ConsumerState<WellnessTrackerScreen> {
                           setState(() {
                             _tookShower = value ?? false;
                           });
+                          _onShowerChanged();
                         },
                         contentPadding: EdgeInsets.zero,
                         activeColor: Colors.green[600],
@@ -547,6 +639,7 @@ class _WellnessTrackerScreenState extends ConsumerState<WellnessTrackerScreen> {
         setState(() {
           _selfCare[key] = value ?? false;
         });
+        _onSelfCareChanged();
       },
       dense: true,
       contentPadding: EdgeInsets.zero,
@@ -557,47 +650,101 @@ class _WellnessTrackerScreenState extends ConsumerState<WellnessTrackerScreen> {
     );
   }
 
-  void _saveMeals() {
-    final meals = {
-      'breakfast': _breakfastController.text.trim(),
-      'lunch': _lunchController.text.trim(),
-      'dinner': _dinnerController.text.trim(),
-    };
+  void _onMealsChanged() {
+    final userId = supabase.Supabase.instance.client.auth.currentUser?.id;
+    final selectedDate = ref.read(selectedDateProvider);
 
-    print('Saving Meals: $meals');
-    // TODO: Save to Supabase
+    if (userId == null) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Meals saved!'),
-        duration: Duration(seconds: 2),
-      ),
-    );
+    ref
+        .read(entryProvider.notifier)
+        .updateMeals(
+          userId,
+          selectedDate,
+          _breakfastController.text.trim().isEmpty
+              ? null
+              : _breakfastController.text.trim(),
+          _lunchController.text.trim().isEmpty
+              ? null
+              : _lunchController.text.trim(),
+          _dinnerController.text.trim().isEmpty
+              ? null
+              : _dinnerController.text.trim(),
+          _waterCups,
+        );
   }
 
-  void _saveWaterIntake() {
-    final waterData = {'cups': _waterCups};
+  void _onWaterChanged() {
+    final userId = supabase.Supabase.instance.client.auth.currentUser?.id;
 
-    print('Saving Water Intake: $waterData');
-    // TODO: Save to Supabase
+    if (userId == null) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Water intake saved!'),
-        duration: Duration(seconds: 2),
-      ),
-    );
+    // Water intake is stored in the meals table as a separate field
+    // For now, we'll handle this in the meals update
+    _onMealsChanged();
   }
 
-  void _saveSelfCare() {
-    print('Saving Self-Care: $_selfCare');
-    // TODO: Save to Supabase
+  void _onSelfCareChanged() {
+    final userId = supabase.Supabase.instance.client.auth.currentUser?.id;
+    final selectedDate = ref.read(selectedDateProvider);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Self-care checklist saved!'),
-        duration: Duration(seconds: 2),
-      ),
+    if (userId == null) return;
+
+    final entryState = ref.read(entryProvider);
+    final selfCare = EntrySelfCare(
+      entryId: entryState.entry?.id ?? '',
+      sleep: _selfCare['sleep'] ?? false,
+      getUpEarly: _selfCare['get_up_early'] ?? false,
+      freshAir: _selfCare['fresh_air'] ?? false,
+      learnNew: _selfCare['learn_new'] ?? false,
+      balancedDiet: _selfCare['balanced_diet'] ?? false,
+      podcast: _selfCare['podcast'] ?? false,
+      meMoment: _selfCare['me_moment'] ?? false,
+      hydrated: _selfCare['hydrated'] ?? false,
+      readBook: _selfCare['read_book'] ?? false,
+      exercise: _selfCare['exercise'] ?? false,
     );
+
+    ref
+        .read(entryProvider.notifier)
+        .updateSelfCare(userId, selectedDate, selfCare);
+  }
+
+  void _onShowerChanged() {
+    final userId = supabase.Supabase.instance.client.auth.currentUser?.id;
+    final selectedDate = ref.read(selectedDateProvider);
+
+    if (userId == null) return;
+
+    ref
+        .read(entryProvider.notifier)
+        .updateShowerBath(
+          userId,
+          selectedDate,
+          _tookShower,
+          _showerNoteController.text.trim().isEmpty
+              ? null
+              : _showerNoteController.text.trim(),
+        );
+  }
+
+  Widget _buildSyncStatusIcon(SyncState syncState) {
+    switch (syncState.status) {
+      case SyncStatus.syncing:
+        return const Padding(
+          padding: EdgeInsets.all(16),
+          child: SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        );
+      case SyncStatus.saved:
+        return Icon(Icons.cloud_done, color: Colors.green[600]);
+      case SyncStatus.error:
+        return Icon(Icons.cloud_off, color: Colors.red[600]);
+      default:
+        return const SizedBox.shrink();
+    }
   }
 }
