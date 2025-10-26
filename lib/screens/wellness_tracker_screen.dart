@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' as supabase;
-import '../providers/date_provider.dart';
 import '../providers/entry_provider.dart';
 import '../providers/sync_status_provider.dart';
 import '../models/entry_models.dart';
+import '../services/error_logging_service.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/saveable_section.dart';
+import '../utils/snackbar_utils.dart';
 import 'home_screen.dart';
 
 class WellnessTrackerScreen extends ConsumerStatefulWidget {
@@ -60,12 +61,12 @@ class _WellnessTrackerScreenState extends ConsumerState<WellnessTrackerScreen> {
   }
 
   Future<void> _loadEntryData() async {
-    final selectedDate = ref.read(selectedDateProvider);
+    final currentDate = DateTime.now();
     final userId = supabase.Supabase.instance.client.auth.currentUser?.id;
 
     if (userId != null && !_isInitialized) {
       _isInitialized = true;
-      await ref.read(entryProvider.notifier).loadEntry(userId, selectedDate);
+      await ref.read(entryProvider.notifier).loadEntry(userId, currentDate);
 
       // Populate meals
       final entryState = ref.read(entryProvider);
@@ -111,7 +112,6 @@ class _WellnessTrackerScreenState extends ConsumerState<WellnessTrackerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final selectedDate = ref.watch(selectedDateProvider);
     final syncState = ref.watch(syncStatusProvider);
     final entryState = ref.watch(entryProvider);
     final size = MediaQuery.of(context).size;
@@ -172,70 +172,14 @@ class _WellnessTrackerScreenState extends ConsumerState<WellnessTrackerScreen> {
                 ],
                 border: Border.all(color: Colors.grey.withOpacity(0.15)),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  IconButton(
-                    icon: Icon(
-                      Icons.chevron_left,
-                      size: 16,
-                      color: Colors.grey[600],
-                    ),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                      minWidth: 28,
-                      minHeight: 28,
-                    ),
-                    onPressed: () {
-                      ref
-                          .read(selectedDateProvider.notifier)
-                          .updateDate(
-                            selectedDate.subtract(const Duration(days: 1)),
-                          );
-                    },
+              child: Center(
+                child: Text(
+                  'Today - ${DateFormat('MMM d, y').format(DateTime.now())}',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey[800],
                   ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      DateFormat('MMM d, y').format(selectedDate),
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey[800],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  IconButton(
-                    icon: Icon(
-                      Icons.chevron_right,
-                      size: 16,
-                      color:
-                          selectedDate.isBefore(
-                            DateTime.now().subtract(const Duration(days: 1)),
-                          )
-                          ? Colors.grey[600]
-                          : Colors.grey[300],
-                    ),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                      minWidth: 28,
-                      minHeight: 28,
-                    ),
-                    onPressed:
-                        selectedDate.isBefore(
-                          DateTime.now().subtract(const Duration(days: 1)),
-                        )
-                        ? () {
-                            ref
-                                .read(selectedDateProvider.notifier)
-                                .updateDate(
-                                  selectedDate.add(const Duration(days: 1)),
-                                );
-                          }
-                        : null,
-                  ),
-                ],
+                ),
               ),
             ),
 
@@ -650,28 +594,59 @@ class _WellnessTrackerScreenState extends ConsumerState<WellnessTrackerScreen> {
     );
   }
 
-  void _onMealsChanged() {
-    final userId = supabase.Supabase.instance.client.auth.currentUser?.id;
-    final selectedDate = ref.read(selectedDateProvider);
+  void _onMealsChanged() async {
+    try {
+      final userId = supabase.Supabase.instance.client.auth.currentUser?.id;
+      final currentDate = DateTime.now();
 
-    if (userId == null) return;
-
-    ref
-        .read(entryProvider.notifier)
-        .updateMeals(
-          userId,
-          selectedDate,
-          _breakfastController.text.trim().isEmpty
-              ? null
-              : _breakfastController.text.trim(),
-          _lunchController.text.trim().isEmpty
-              ? null
-              : _lunchController.text.trim(),
-          _dinnerController.text.trim().isEmpty
-              ? null
-              : _dinnerController.text.trim(),
-          _waterCups,
+      if (userId == null) {
+        SnackbarUtils.showError(
+          context,
+          'User not authenticated (ERRUI031)',
+          'ERRUI031',
         );
+        return;
+      }
+
+      ref
+          .read(entryProvider.notifier)
+          .updateMeals(
+            userId,
+            currentDate,
+            _breakfastController.text.trim().isEmpty
+                ? null
+                : _breakfastController.text.trim(),
+            _lunchController.text.trim().isEmpty
+                ? null
+                : _lunchController.text.trim(),
+            _dinnerController.text.trim().isEmpty
+                ? null
+                : _dinnerController.text.trim(),
+            _waterCups,
+          );
+    } catch (e) {
+      // Log error to Supabase
+      await ErrorLoggingService.logMediumError(
+        errorCode: 'ERRUI031',
+        errorMessage: 'Meals save failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'breakfast': _breakfastController.text,
+          'lunch': _lunchController.text,
+          'dinner': _dinnerController.text,
+          'water_cups': _waterCups,
+          'user_id': supabase.Supabase.instance.client.auth.currentUser?.id,
+          'entry_date': DateTime.now().toIso8601String(),
+          'save_method': 'wellness_tracker',
+        },
+      );
+
+      SnackbarUtils.showError(
+        context,
+        'Meals save failed (ERRUI031)',
+        'ERRUI031',
+      );
+    }
   }
 
   void _onWaterChanged() {
@@ -686,7 +661,7 @@ class _WellnessTrackerScreenState extends ConsumerState<WellnessTrackerScreen> {
 
   void _onSelfCareChanged() {
     final userId = supabase.Supabase.instance.client.auth.currentUser?.id;
-    final selectedDate = ref.read(selectedDateProvider);
+    final currentDate = DateTime.now();
 
     if (userId == null) return;
 
@@ -707,12 +682,12 @@ class _WellnessTrackerScreenState extends ConsumerState<WellnessTrackerScreen> {
 
     ref
         .read(entryProvider.notifier)
-        .updateSelfCare(userId, selectedDate, selfCare);
+        .updateSelfCare(userId, currentDate, selfCare);
   }
 
   void _onShowerChanged() {
     final userId = supabase.Supabase.instance.client.auth.currentUser?.id;
-    final selectedDate = ref.read(selectedDateProvider);
+    final currentDate = DateTime.now();
 
     if (userId == null) return;
 
@@ -720,7 +695,7 @@ class _WellnessTrackerScreenState extends ConsumerState<WellnessTrackerScreen> {
         .read(entryProvider.notifier)
         .updateShowerBath(
           userId,
-          selectedDate,
+          currentDate,
           _tookShower,
           _showerNoteController.text.trim().isEmpty
               ? null

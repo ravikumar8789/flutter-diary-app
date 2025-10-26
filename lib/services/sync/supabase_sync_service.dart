@@ -11,7 +11,6 @@ class SupabaseSyncService {
       await _supabase.from('entries').upsert(entry.toSupabaseJson());
       return true;
     } catch (e) {
-      print('Sync error for entry ${entry.id}: $e');
       return false;
     }
   }
@@ -27,7 +26,6 @@ class SupabaseSyncService {
       });
       return true;
     } catch (e) {
-      print('Sync error for affirmations ${affirmations.entryId}: $e');
       return false;
     }
   }
@@ -41,7 +39,6 @@ class SupabaseSyncService {
       });
       return true;
     } catch (e) {
-      print('Sync error for priorities ${priorities.entryId}: $e');
       return false;
     }
   }
@@ -52,7 +49,6 @@ class SupabaseSyncService {
       await _supabase.from('entry_meals').upsert(meals.toJson());
       return true;
     } catch (e) {
-      print('Sync error for meals ${meals.entryId}: $e');
       return false;
     }
   }
@@ -68,7 +64,6 @@ class SupabaseSyncService {
       });
       return true;
     } catch (e) {
-      print('Sync error for gratitude ${gratitude.entryId}: $e');
       return false;
     }
   }
@@ -79,7 +74,6 @@ class SupabaseSyncService {
       await _supabase.from('entry_self_care').upsert(selfCare.toJson());
       return true;
     } catch (e) {
-      print('Sync error for self care ${selfCare.entryId}: $e');
       return false;
     }
   }
@@ -90,7 +84,6 @@ class SupabaseSyncService {
       await _supabase.from('entry_shower_bath').upsert(showerBath.toJson());
       return true;
     } catch (e) {
-      print('Sync error for shower bath ${showerBath.entryId}: $e');
       return false;
     }
   }
@@ -106,7 +99,6 @@ class SupabaseSyncService {
       });
       return true;
     } catch (e) {
-      print('Sync error for tomorrow notes ${tomorrowNotes.entryId}: $e');
       return false;
     }
   }
@@ -126,7 +118,6 @@ class SupabaseSyncService {
       if (response == null) return null;
       return Entry.fromSupabaseJson(response);
     } catch (e) {
-      print('Error fetching entry from cloud: $e');
       return null;
     }
   }
@@ -143,7 +134,6 @@ class SupabaseSyncService {
       if (response == null) return null;
       return EntryAffirmations.fromSupabaseJson(response);
     } catch (e) {
-      print('Error fetching affirmations from cloud: $e');
       return null;
     }
   }
@@ -160,7 +150,6 @@ class SupabaseSyncService {
       if (response == null) return null;
       return EntryPriorities.fromSupabaseJson(response);
     } catch (e) {
-      print('Error fetching priorities from cloud: $e');
       return null;
     }
   }
@@ -177,7 +166,6 @@ class SupabaseSyncService {
       if (response == null) return null;
       return EntryMeals.fromJson(response);
     } catch (e) {
-      print('Error fetching meals from cloud: $e');
       return null;
     }
   }
@@ -194,7 +182,6 @@ class SupabaseSyncService {
       if (response == null) return null;
       return EntryGratitude.fromSupabaseJson(response);
     } catch (e) {
-      print('Error fetching gratitude from cloud: $e');
       return null;
     }
   }
@@ -211,7 +198,6 @@ class SupabaseSyncService {
       if (response == null) return null;
       return EntrySelfCare.fromJson(response);
     } catch (e) {
-      print('Error fetching self care from cloud: $e');
       return null;
     }
   }
@@ -228,7 +214,6 @@ class SupabaseSyncService {
       if (response == null) return null;
       return EntryShowerBath.fromJson(response);
     } catch (e) {
-      print('Error fetching shower bath from cloud: $e');
       return null;
     }
   }
@@ -247,7 +232,6 @@ class SupabaseSyncService {
       if (response == null) return null;
       return EntryTomorrowNotes.fromSupabaseJson(response);
     } catch (e) {
-      print('Error fetching tomorrow notes from cloud: $e');
       return null;
     }
   }
@@ -255,6 +239,5 @@ class SupabaseSyncService {
   // Process sync queue (for offline changes)
   Future<void> processSyncQueue() async {
     // This will be implemented in Phase 7 with the sync worker
-    print('Sync queue processing will be implemented in Phase 7');
   }
 }

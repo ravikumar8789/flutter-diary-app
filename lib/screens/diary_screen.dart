@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../widgets/app_drawer.dart';
+import '../providers/paper_style_provider.dart';
+import '../providers/font_size_provider.dart';
+import '../widgets/paper_background.dart';
 
-class DiaryScreen extends StatefulWidget {
+class DiaryScreen extends ConsumerStatefulWidget {
   const DiaryScreen({super.key});
 
   @override
-  State<DiaryScreen> createState() => _DiaryScreenState();
+  ConsumerState<DiaryScreen> createState() => _DiaryScreenState();
 }
 
-class _DiaryScreenState extends State<DiaryScreen> {
+class _DiaryScreenState extends ConsumerState<DiaryScreen> {
   DateTime _selectedDate = DateTime.now();
 
   // Affirmation controllers
@@ -213,6 +217,9 @@ class _DiaryScreenState extends State<DiaryScreen> {
 
   // Main Diary Section - Always visible
   Widget _buildDiarySection(BuildContext context) {
+    final paperStyle = ref.watch(paperStyleProvider);
+    final fontSize = ref.watch(fontSizeProvider);
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -234,15 +241,28 @@ class _DiaryScreenState extends State<DiaryScreen> {
               ],
             ),
             const SizedBox(height: 10),
-            TextFormField(
-              controller: _diaryController,
-              decoration: const InputDecoration(
-                hintText: 'Dear diary...',
-                border: OutlineInputBorder(),
-                contentPadding: EdgeInsets.all(10),
+            PaperBackground(
+              paperStyle: paperStyle,
+              lineHeight: 20.0, // Slightly smaller for the card
+              child: TextFormField(
+                controller: _diaryController,
+                decoration: const InputDecoration(
+                  hintText: 'Dear diary...',
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.all(10),
+                  fillColor: Colors.transparent,
+                  filled: true,
+                ),
+                maxLines: 10,
+                style: TextStyle(
+                  height:
+                      paperStyle == PaperStyle.ruled ||
+                          paperStyle == PaperStyle.grid
+                      ? 1.0 // Match line height exactly for ruled/grid
+                      : 1.4, // Normal line height for plain
+                  fontSize: fontSize.size,
+                ),
               ),
-              maxLines: 10,
-              style: const TextStyle(height: 1.4, fontSize: 14),
             ),
           ],
         ),

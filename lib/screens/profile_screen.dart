@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../widgets/app_drawer.dart';
+import '../widgets/streak_display_widget.dart';
 import '../providers/auth_provider.dart';
 import '../providers/user_data_provider.dart';
+import '../utils/snackbar_utils.dart';
+import '../services/error_logging_service.dart';
 import 'login_screen.dart';
 import 'home_screen.dart';
 
@@ -13,6 +17,7 @@ class ProfileScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final size = MediaQuery.of(context).size;
     final isTablet = size.width > 600;
+    final userDataState = ref.watch(userDataProvider);
 
     return WillPopScope(
       onWillPop: () async {
@@ -25,209 +30,271 @@ class ProfileScreen extends ConsumerWidget {
         return false; // Don't exit app
       },
       child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Profile'),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.edit),
-              onPressed: () {
-                // TODO: Navigate to edit profile
-              },
-            ),
-          ],
-        ),
+        appBar: AppBar(title: const Text('Profile')),
         drawer: const AppDrawer(currentRoute: 'profile'),
-        body: SingleChildScrollView(
-          padding: EdgeInsets.all(isTablet ? 32 : 16),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: isTablet ? 800 : double.infinity,
-            ),
-            child: Column(
+        body: userDataState.isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : userDataState.error != null
+            ? _buildErrorState(context, userDataState.error!, ref)
+            : userDataState.userData == null
+            ? _buildNoDataState(context, ref)
+            : _buildProfileContent(
+                context,
+                userDataState.userData!,
+                isTablet,
+                ref,
+              ),
+      ),
+    );
+  }
+
+  Widget _buildErrorState(BuildContext context, String error, WidgetRef ref) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.error_outline,
+            size: 64,
+            color: Theme.of(context).colorScheme.error,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Failed to load profile',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            error,
+            style: Theme.of(context).textTheme.bodyMedium,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: () =>
+                ref.read(userDataProvider.notifier).refreshUserData(),
+            icon: const Icon(Icons.refresh),
+            label: const Text('Retry'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNoDataState(BuildContext context, WidgetRef ref) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.person_outline,
+            size: 64,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'No profile data found',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Please refresh to load your profile',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: () =>
+                ref.read(userDataProvider.notifier).refreshUserData(),
+            icon: const Icon(Icons.refresh),
+            label: const Text('Load Profile'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProfileContent(
+    BuildContext context,
+    userData,
+    bool isTablet,
+    WidgetRef ref,
+  ) {
+    // Calculate stats from user data
+    final stats = userData.stats ?? {};
+    final entriesCount = stats['total_entries'] ?? 0;
+    final currentStreak = stats['current_streak'] ?? 0;
+    final daysSinceJoined = DateTime.now()
+        .difference(userData.createdAt)
+        .inDays;
+
+    // Format member since date
+    final memberSince = _formatMemberSinceDate(userData.createdAt);
+
+    // Get user preferences
+    final preferences = userData.preferences ?? {};
+    final theme = preferences['theme'] ?? 'System Default';
+    final language = preferences['language'] ?? 'English';
+    final timezone = preferences['timezone'] ?? 'UTC';
+
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(isTablet ? 32 : 16),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: isTablet ? 800 : double.infinity),
+        child: Column(
+          children: [
+            const SizedBox(height: 24),
+
+            // Avatar
+            Stack(
               children: [
-                const SizedBox(height: 24),
-
-                // Avatar
-                Stack(
-                  children: [
-                    CircleAvatar(
-                      radius: isTablet ? 80 : 60,
-                      backgroundColor: Theme.of(
-                        context,
-                      ).colorScheme.primary.withOpacity(0.2),
-                      child: Icon(
-                        Icons.person,
-                        size: isTablet ? 80 : 60,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                    ),
-                    Positioned(
-                      bottom: 0,
-                      right: 0,
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
+                CircleAvatar(
+                  radius: isTablet ? 80 : 60,
+                  backgroundColor: Theme.of(
+                    context,
+                  ).colorScheme.primary.withOpacity(0.2),
+                  backgroundImage: userData.avatarUrl != null
+                      ? NetworkImage(userData.avatarUrl!)
+                      : null,
+                  child: userData.avatarUrl == null
+                      ? Icon(
+                          Icons.person,
+                          size: isTablet ? 80 : 60,
                           color: Theme.of(context).colorScheme.primary,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: Theme.of(context).scaffoldBackgroundColor,
-                            width: 3,
-                          ),
-                        ),
-                        child: const Icon(
-                          Icons.camera_alt,
-                          size: 20,
-                          color: Colors.white,
-                        ),
+                        )
+                      : null,
+                ),
+                Positioned(
+                  bottom: 0,
+                  right: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Theme.of(context).scaffoldBackgroundColor,
+                        width: 3,
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-
-                // Name
-                Text(
-                  'John Doe',
-                  style: Theme.of(context).textTheme.headlineMedium,
-                ),
-                const SizedBox(height: 8),
-
-                // Email
-                Text(
-                  'john.doe@example.com',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                const SizedBox(height: 32),
-
-                // Stats row
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildStatColumn(context, '42', 'Entries'),
-                    Container(
-                      height: 50,
-                      width: 1,
-                      color: Colors.grey.shade300,
-                    ),
-                    _buildStatColumn(context, '7', 'Streak'),
-                    Container(
-                      height: 50,
-                      width: 1,
-                      color: Colors.grey.shade300,
-                    ),
-                    _buildStatColumn(context, '30', 'Days'),
-                  ],
-                ),
-                const SizedBox(height: 32),
-                const Divider(),
-                const SizedBox(height: 16),
-
-                // Profile information
-                _buildInfoSection(context, 'Personal Information', [
-                  _buildInfoTile(
-                    context,
-                    Icons.person_outline,
-                    'Display Name',
-                    'John Doe',
-                  ),
-                  _buildInfoTile(
-                    context,
-                    Icons.email_outlined,
-                    'Email',
-                    'john.doe@example.com',
-                  ),
-                  _buildInfoTile(
-                    context,
-                    Icons.calendar_today,
-                    'Member Since',
-                    'January 2024',
-                  ),
-                  _buildInfoTile(
-                    context,
-                    Icons.language,
-                    'Language',
-                    'English',
-                  ),
-                ]),
-                const SizedBox(height: 24),
-
-                _buildInfoSection(context, 'Preferences', [
-                  _buildInfoTile(
-                    context,
-                    Icons.palette_outlined,
-                    'Theme',
-                    'System Default',
-                  ),
-                  _buildInfoTile(
-                    context,
-                    Icons.public,
-                    'Region',
-                    'United States',
-                  ),
-                  _buildInfoTile(
-                    context,
-                    Icons.schedule,
-                    'Timezone',
-                    'EST (UTC-5)',
-                  ),
-                ]),
-                const SizedBox(height: 24),
-
-                _buildInfoSection(context, 'Account', [
-                  _buildActionTile(
-                    context,
-                    Icons.shield_outlined,
-                    'Privacy & Security',
-                    () {},
-                  ),
-                  _buildActionTile(
-                    context,
-                    Icons.download_outlined,
-                    'Export Data',
-                    () {},
-                  ),
-                  _buildActionTile(
-                    context,
-                    Icons.help_outline,
-                    'Help & Support',
-                    () {},
-                  ),
-                ]),
-                const SizedBox(height: 24),
-
-                // Logout button
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      _showLogoutDialog(context, ref);
-                    },
-                    icon: const Icon(Icons.logout),
-                    label: const Text('Logout'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Theme.of(context).colorScheme.error,
-                      padding: const EdgeInsets.all(16),
+                    child: const Icon(
+                      Icons.camera_alt,
+                      size: 20,
+                      color: Colors.white,
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
-
-                // Delete account
-                TextButton(
-                  onPressed: () {
-                    _showDeleteAccountDialog(context);
-                  },
-                  child: Text(
-                    'Delete Account',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
               ],
             ),
-          ),
+            const SizedBox(height: 24),
+
+            // Name
+            Text(
+              userData.displayName,
+              style: Theme.of(context).textTheme.headlineMedium,
+            ),
+            const SizedBox(height: 8),
+
+            // Email
+            Text(userData.email, style: Theme.of(context).textTheme.bodyMedium),
+            const SizedBox(height: 32),
+
+            // Stats row
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildStatColumn(context, entriesCount.toString(), 'Entries'),
+                Container(height: 50, width: 1, color: Colors.grey.shade300),
+                _buildStreakColumn(context, currentStreak),
+                Container(height: 50, width: 1, color: Colors.grey.shade300),
+                _buildStatColumn(context, daysSinceJoined.toString(), 'Days'),
+              ],
+            ),
+            const SizedBox(height: 32),
+            const Divider(),
+            const SizedBox(height: 16),
+
+            // Profile information
+            _buildInfoSection(context, 'Personal Information', [
+              _buildInfoTile(
+                context,
+                Icons.person_outline,
+                'Display Name',
+                userData.displayName,
+              ),
+              _buildInfoTile(
+                context,
+                Icons.email_outlined,
+                'Email',
+                userData.email,
+              ),
+              _buildInfoTile(
+                context,
+                Icons.calendar_today,
+                'Member Since',
+                memberSince,
+              ),
+              _buildInfoTile(context, Icons.language, 'Language', language),
+            ]),
+            const SizedBox(height: 24),
+
+            _buildInfoSection(context, 'Preferences', [
+              _buildInfoTile(context, Icons.palette_outlined, 'Theme', theme),
+              _buildInfoTile(context, Icons.public, 'Region', 'Auto-detected'),
+              _buildInfoTile(context, Icons.schedule, 'Timezone', timezone),
+            ]),
+            const SizedBox(height: 24),
+
+            _buildInfoSection(context, 'Account', [
+              _buildActionTile(
+                context,
+                Icons.shield_outlined,
+                'Privacy & Security',
+                () {},
+              ),
+              _buildActionTile(
+                context,
+                Icons.download_outlined,
+                'Export Data',
+                () {},
+              ),
+              _buildActionTile(
+                context,
+                Icons.help_outline,
+                'Help & Support',
+                () {},
+              ),
+            ]),
+            const SizedBox(height: 24),
+
+            // Logout button
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  _showLogoutDialog(context, ref);
+                },
+                icon: const Icon(Icons.logout),
+                label: const Text('Logout'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Theme.of(context).colorScheme.error,
+                  padding: const EdgeInsets.all(16),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Delete account
+            TextButton(
+              onPressed: () {
+                _showDeleteAccountDialog(context);
+              },
+              child: Text(
+                'Delete Account',
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
+            const SizedBox(height: 24),
+          ],
         ),
       ),
     );
@@ -246,6 +313,36 @@ class ProfileScreen extends ConsumerWidget {
         Text(label, style: Theme.of(context).textTheme.bodyMedium),
       ],
     );
+  }
+
+  Widget _buildStreakColumn(BuildContext context, int currentStreak) {
+    return Column(
+      children: [
+        StreakDisplayWidget(currentStreak: currentStreak, isCompact: true),
+        const SizedBox(height: 4),
+        const Text('Streak', style: TextStyle(fontSize: 12)),
+      ],
+    );
+  }
+
+  String _formatMemberSinceDate(DateTime createdAt) {
+    final now = DateTime.now();
+    final difference = now.difference(createdAt);
+
+    if (difference.inDays < 1) {
+      return 'Today';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays} days ago';
+    } else if (difference.inDays < 30) {
+      final weeks = (difference.inDays / 7).floor();
+      return weeks == 1 ? '1 week ago' : '$weeks weeks ago';
+    } else if (difference.inDays < 365) {
+      final months = (difference.inDays / 30).floor();
+      return months == 1 ? '1 month ago' : '$months months ago';
+    } else {
+      final years = (difference.inDays / 365).floor();
+      return years == 1 ? '1 year ago' : '$years years ago';
+    }
   }
 
   Widget _buildInfoSection(
@@ -317,14 +414,11 @@ class ProfileScreen extends ConsumerWidget {
 
   void _performLogout(WidgetRef ref) async {
     try {
-      print('Starting logout...');
-
       // Clear user data first
       ref.read(userDataProvider.notifier).clearUserData();
 
       // Then sign out from auth
       await ref.read(authControllerProvider).signOut();
-      print('Logout completed - navigating to AuthWrapper');
 
       // FIXED: Navigate directly to LoginScreen to avoid AuthWrapper loading issues
       Future.microtask(() {
@@ -337,9 +431,30 @@ class ProfileScreen extends ConsumerWidget {
         }
       });
     } catch (e) {
-      print('Logout error: $e');
       // Even if logout fails, clear user data and navigate
       ref.read(userDataProvider.notifier).clearUserData();
+
+      // Log error to Supabase
+      await ErrorLoggingService.logError(
+        errorCode: 'ERRAUTH041',
+        errorMessage: 'Logout failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        severity: 'MEDIUM',
+        errorContext: {
+          'logout_attempt_time': DateTime.now().toIso8601String(),
+          'user_id': Supabase.instance.client.auth.currentUser?.id,
+        },
+      );
+
+      // Show error with code
+      if (ref.context.mounted) {
+        SnackbarUtils.showError(
+          ref.context,
+          'Logout failed (ERRAUTH041)',
+          'ERRAUTH041',
+        );
+      }
+
       Future.microtask(() {
         final context = ref.context;
         if (context.mounted) {

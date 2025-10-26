@@ -25,7 +25,6 @@ class AuthRepository {
 
     // Listen to Supabase auth changes and forward them
     _supabase.auth.onAuthStateChange.listen((authState) {
-      print('🔐 Supabase Auth Event: ${authState.event}');
       _authStreamController.add(authState);
     });
   }
@@ -36,9 +35,7 @@ class AuthRepository {
   Stream<AuthState> authStateChanges() => _authStreamController.stream;
 
   Future<void> signOut() async {
-    print('🚪 Starting Supabase sign out...');
     await _supabase.auth.signOut();
-    print('✅ Supabase sign out completed');
 
     // FIXED: MANUALLY trigger auth state change after signout
     _authStreamController.add(AuthState(AuthChangeEvent.signedOut, null));
@@ -53,16 +50,9 @@ class AuthRepository {
 final currentUserProvider = StreamProvider<User?>((ref) {
   final authRepo = ref.watch(authRepositoryProvider);
 
-  print('🔄 Creating currentUserProvider stream...');
-
   // Create a stream that emits the current user immediately, then listens to changes
   return Stream<User?>.value(authRepo.currentUser).asyncExpand((_) {
-    print('🔄 Starting auth state changes stream...');
     return authRepo.authStateChanges().map((authState) {
-      print('👤 Current User Stream - Event: ${authState.event}');
-      print(
-        '👤 Current User Stream - User: ${authState.session?.user.email ?? "NULL"}',
-      );
       return authState.session?.user;
     });
   });
@@ -90,7 +80,6 @@ class AuthController {
         data: {'display_name': displayName, 'gender': gender},
       );
     } catch (e) {
-      print('Sign up error: $e');
       rethrow;
     }
   }
@@ -102,7 +91,6 @@ class AuthController {
         password: password,
       );
     } catch (e) {
-      print('Sign in error: $e');
       rethrow;
     }
   }
@@ -111,7 +99,6 @@ class AuthController {
     try {
       await _ref.read(authRepositoryProvider).signOut();
     } catch (e) {
-      print('❌ Sign out error: $e');
       rethrow;
     }
   }

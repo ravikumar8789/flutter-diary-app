@@ -9,7 +9,9 @@ import '../screens/analytics_screen.dart';
 import '../screens/history_screen.dart';
 import '../screens/profile_screen.dart';
 import '../screens/settings_screen.dart';
+import '../screens/notification_test_screen.dart';
 import '../providers/user_data_provider.dart';
+import '../widgets/streak_display_widget.dart';
 
 class AppDrawer extends ConsumerWidget {
   final String currentRoute;
@@ -24,13 +26,6 @@ class AppDrawer extends ConsumerWidget {
     final isLoading = userDataState.isLoading;
 
     // Debug prints to see what data we're getting
-    print('🔍 AppDrawer - userData: ${userData?.displayName ?? "NULL"}');
-    print('🔍 AppDrawer - userData email: ${userData?.email ?? "NULL"}');
-    print('🔍 AppDrawer - userStats: $userStats');
-    print('🔍 AppDrawer - isLoading: $isLoading');
-    print(
-      '🔍 AppDrawer - userDataProvider state: ${ref.watch(userDataProvider)}',
-    );
 
     return Drawer(
       child: Container(
@@ -135,10 +130,8 @@ class AppDrawer extends ConsumerWidget {
                       spacing: 8,
                       runSpacing: 8,
                       children: [
-                        _buildStatBadge(
-                          context,
-                          '🔥',
-                          '${userStats?['current_streak'] ?? 0} days',
+                        StreakBadgeWidget(
+                          currentStreak: userStats?['current_streak'] ?? 0,
                         ),
                         _buildStatBadge(
                           context,
@@ -391,6 +384,26 @@ class AppDrawer extends ConsumerWidget {
                           context,
                           MaterialPageRoute(
                             builder: (context) => const SettingsScreen(),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                  _buildDrawerItem(
+                    context,
+                    icon: Icons.notifications_outlined,
+                    selectedIcon: Icons.notifications,
+                    title: 'Notification Test',
+                    route: 'notification_test',
+                    onTap: () {
+                      Navigator.pop(context);
+                      if (currentRoute != 'notification_test') {
+                        // Modal Screen - always use PUSH (stacks on current)
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                const NotificationTestScreen(),
                           ),
                         );
                       }

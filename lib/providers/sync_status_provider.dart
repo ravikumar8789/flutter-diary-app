@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../services/error_logging_service.dart';
 
 enum SyncStatus { idle, syncing, saved, error }
 
@@ -49,6 +50,18 @@ class SyncStatusNotifier extends Notifier<SyncState> {
   }
 
   void setError(String message) {
+    // Log sync status error
+    ErrorLoggingService.logMediumError(
+      errorCode: 'ERRSYS021',
+      errorMessage: 'Sync status error: $message',
+      stackTrace: StackTrace.current.toString(),
+      errorContext: {
+        'sync_status': state.status.name,
+        'error_time': DateTime.now().toIso8601String(),
+        'error_message': message,
+      },
+    );
+
     state = SyncState(status: SyncStatus.error, errorMessage: message);
   }
 

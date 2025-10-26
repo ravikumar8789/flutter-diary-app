@@ -2,10 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' as supabase;
-import '../providers/date_provider.dart';
 import '../providers/entry_provider.dart';
 import '../providers/sync_status_provider.dart';
+import '../providers/paper_style_provider.dart';
+import '../providers/font_size_provider.dart';
+import '../services/error_logging_service.dart';
+import '../utils/snackbar_utils.dart';
 import '../widgets/app_drawer.dart';
+import '../widgets/paper_background.dart';
 
 class NewDiaryScreen extends ConsumerStatefulWidget {
   const NewDiaryScreen({super.key});
@@ -36,12 +40,12 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen> {
   }
 
   Future<void> _loadEntryData() async {
-    final selectedDate = ref.read(selectedDateProvider);
+    final currentDate = DateTime.now();
     final userId = supabase.Supabase.instance.client.auth.currentUser?.id;
 
     if (userId != null && !_isInitialized) {
       _isInitialized = true;
-      await ref.read(entryProvider.notifier).loadEntry(userId, selectedDate);
+      await ref.read(entryProvider.notifier).loadEntry(userId, currentDate);
 
       // Update text controller with loaded data
       final entryState = ref.read(entryProvider);
@@ -53,9 +57,11 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final selectedDate = ref.watch(selectedDateProvider);
+    final currentDate = DateTime.now();
     final syncState = ref.watch(syncStatusProvider);
     final entryState = ref.watch(entryProvider);
+    final paperStyle = ref.watch(paperStyleProvider);
+    final fontSize = ref.watch(fontSizeProvider);
     final userId = supabase.Supabase.instance.client.auth.currentUser?.id;
 
     // Show loading state while entry data is being fetched
@@ -78,21 +84,11 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: GestureDetector(
-          onTap: _showDatePicker,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                DateFormat('MMM d, y').format(selectedDate),
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(width: 4),
-              Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
-            ],
-          ),
+        title: Text(
+          'Today - ${DateFormat('MMM d, y').format(DateTime.now())}',
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
         ),
         actions: [
           // Sync status indicator
@@ -105,8 +101,9 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen> {
         ],
       ),
       drawer: const AppDrawer(currentRoute: 'diary'),
-      body: Container(
-        color: Colors.white,
+      body: PaperBackground(
+        paperStyle: paperStyle,
+        lineHeight: 24.0, // Match the line height for proper alignment
         child: Column(
           children: [
             // Minimal greeting
@@ -133,7 +130,8 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen> {
             Expanded(
               child: Container(
                 width: double.infinity,
-                color: Colors.white,
+                color: Colors
+                    .transparent, // Make transparent to show paper background
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: TextField(
                   controller: _diaryController,
@@ -141,9 +139,13 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen> {
                   maxLines: null,
                   expands: true,
                   textAlignVertical: TextAlignVertical.top,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    height: 1.6,
+                  style: TextStyle(
+                    fontSize: fontSize.size,
+                    height:
+                        paperStyle == PaperStyle.ruled ||
+                            paperStyle == PaperStyle.grid
+                        ? 1.0 // Match line height exactly for ruled/grid
+                        : 1.6, // Normal line height for plain
                     letterSpacing: 0.3,
                     color: Colors.black87,
                   ),
@@ -151,7 +153,7 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen> {
                     if (userId != null) {
                       ref
                           .read(entryProvider.notifier)
-                          .updateDiaryText(userId, selectedDate, text);
+                          .updateDiaryText(userId, currentDate, text);
                     }
                   },
                   decoration: InputDecoration(
@@ -159,15 +161,20 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen> {
                         'Start writing your thoughts...\n\nYou can write about:\n• How your day went\n• Things you\'re grateful for\n• Challenges you faced\n• Goals and dreams\n• People who made you smile\n• Lessons you learned\n\nJust let your thoughts flow naturally! ✨',
                     hintStyle: TextStyle(
                       color: Colors.grey[400],
-                      fontSize: 16,
-                      height: 1.6,
+                      fontSize: fontSize.size,
+                      height:
+                          paperStyle == PaperStyle.ruled ||
+                              paperStyle == PaperStyle.grid
+                          ? 1.0 // Match line height exactly for ruled/grid
+                          : 1.6, // Normal line height for plain
                       letterSpacing: 0.3,
                     ),
                     border: InputBorder.none,
                     enabledBorder: InputBorder.none,
                     focusedBorder: InputBorder.none,
                     contentPadding: EdgeInsets.zero,
-                    fillColor: Colors.white,
+                    fillColor: Colors
+                        .transparent, // Make transparent to show paper background
                     filled: true,
                   ),
                 ),
@@ -201,30 +208,6 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen> {
       return Icons.wb_cloudy;
     } else {
       return Icons.nightlight_round;
-    }
-  }
-
-  void _showDatePicker() async {
-    final selectedDate = ref.read(selectedDateProvider);
-    final pickedDate = await showDatePicker(
-      context: context,
-      initialDate: selectedDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: Theme.of(context).colorScheme.copyWith(
-              primary: Theme.of(context).colorScheme.primary,
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-
-    if (pickedDate != null && pickedDate != selectedDate) {
-      ref.read(selectedDateProvider.notifier).updateDate(pickedDate);
     }
   }
 
@@ -314,9 +297,18 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen> {
 
   void _clearContent() async {
     if (_diaryController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Nothing to clear')));
+      // Log error to Supabase
+      await ErrorLoggingService.logLowError(
+        errorCode: 'ERRUI001',
+        errorMessage: 'Nothing to clear',
+        errorContext: {
+          'action': 'clear_content',
+          'text_length': _diaryController.text.length,
+          'user_id': supabase.Supabase.instance.client.auth.currentUser?.id,
+        },
+      );
+
+      SnackbarUtils.showError(context, 'Nothing to clear', 'ERRUI001');
       return;
     }
 
@@ -349,11 +341,11 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen> {
 
       // Clear the entry data as well
       final userId = supabase.Supabase.instance.client.auth.currentUser?.id;
-      final selectedDate = ref.read(selectedDateProvider);
+      final currentDate = DateTime.now();
       if (userId != null) {
         ref
             .read(entryProvider.notifier)
-            .updateDiaryText(userId, selectedDate, '');
+            .updateDiaryText(userId, currentDate, '');
       }
     }
   }

@@ -1,3 +1,4 @@
 {
-    "cmake.sourceDirectory": "C:/Users/mrrav/OneDrive/Desktop/diaryapp/linux"
+    "cmake.sourceDirectory": "C:/Users/mrrav/OneDrive/Desktop/diaryapp/linux",
+    "java.configuration.updateBuildConfiguration": "automatic"
 }

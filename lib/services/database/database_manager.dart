@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import '../error_logging_service.dart';
 
 class DatabaseManager {
   static Database? _database;
@@ -13,19 +14,40 @@ class DatabaseManager {
   }
 
   Future<Database> _initDatabase() async {
-    final dbPath = await getDatabasesPath();
-    final path = join(dbPath, _databaseName);
+    try {
+      final dbPath = await getDatabasesPath();
+      final path = join(dbPath, _databaseName);
 
-    return await openDatabase(
-      path,
-      version: _version,
-      onCreate: _onCreate,
-      onUpgrade: _onUpgrade,
-    );
+      return await openDatabase(
+        path,
+        version: _version,
+        onCreate: _onCreate,
+        onUpgrade: _onUpgrade,
+      );
+    } catch (e) {
+      // Log error to Supabase
+      await ErrorLoggingService.logCriticalError(
+        errorCode: 'ERRSYS001',
+        errorMessage: 'Database initialization failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'database_path': join(await getDatabasesPath(), _databaseName),
+          'database_version': _version,
+          'database_name': _databaseName,
+        },
+      );
+
+      throw Exception('Database initialization failed (ERRSYS001): $e');
+    }
   }
 
   Future<void> _onCreate(Database db, int version) async {
-    await _createTables(db);
+    try {
+      await _createTables(db);
+    } catch (e) {
+      // Log error with code ERRSYS002
+      throw Exception('Table creation failed (ERRSYS002): $e');
+    }
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -152,8 +174,6 @@ class DatabaseManager {
     await db.execute(
       'CREATE INDEX idx_sync_queue_entry ON sync_queue(entry_id, created_at)',
     );
-
-    print('✅ Database tables created successfully');
   }
 
   // Helper method to close database
@@ -176,6 +196,77 @@ class DatabaseManager {
     await db.delete('entry_priorities');
     await db.delete('entry_affirmations');
     await db.delete('entries');
-    print('🗑️ All database data cleared');
+  }
+
+  // Clean up old entries (7-day retention policy)
+  Future<void> clearOldEntries({int retentionDays = 7}) async {
+    final db = await database;
+    final cutoffDate = DateTime.now().subtract(Duration(days: retentionDays));
+    final cutoffDateStr = cutoffDate.toIso8601String().split(
+      'T',
+    )[0]; // Format as YYYY-MM-DD
+
+    // Get entries to delete
+    final entriesToDelete = await db.query(
+      'entries',
+      columns: ['id'],
+      where: 'entry_date < ?',
+      whereArgs: [cutoffDateStr],
+    );
+
+    if (entriesToDelete.isNotEmpty) {
+      final entryIds = entriesToDelete.map((e) => e['id'] as String).toList();
+
+      // Delete related data first (foreign key constraints)
+      for (final entryId in entryIds) {
+        await db.delete(
+          'entry_affirmations',
+          where: 'entry_id = ?',
+          whereArgs: [entryId],
+        );
+        await db.delete(
+          'entry_priorities',
+          where: 'entry_id = ?',
+          whereArgs: [entryId],
+        );
+        await db.delete(
+          'entry_meals',
+          where: 'entry_id = ?',
+          whereArgs: [entryId],
+        );
+        await db.delete(
+          'entry_gratitude',
+          where: 'entry_id = ?',
+          whereArgs: [entryId],
+        );
+        await db.delete(
+          'entry_self_care',
+          where: 'entry_id = ?',
+          whereArgs: [entryId],
+        );
+        await db.delete(
+          'entry_shower_bath',
+          where: 'entry_id = ?',
+          whereArgs: [entryId],
+        );
+        await db.delete(
+          'entry_tomorrow_notes',
+          where: 'entry_id = ?',
+          whereArgs: [entryId],
+        );
+        await db.delete(
+          'sync_queue',
+          where: 'entry_id = ?',
+          whereArgs: [entryId],
+        );
+      }
+
+      // Delete main entries
+      final deletedCount = await db.delete(
+        'entries',
+        where: 'entry_date < ?',
+        whereArgs: [cutoffDateStr],
+      );
+    }
   }
 }

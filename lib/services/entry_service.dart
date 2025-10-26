@@ -331,6 +331,11 @@ class EntryService {
   ) async {
     return await _localService.getEntriesInRange(userId, start, end);
   }
+
+  // Clean up old entries (7-day retention policy)
+  Future<void> cleanupOldEntries({int retentionDays = 7}) async {
+    await _localService.clearOldEntries(retentionDays: retentionDays);
+  }
 }
 
 // Complete entry data model

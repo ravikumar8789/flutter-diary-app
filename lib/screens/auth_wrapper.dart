@@ -11,26 +11,18 @@ class AuthWrapper extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final currentUserAsync = ref.watch(currentUserProvider);
 
-    print('🔄 AuthWrapper rebuilding...');
-
     return currentUserAsync.when(
       data: (user) {
-        print('🎯 AuthWrapper Decision - User: ${user?.email ?? "NULL"}');
-
         if (user != null) {
-          print('🏠 Navigating to HomeScreen');
           return const HomeScreen();
         } else {
-          print('🔑 Navigating to LoginScreen');
           return const LoginScreen();
         }
       },
       loading: () {
-        print('⏳ AuthWrapper Loading');
         return const AuthLoadingScreen();
       },
       error: (error, stackTrace) {
-        print('❌ AuthWrapper Error: $error');
         return const LoginScreen();
       },
     );

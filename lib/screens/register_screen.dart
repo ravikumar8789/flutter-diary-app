@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_provider.dart';
 import '../models/models.dart';
 import '../utils/snackbar_utils.dart';
+import '../services/error_logging_service.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
@@ -72,14 +73,78 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         }
       } catch (e) {
         if (mounted) {
+          String errorCode = 'ERRAUTH011';
+          String severity = 'HIGH';
+
           if (e.toString().contains('User already registered')) {
-            SnackbarUtils.showUserAlreadyExists(context);
+            errorCode = 'ERRAUTH011';
           } else if (e.toString().contains('Password should be at least')) {
-            SnackbarUtils.showWeakPassword(context);
+            errorCode = 'ERRAUTH012';
           } else if (e.toString().contains('Invalid email')) {
-            SnackbarUtils.showInvalidEmail(context);
+            errorCode = 'ERRAUTH013';
+          } else if (e.toString().contains('timeout') ||
+              e.toString().contains('Timeout')) {
+            errorCode = 'ERRAUTH014';
+            severity = 'MEDIUM';
+          } else if (e.toString().contains('Invalid name') ||
+              e.toString().contains('name')) {
+            errorCode = 'ERRAUTH015';
+          } else if (e.toString().contains('terms') ||
+              e.toString().contains('Terms')) {
+            errorCode = 'ERRAUTH016';
+          } else if (e.toString().contains('age') ||
+              e.toString().contains('Age')) {
+            errorCode = 'ERRAUTH017';
+          } else if (e.toString().contains('service') ||
+              e.toString().contains('Service')) {
+            errorCode = 'ERRAUTH018';
+          } else if (e.toString().contains('email') &&
+              e.toString().contains('send')) {
+            errorCode = 'ERRAUTH019';
+          } else if (e.toString().contains('creation') ||
+              e.toString().contains('Creation')) {
+            errorCode = 'ERRAUTH020';
           } else {
-            SnackbarUtils.showGenericError(context);
+            errorCode = 'ERRAUTH018';
+          }
+
+          // Log error to Supabase
+          await ErrorLoggingService.logError(
+            errorCode: errorCode,
+            errorMessage: e.toString(),
+            stackTrace: StackTrace.current.toString(),
+            severity: severity,
+            errorContext: {
+              'email': _emailController.text,
+              'name': _nameController.text,
+              'gender': _selectedGender.name,
+              'registration_time': DateTime.now().toIso8601String(),
+            },
+          );
+
+          // Show user-friendly message
+          if (errorCode == 'ERRAUTH011') {
+            SnackbarUtils.showUserAlreadyExists(context, errorCode);
+          } else if (errorCode == 'ERRAUTH012') {
+            SnackbarUtils.showWeakPassword(context, errorCode);
+          } else if (errorCode == 'ERRAUTH013') {
+            SnackbarUtils.showInvalidEmail(context, errorCode);
+          } else if (errorCode == 'ERRAUTH014') {
+            SnackbarUtils.showRegistrationTimeout(context, errorCode);
+          } else if (errorCode == 'ERRAUTH015') {
+            SnackbarUtils.showInvalidName(context, errorCode);
+          } else if (errorCode == 'ERRAUTH016') {
+            SnackbarUtils.showTermsNotAccepted(context, errorCode);
+          } else if (errorCode == 'ERRAUTH017') {
+            SnackbarUtils.showAgeVerification(context, errorCode);
+          } else if (errorCode == 'ERRAUTH018') {
+            SnackbarUtils.showServiceError(context, errorCode);
+          } else if (errorCode == 'ERRAUTH019') {
+            SnackbarUtils.showEmailSendingFailed(context, errorCode);
+          } else if (errorCode == 'ERRAUTH020') {
+            SnackbarUtils.showAccountCreationFailed(context, errorCode);
+          } else {
+            SnackbarUtils.showGenericError(context, errorCode);
           }
         }
       } finally {

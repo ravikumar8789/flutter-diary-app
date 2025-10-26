@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/entry_service.dart';
 import '../models/entry_models.dart';
+import '../services/error_logging_service.dart';
 import 'sync_status_provider.dart';
 
 class EntryState {
@@ -119,7 +120,7 @@ class EntryNotifier extends Notifier<EntryState> {
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
-        error: 'Failed to load entry: $e',
+        error: 'Failed to load entry (ERRDATA016): $e',
       );
     }
   }
@@ -141,8 +142,23 @@ class EntryNotifier extends Notifier<EntryState> {
         await _entryService.saveDiaryText(userId, date, text);
         ref.read(syncStatusProvider.notifier).setSaved();
       } catch (e) {
-        ref.read(syncStatusProvider.notifier).setError(e.toString());
-        state = state.copyWith(error: 'Failed to save diary text: $e');
+        // Log error to Supabase
+        await ErrorLoggingService.logHighError(
+          errorCode: 'ERRDATA041',
+          errorMessage: 'Diary text save failed: ${e.toString()}',
+          stackTrace: StackTrace.current.toString(),
+          errorContext: {
+            'text_length': text.length,
+            'user_id': userId,
+            'entry_date': date.toIso8601String(),
+            'save_method': 'auto_save',
+          },
+        );
+
+        ref.read(syncStatusProvider.notifier).setError('ERRDATA041: $e');
+        state = state.copyWith(
+          error: 'Failed to save diary text (ERRDATA041): $e',
+        );
       }
     });
   }

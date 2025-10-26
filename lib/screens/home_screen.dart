@@ -6,6 +6,7 @@ import 'wellness_tracker_screen.dart';
 import 'gratitude_reflection_screen.dart';
 import 'new_diary_screen.dart';
 import '../widgets/app_drawer.dart';
+import '../widgets/streak_display_widget.dart';
 import '../providers/user_data_provider.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -142,12 +143,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       mainAxisSpacing: 8,
                       childAspectRatio: isTablet ? 1.5 : 1.4,
                       children: [
-                        _buildStatCard(
+                        _buildStreakCard(
                           context,
-                          'Streak',
-                          '${userStats?['current_streak'] ?? 0} days',
-                          Icons.local_fire_department,
-                          Colors.orange,
+                          userStats?['current_streak'] ?? 0,
                         ),
                         _buildStatCard(
                           context,
@@ -278,6 +276,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 textAlign: TextAlign.center,
                 maxLines: 1,
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStreakCard(BuildContext context, int currentStreak) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            StreakDisplayWidget(currentStreak: currentStreak, isCompact: true),
+            const SizedBox(height: 6),
+            const Text(
+              'Streak',
+              style: TextStyle(fontSize: 12),
+              textAlign: TextAlign.center,
             ),
           ],
         ),

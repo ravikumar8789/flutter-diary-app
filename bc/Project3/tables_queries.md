@@ -64,6 +64,10 @@ CREATE TABLE public.user_settings (
   privacy_lock_enabled boolean DEFAULT false,
   region_preference text,
   export_format_default text DEFAULT 'json'::text CHECK (export_format_default = ANY (ARRAY['pdf'::text, 'csv'::text, 'json'::text])),
+  -- Streak Compassion Settings
+  grace_period_days integer DEFAULT 1,
+  max_freeze_credits integer DEFAULT 3,
+  freeze_credits_earned integer DEFAULT 0,
   CONSTRAINT user_settings_pkey PRIMARY KEY (user_id),
   CONSTRAINT user_settings_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
@@ -255,9 +259,28 @@ CREATE TABLE public.streaks (
   last_entry_date date,
   freeze_credits integer DEFAULT 0,
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  -- Streak Compassion Fields
+  grace_period_active boolean DEFAULT false,
+  grace_period_expires_at timestamp with time zone,
+  compassion_used_count integer DEFAULT 0,
   CONSTRAINT streaks_pkey PRIMARY KEY (user_id),
   CONSTRAINT streaks_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
+
+-- Streak freeze usage tracking
+CREATE TABLE public.streak_freeze_usage (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  used_at timestamp with time zone DEFAULT now(),
+  reason text NOT NULL CHECK (reason = ANY (ARRAY['missed_day', 'manual_use', 'recovery'])),
+  streak_maintained integer NOT NULL,
+  grace_period_days integer NOT NULL DEFAULT 1,
+  created_at timestamp with time zone DEFAULT now()
+);
+
+-- Indexes for streak_freeze_usage
+CREATE INDEX idx_streak_freeze_usage_user_id ON public.streak_freeze_usage(user_id);
+CREATE INDEX idx_streak_freeze_usage_used_at ON public.streak_freeze_usage(used_at);
 
 -- Daily habits
 CREATE TABLE public.habits_daily (
@@ -414,6 +437,128 @@ CREATE TABLE public.support_tickets (
   CONSTRAINT support_tickets_pkey PRIMARY KEY (id),
   CONSTRAINT support_tickets_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
+
+-- =============================
+-- 12) ERROR LOGGING & ANALYTICS
+-- =============================
+
+-- Error logs table for comprehensive error tracking
+CREATE TABLE public.error_logs (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  
+  -- Basic Error Data
+  error_code text NOT NULL,
+  error_message text NOT NULL,
+  stack_trace text,
+  error_severity text NOT NULL CHECK (error_severity IN ('CRITICAL', 'HIGH', 'MEDIUM', 'LOW')),
+  
+  -- User Data
+  user_id uuid REFERENCES public.users(id),
+  session_id text,
+  
+  -- Context Data
+  screen_stack jsonb,           -- Navigation stack when error occurred
+  error_context jsonb,          -- Additional context data
+  retry_count integer DEFAULT 0,
+  sync_status text,             -- Local/cloud sync status
+  
+  -- Resolution Data
+  resolved_at timestamp with time zone,
+  resolution_notes text,
+  auto_resolved boolean DEFAULT false,
+  
+  CONSTRAINT error_logs_pkey PRIMARY KEY (id)
+);
+
+-- Indexes for better query performance
+CREATE INDEX idx_error_logs_user_id ON public.error_logs(user_id);
+CREATE INDEX idx_error_logs_error_code ON public.error_logs(error_code);
+CREATE INDEX idx_error_logs_created_at ON public.error_logs(created_at);
+CREATE INDEX idx_error_logs_severity ON public.error_logs(error_severity);
+CREATE INDEX idx_error_logs_resolved ON public.error_logs(resolved_at) WHERE resolved_at IS NOT NULL;
+
+-- =============================
+-- 13) STREAK COMPASSION FEATURE
+-- =============================
+
+-- RLS Policies for streak_freeze_usage
+ALTER TABLE public.streak_freeze_usage ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own freeze usage" ON public.streak_freeze_usage
+  FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own freeze usage" ON public.streak_freeze_usage
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own freeze usage" ON public.streak_freeze_usage
+  FOR UPDATE USING (auth.uid() = user_id);
+
+-- Function to calculate streak with compassion
+CREATE OR REPLACE FUNCTION calculate_streak_with_compassion(p_user_id uuid)
+RETURNS TABLE(
+  current_streak integer,
+  freeze_credits integer,
+  grace_period_active boolean,
+  compassion_enabled boolean
+) 
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  streak_record RECORD;
+  settings_record RECORD;
+  days_since_last_entry integer;
+BEGIN
+  -- Get streak data
+  SELECT * INTO streak_record FROM public.streaks WHERE user_id = p_user_id;
+  
+  -- Get user settings
+  SELECT * INTO settings_record FROM public.user_settings WHERE user_id = p_user_id;
+  
+  -- Calculate days since last entry
+  IF streak_record.last_entry_date IS NOT NULL THEN
+    days_since_last_entry := EXTRACT(DAY FROM (CURRENT_DATE - streak_record.last_entry_date));
+  ELSE
+    days_since_last_entry := 999; -- No entries yet
+  END IF;
+  
+  -- Return streak data with compassion logic
+  -- Handle case when no streak record exists
+  RETURN QUERY SELECT
+    COALESCE(streak_record.current, 0) as current_streak,
+    COALESCE(streak_record.freeze_credits, 0) as freeze_credits,
+    (days_since_last_entry <= COALESCE(settings_record.grace_period_days, 1) AND 
+     COALESCE(settings_record.streak_compassion_enabled, false)) as grace_period_active,
+    COALESCE(settings_record.streak_compassion_enabled, false) as compassion_enabled;
+END;
+$$;
+
+-- Trigger function to update streak when freeze credit is used
+CREATE OR REPLACE FUNCTION update_streak_on_freeze_usage()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  -- Update streak to maintain current count
+  UPDATE public.streaks 
+  SET 
+    freeze_credits = freeze_credits - 1,
+    grace_period_active = true,
+    grace_period_expires_at = CURRENT_DATE + INTERVAL '1 day',
+    compassion_used_count = compassion_used_count + 1,
+    updated_at = now()
+  WHERE user_id = NEW.user_id;
+  
+  RETURN NEW;
+END;
+$$;
+
+-- Create trigger for freeze usage
+CREATE TRIGGER trigger_update_streak_on_freeze_usage
+  AFTER INSERT ON public.streak_freeze_usage
+  FOR EACH ROW
+  EXECUTE FUNCTION update_streak_on_freeze_usage();
 
 -- =============================
 -- END OF SCHEMA

@@ -42,10 +42,6 @@ class UserDataService {
         lastLoginAt: DateTime.now(),
       );
 
-      print(
-        '🔍 UserDataService: Final user data - displayName: ${userData.displayName}, email: ${userData.email}',
-      );
-
       return UserDataResult(success: true, userData: userData);
     } catch (e) {
       return UserDataResult(
@@ -59,17 +55,14 @@ class UserDataService {
   /// Fetch user profile information from users table
   static Future<DataResult> _fetchUserProfile(String userId) async {
     try {
-      print('🔍 UserDataService: Fetching user data for user $userId');
       final response = await _supabase
           .from('users')
           .select('*')
           .eq('id', userId)
           .single();
 
-      print('🔍 UserDataService: User found - ${response['display_name']}');
       return DataResult(success: true, data: response);
     } catch (e) {
-      print('🔍 UserDataService: User not found, creating new one: $e');
       // If user doesn't exist in users table, create a basic one
       try {
         final user = _supabase.auth.currentUser!;
@@ -78,9 +71,6 @@ class UserDataService {
             user.email?.split('@')[0] ??
             'User';
 
-        print(
-          '🔍 UserDataService: Creating user with display_name: $displayName',
-        );
         final newUser = {
           'id': userId,
           'email': user.email,
@@ -91,10 +81,8 @@ class UserDataService {
         };
 
         await _supabase.from('users').insert(newUser);
-        print('🔍 UserDataService: User created successfully');
         return DataResult(success: true, data: newUser);
       } catch (createError) {
-        print('🔍 UserDataService: Failed to create user: $createError');
         return DataResult(
           success: false,
           error: 'Failed to create user: $createError',
@@ -148,7 +136,7 @@ class UserDataService {
     }
   }
 
-  /// Calculate current writing streak
+  /// Calculate current writing streak with compassion logic
   static Future<int> _calculateStreak(List entries) async {
     if (entries.isEmpty) return 0;
 
@@ -175,6 +163,94 @@ class UserDataService {
     }
 
     return streak;
+  }
+
+  /// Calculate streak with compassion logic
+  static Future<int> calculateStreakWithCompassion(
+    String userId,
+    List entries,
+  ) async {
+    try {
+      // Get compassion settings
+      final compassionSettings = await _supabase
+          .from('user_settings')
+          .select('streak_compassion_enabled, grace_period_days')
+          .eq('user_id', userId)
+          .single();
+
+      final compassionEnabled =
+          compassionSettings['streak_compassion_enabled'] ?? false;
+      final gracePeriodDays = compassionSettings['grace_period_days'] ?? 1;
+
+      if (!compassionEnabled) {
+        // Use strict streak calculation
+        return await _calculateStreak(entries);
+      }
+
+      // Get current streak data
+      final streakData = await _supabase
+          .from('streaks')
+          .select('current, freeze_credits, grace_period_active')
+          .eq('user_id', userId)
+          .single();
+
+      final currentStreak = streakData['current'] ?? 0;
+      final freezeCredits = streakData['freeze_credits'] ?? 0;
+      final gracePeriodActive = streakData['grace_period_active'] ?? false;
+
+      if (entries.isEmpty) {
+        // No entries, check if grace period can be used
+        if (freezeCredits > 0 && !gracePeriodActive) {
+          // Use freeze credit to maintain streak
+          await _useFreezeCreditForStreak(userId, currentStreak);
+          return currentStreak;
+        }
+        return 0;
+      }
+
+      // Calculate days since last entry
+      final lastEntryDate = DateTime.parse(entries.first['created_at']);
+      final daysSinceLastEntry = DateTime.now()
+          .difference(lastEntryDate)
+          .inDays;
+
+      if (daysSinceLastEntry == 0) {
+        // Entry written today, maintain streak
+        return currentStreak;
+      } else if (daysSinceLastEntry <= gracePeriodDays) {
+        // Within grace period, check if freeze credit can be used
+        if (freezeCredits > 0 && !gracePeriodActive) {
+          await _useFreezeCreditForStreak(userId, currentStreak);
+          return currentStreak;
+        }
+        // No freeze credit available, break streak
+        return 0;
+      } else {
+        // Grace period exceeded, break streak
+        return 0;
+      }
+    } catch (e) {
+      // Fallback to regular streak calculation
+      return await _calculateStreak(entries);
+    }
+  }
+
+  /// Use freeze credit to maintain streak
+  static Future<void> _useFreezeCreditForStreak(
+    String userId,
+    int streakMaintained,
+  ) async {
+    try {
+      await _supabase.from('streak_freeze_usage').insert({
+        'user_id': userId,
+        'reason': 'missed_day',
+        'streak_maintained': streakMaintained,
+        'grace_period_days': 1,
+      });
+    } catch (e) {
+      // Log error but don't throw
+      print('Error using freeze credit: $e');
+    }
   }
 
   /// Fetch user preferences

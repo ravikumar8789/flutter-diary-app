@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/user_data_service.dart';
+import '../services/error_logging_service.dart';
 
 /// Global user data provider
 final userDataProvider = NotifierProvider<UserDataNotifier, UserDataState>(
@@ -60,6 +61,18 @@ class UserDataNotifier extends Notifier<UserDataState> {
         );
       }
     } catch (e) {
+      // Log error to Supabase
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS011',
+        errorMessage: 'User data fetch failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'user_id': state.userData?.id,
+          'fetch_time': DateTime.now().toIso8601String(),
+          'fetch_method': 'loadUserData',
+        },
+      );
+
       state = state.copyWith(
         isLoading: false,
         error: 'Error loading user data: $e',
@@ -112,7 +125,6 @@ class UserDataNotifier extends Notifier<UserDataState> {
       }
     } catch (e) {
       // Handle error silently or show notification
-      print('Error fetching wellness data: $e');
     }
   }
 
@@ -127,9 +139,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
       if (result.success) {
         addAdditionalData('gratitude', result.data);
       }
-    } catch (e) {
-      print('Error fetching gratitude data: $e');
-    }
+    } catch (e) {}
   }
 
   /// Fetch morning rituals data
@@ -143,9 +153,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
       if (result.success) {
         addAdditionalData('morning_rituals', result.data);
       }
-    } catch (e) {
-      print('Error fetching morning rituals data: $e');
-    }
+    } catch (e) {}
   }
 
   /// Fetch analytics data
@@ -159,9 +167,7 @@ class UserDataNotifier extends Notifier<UserDataState> {
       if (result.success) {
         addAdditionalData('analytics', result.data);
       }
-    } catch (e) {
-      print('Error fetching analytics data: $e');
-    }
+    } catch (e) {}
   }
 
   /// Fetch all additional data at once

@@ -329,6 +329,31 @@ class LocalEntryService {
       'retry_count': 0,
     });
   }
+
+  // Clean up old entries (7-day retention policy)
+  Future<void> clearOldEntries({int retentionDays = 7}) async {
+    await _dbManager.clearOldEntries(retentionDays: retentionDays);
+  }
+
+  // Check if there are unsynced entries (smart sync optimization)
+  Future<bool> hasUnsyncedEntries() async {
+    final db = await _dbManager.database;
+    final result = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM entries WHERE is_synced = 0',
+    );
+    return (result.first['count'] as int) > 0;
+  }
+
+  // Get all unsynced entries for sync processing
+  Future<List<Entry>> getUnsyncedEntries() async {
+    final db = await _dbManager.database;
+    final results = await db.query(
+      'entries',
+      where: 'is_synced = 0',
+      orderBy: 'updated_at ASC',
+    );
+    return results.map((json) => Entry.fromJson(json)).toList();
+  }
 }
 
 // Sync queue item model

@@ -2,13 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' as supabase;
-import '../providers/date_provider.dart';
 import '../providers/entry_provider.dart';
 import '../providers/sync_status_provider.dart';
 import '../models/entry_models.dart';
 import '../services/entry_service.dart';
+import '../services/error_logging_service.dart';
+import '../services/notification_service.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/dynamic_field_section.dart';
+import '../utils/snackbar_utils.dart';
 import 'home_screen.dart';
 
 class GratitudeReflectionScreen extends ConsumerStatefulWidget {
@@ -44,7 +46,7 @@ class _GratitudeReflectionScreenState
   }
 
   Future<void> _loadEntryData() async {
-    final selectedDate = ref.read(selectedDateProvider);
+    final currentDate = DateTime.now();
     final userId = supabase.Supabase.instance.client.auth.currentUser?.id;
 
     if (userId != null) {
@@ -56,7 +58,7 @@ class _GratitudeReflectionScreenState
       final entryService = EntryService();
       final entryData = await entryService.loadEntryForDate(
         userId,
-        selectedDate,
+        currentDate,
       );
 
       // Clear existing controllers
@@ -137,7 +139,6 @@ class _GratitudeReflectionScreenState
 
   @override
   Widget build(BuildContext context) {
-    final selectedDate = ref.watch(selectedDateProvider);
     final syncState = ref.watch(syncStatusProvider);
     final size = MediaQuery.of(context).size;
     final isTablet = size.width > 600;
@@ -197,70 +198,14 @@ class _GratitudeReflectionScreenState
                 ],
                 border: Border.all(color: Colors.grey.withOpacity(0.15)),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  IconButton(
-                    icon: Icon(
-                      Icons.chevron_left,
-                      size: 16,
-                      color: Colors.grey[600],
-                    ),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                      minWidth: 28,
-                      minHeight: 28,
-                    ),
-                    onPressed: () {
-                      ref
-                          .read(selectedDateProvider.notifier)
-                          .updateDate(
-                            selectedDate.subtract(const Duration(days: 1)),
-                          );
-                    },
+              child: Center(
+                child: Text(
+                  'Today - ${DateFormat('MMM d, y').format(DateTime.now())}',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey[800],
                   ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      DateFormat('MMM d, y').format(selectedDate),
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey[800],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  IconButton(
-                    icon: Icon(
-                      Icons.chevron_right,
-                      size: 16,
-                      color:
-                          selectedDate.isBefore(
-                            DateTime.now().subtract(const Duration(days: 1)),
-                          )
-                          ? Colors.grey[600]
-                          : Colors.grey[300],
-                    ),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                      minWidth: 28,
-                      minHeight: 28,
-                    ),
-                    onPressed:
-                        selectedDate.isBefore(
-                          DateTime.now().subtract(const Duration(days: 1)),
-                        )
-                        ? () {
-                            ref
-                                .read(selectedDateProvider.notifier)
-                                .updateDate(
-                                  selectedDate.add(const Duration(days: 1)),
-                                );
-                          }
-                        : null,
-                  ),
-                ],
+                ),
               ),
             ),
 
@@ -384,32 +329,63 @@ class _GratitudeReflectionScreenState
     _tomorrowAnimationController.reset();
   }
 
-  void _onGratitudeChanged() {
-    final userId = supabase.Supabase.instance.client.auth.currentUser?.id;
-    final selectedDate = ref.read(selectedDateProvider);
+  void _onGratitudeChanged() async {
+    try {
+      final userId = supabase.Supabase.instance.client.auth.currentUser?.id;
+      final currentDate = DateTime.now();
 
-    if (userId == null) return;
+      if (userId == null) {
+        SnackbarUtils.showError(
+          context,
+          'User not authenticated (ERRUI041)',
+          'ERRUI041',
+        );
+        return;
+      }
 
-    final gratitude = _gratitudeControllers
-        .asMap()
-        .entries
-        .where((entry) => entry.value.text.isNotEmpty)
-        .map(
-          (entry) => GratitudeItem(
-            text: entry.value.text.trim(),
-            order: entry.key + 1,
-          ),
-        )
-        .toList();
+      final gratitude = _gratitudeControllers
+          .asMap()
+          .entries
+          .where((entry) => entry.value.text.isNotEmpty)
+          .map(
+            (entry) => GratitudeItem(
+              text: entry.value.text.trim(),
+              order: entry.key + 1,
+            ),
+          )
+          .toList();
 
-    ref
-        .read(entryProvider.notifier)
-        .updateGratitude(userId, selectedDate, gratitude);
+      ref
+          .read(entryProvider.notifier)
+          .updateGratitude(userId, currentDate, gratitude);
+
+      // Cancel bedtime reminder after gratitude entry (bedtime entry completion)
+      await NotificationService.instance.cancelBedtimeReminder();
+    } catch (e) {
+      // Log error to Supabase
+      await ErrorLoggingService.logMediumError(
+        errorCode: 'ERRUI041',
+        errorMessage: 'Gratitude save failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'gratitude_items_count': _gratitudeControllers.length,
+          'user_id': supabase.Supabase.instance.client.auth.currentUser?.id,
+          'entry_date': DateTime.now().toIso8601String(),
+          'save_method': 'gratitude_reflection',
+        },
+      );
+
+      SnackbarUtils.showError(
+        context,
+        'Gratitude save failed (ERRUI041)',
+        'ERRUI041',
+      );
+    }
   }
 
   void _onTomorrowChanged() {
     final userId = supabase.Supabase.instance.client.auth.currentUser?.id;
-    final selectedDate = ref.read(selectedDateProvider);
+    final currentDate = DateTime.now();
 
     if (userId == null) return;
 
@@ -427,7 +403,7 @@ class _GratitudeReflectionScreenState
 
     ref
         .read(entryProvider.notifier)
-        .updateTomorrowNotes(userId, selectedDate, tomorrowNotes);
+        .updateTomorrowNotes(userId, currentDate, tomorrowNotes);
   }
 
   Widget _buildSyncStatusIcon(SyncState syncState) {

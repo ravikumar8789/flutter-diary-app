@@ -167,7 +167,7 @@ Future<void> cleanupOldEntries() async {
 
 ---
 
-### **Phase 3: Background Sync Worker (Priority 3)**
+### **Phase 3: Smart Background Sync Worker (Priority 3)**
 
 #### **3.1 Current Sync Status Analysis**
 
@@ -175,7 +175,8 @@ Future<void> cleanupOldEntries() async {
 - ✅ `SupabaseSyncService` - Complete implementation
 - ✅ `SyncQueue` table - Database table exists
 - ✅ `is_synced` flags - Boolean tracking implemented
-- ❌ No automatic sync processing
+- ✅ Debounced auto-save (already working well)
+- ❌ No intelligent sync processing
 - ❌ No retry logic
 - ❌ No connectivity monitoring
 
@@ -193,77 +194,92 @@ if (await _isOnline()) {
 }
 ```
 
+**Smart Sync Strategy:**
+- **No Wasteful Calls**: Only sync when there's actually pending data
+- **Preserve Current UX**: Keep existing debounced auto-save (don't change user experience)
+- **Intelligent Triggers**: Sync only when needed, not on every screen unlock
+- **Performance First**: Minimize database calls and network requests
+
 #### **3.2 Implementation Plan**
 
-**Step 1: Create SyncWorker Class**
+**Step 1: Create Smart SyncWorker Class**
 ```dart
 // lib/services/sync/sync_worker.dart
 class SyncWorker {
   final SupabaseSyncService _syncService;
   final LocalEntryService _localService;
+  bool _isProcessing = false;
   
   Future<void> processSyncQueue() async {
-    // Get all unsynced entries
-    final unsyncedEntries = await _localService.getUnsyncedEntries();
+    // Prevent multiple simultaneous syncs
+    if (_isProcessing) return;
+    _isProcessing = true;
     
-    for (final entry in unsyncedEntries) {
-      if (await _isOnline()) {
-        final success = await _syncService.syncEntry(entry);
-        if (success) {
-          await _localService.markAsSynced(entry.id);
+    try {
+      // Check if there are unsynced entries first
+      final hasUnsyncedData = await _localService.hasUnsyncedEntries();
+      if (!hasUnsyncedData) {
+        print('✅ No pending syncs - skipping');
+        return;
+      }
+      
+      // Get all unsynced entries
+      final unsyncedEntries = await _localService.getUnsyncedEntries();
+      print('🔄 Found ${unsyncedEntries.length} unsynced entries');
+      
+      for (final entry in unsyncedEntries) {
+        if (await _isOnline()) {
+          final success = await _syncService.syncEntry(entry);
+          if (success) {
+            await _localService.markAsSynced(entry.id);
+            print('✅ Synced entry: ${entry.id}');
+          } else {
+            print('❌ Failed to sync entry: ${entry.id}');
+          }
         }
       }
+    } finally {
+      _isProcessing = false;
     }
   }
 }
 ```
 
-**Step 2: Add Connectivity Monitoring**
+**Step 2: Add Smart Connectivity Monitoring**
 ```dart
 // lib/services/connectivity_service.dart
 class ConnectivityService {
   StreamSubscription<ConnectivityResult>? _connectivitySubscription;
+  final SyncWorker _syncWorker = SyncWorker();
   
   void startMonitoring() {
     _connectivitySubscription = Connectivity().onConnectivityChanged.listen((result) {
       if (result != ConnectivityResult.none) {
-        // Trigger sync when connection returns
-        SyncWorker().processSyncQueue();
+        // Only sync if there's pending data
+        _syncWorker.processSyncQueue();
       }
     });
   }
 }
 ```
 
-**Step 3: Add App Lifecycle Hooks**
+**Step 3: Add Smart App Lifecycle Hooks**
 ```dart
 // lib/main.dart
-class MyApp extends ConsumerWidget {
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return MaterialApp(
-      // ... existing code ...
-      builder: (context, child) {
-        // Add app lifecycle monitoring
-        WidgetsBinding.instance.addObserver(AppLifecycleObserver());
-        return child!;
-      },
-    );
-  }
-}
-
 class AppLifecycleObserver extends WidgetsBindingObserver {
+  final SyncWorker _syncWorker = SyncWorker();
+  
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // Trigger sync when app comes to foreground
-      SyncWorker().processSyncQueue();
+      // Only sync if there's pending data (not on every unlock)
+      _syncWorker.processSyncQueue();
     }
   }
 }
 ```
 
-**Step 4: Add Retry Logic with Exponential Backoff**
+**Step 4: Add Smart Retry Logic**
 ```dart
 // lib/services/sync/sync_worker.dart
 Future<void> _retrySync(Entry entry, {int attempt = 1}) async {
@@ -282,22 +298,78 @@ Future<void> _retrySync(Entry entry, {int attempt = 1}) async {
 }
 ```
 
-#### **3.3 Integration Points**
+**Step 5: Add Smart Periodic Sync**
+```dart
+// lib/services/sync/sync_worker.dart
+Timer? _periodicSyncTimer;
+
+void startPeriodicSync() {
+  _periodicSyncTimer = Timer.periodic(Duration(minutes: 15), (timer) {
+    // Only sync if there's pending data
+    processSyncQueue();
+  });
+}
+```
+
+#### **3.3 Smart Integration Points**
 
 **App Startup Flow:**
 ```
-App Start → Cleanup Old Entries → Load User Data → Process Sync Queue → Navigate to Home
+App Start → Cleanup Old Entries → Load User Data → Check for Pending Syncs → Sync if Needed → Navigate to Home
 ```
 
-**Background Sync Flow:**
+**Smart Background Sync Flow:**
 ```
-User Input → Save Locally → Add to Sync Queue → Background Sync Worker → Update Sync Status
+User Input → Save Locally (Debounced) → Check if Online → Sync Immediately OR Add to Queue → Background Worker → Update Status
 ```
 
-**Connectivity Flow:**
+**Smart Connectivity Flow:**
 ```
-Network Change → Connectivity Service → Trigger Sync Worker → Process Queue → Update Status
+Network Change → Check for Pending Data → Sync Only if Needed → Update Status
 ```
+
+**Smart App Lifecycle Flow:**
+```
+App Resume → Check for Pending Data → Sync Only if Needed → Continue
+```
+
+#### **3.4 Smart Sync Triggers (Optimized)**
+
+**✅ When Sync Actually Happens:**
+1. **App Startup** - Only if pending syncs exist
+2. **Network Reconnection** - Only if pending syncs exist  
+3. **App Foreground** - Only if pending syncs exist
+4. **User Input** - Keep existing debounced approach (already optimal)
+5. **Periodic Background** - Every 15 minutes, only if pending syncs exist
+
+**❌ When Sync is Skipped (Smart):**
+- Screen unlock with no pending data
+- App resume with no pending data
+- Network change with no pending data
+- Periodic check with no pending data
+
+**🎯 Performance Benefits:**
+- **Reduced DB Calls**: Only sync when actually needed
+- **Battery Efficient**: No wasteful background processing
+- **Network Optimized**: Minimal data usage
+- **User Experience**: Preserves existing smooth UX
+
+#### **3.5 Smart Sync Implementation Summary**
+
+**Key Smart Features:**
+1. **Intelligent Detection**: `hasUnsyncedEntries()` check before any sync
+2. **Prevention Logic**: `_isProcessing` flag prevents multiple simultaneous syncs
+3. **Conditional Triggers**: All sync triggers check for pending data first
+4. **Preserved UX**: Existing debounced auto-save remains unchanged
+5. **Performance First**: Minimal database calls, network requests, and battery usage
+
+**Smart Sync Flow:**
+```
+Check Pending Data → If Found → Sync → Update Status
+                → If None → Skip (No Waste)
+```
+
+**Result**: Reliable sync with optimal performance and preserved user experience.
 
 ---
 
@@ -397,9 +469,12 @@ Widget _buildSyncStatusIcon(SyncState syncState) {
 - ✅ Predictable storage usage
 
 ### **Phase 3 Success:**
-- ✅ Automatic sync on app startup
-- ✅ Sync retry on network reconnection
-- ✅ Failed syncs retried with backoff
+- ✅ Smart sync on app startup (only if pending data)
+- ✅ Smart sync retry on network reconnection (only if pending data)
+- ✅ Failed syncs retried with exponential backoff
+- ✅ No wasteful sync calls (screen unlock, etc.)
+- ✅ Preserved existing debounced auto-save UX
+- ✅ Minimal database calls and network usage
 - ✅ No user intervention needed
 
 ### **Phase 4 Success:**

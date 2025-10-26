@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/user_data_service.dart';
+import '../services/entry_service.dart';
+import '../services/sync/sync_worker.dart';
 import '../providers/user_data_provider.dart';
 import '../screens/home_screen.dart';
 import '../screens/login_screen.dart';
@@ -24,6 +26,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
   String _loadingMessage = 'Preparing your journal...';
   UserData? _userData;
+  bool _isDisposed = false;
 
   @override
   void initState() {
@@ -66,17 +69,23 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   Future<void> _initializeApp() async {
     try {
       // Step 1: Check authentication
-      setState(() {
-        _loadingMessage = 'Checking authentication...';
-      });
+      if (mounted && !_isDisposed) {
+        setState(() {
+          _loadingMessage = 'Checking authentication...';
+        });
+      }
       await Future.delayed(const Duration(milliseconds: 500));
+
+      if (_isDisposed) return;
 
       final user = Supabase.instance.client.auth.currentUser;
 
       if (user == null) {
         // User not authenticated, clear any stale data and go to login
         ref.read(userDataProvider.notifier).clearUserData();
-        await _navigateToAuth();
+        if (mounted && !_isDisposed) {
+          await _navigateToAuth();
+        }
         return;
       }
 
@@ -84,68 +93,115 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       ref.read(userDataProvider.notifier).clearUserData();
 
       // Step 3: Fetch fresh user data
-      setState(() {
-        _loadingMessage = 'Loading your data...';
-      });
+      if (mounted && !_isDisposed) {
+        setState(() {
+          _loadingMessage = 'Loading your data...';
+        });
+      }
       await Future.delayed(const Duration(milliseconds: 300));
 
+      if (_isDisposed) return;
+
       // Use the global provider to load user data
-      print('🔄 SplashScreen: Loading user data...');
       await ref.read(userDataProvider.notifier).loadUserData();
 
+      // Step 4: Clean up old entries (7-day retention policy)
+      if (mounted && !_isDisposed) {
+        setState(() {
+          _loadingMessage = 'Cleaning up old data...';
+        });
+      }
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      if (_isDisposed) return;
+
+      // Import EntryService and cleanup old entries
+      final entryService = await _getEntryService();
+      await entryService.cleanupOldEntries(retentionDays: 7);
+
+      // Step 5: Smart sync check (only if there's pending data)
+      if (mounted && !_isDisposed) {
+        setState(() {
+          _loadingMessage = 'Checking for pending syncs...';
+        });
+      }
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      if (_isDisposed) return;
+
+      // Import SyncWorker and check for pending syncs
+      final syncWorker = await _getSyncWorker();
+      await syncWorker.processSyncQueue();
+
       final userDataState = ref.read(userDataProvider);
-      print(
-        '🔄 SplashScreen: User data loaded - ${userDataState.userData?.displayName ?? "NULL"}',
-      );
-      print(
-        '🔄 SplashScreen: User data email - ${userDataState.userData?.email ?? "NULL"}',
-      );
-      print(
-        '🔄 SplashScreen: User data stats - ${userDataState.userData?.stats}',
-      );
 
       if (userDataState.userData != null && !userDataState.isLoading) {
-        setState(() {
-          _userData = userDataState.userData;
-          _loadingMessage = 'Welcome back, ${_userData!.displayName}';
-        });
+        if (mounted && !_isDisposed) {
+          setState(() {
+            _userData = userDataState.userData;
+            _loadingMessage = 'Welcome back, ${_userData!.displayName}';
+          });
+        }
 
         // Wait a bit to show the welcome message
         await Future.delayed(const Duration(milliseconds: 800));
 
+        if (_isDisposed) return;
+
         // Navigate to home screen
-        await _navigateToHome();
+        if (mounted && !_isDisposed) {
+          await _navigateToHome();
+        }
       } else if (userDataState.error != null) {
         // Error fetching user data, still go to home but with limited functionality
-        setState(() {
-          _loadingMessage = 'Setting up your journal...';
-        });
+        if (mounted && !_isDisposed) {
+          setState(() {
+            _loadingMessage = 'Setting up your journal...';
+          });
+        }
         await Future.delayed(const Duration(milliseconds: 500));
-        await _navigateToHome();
+
+        if (_isDisposed) return;
+
+        if (mounted && !_isDisposed) {
+          await _navigateToHome();
+        }
       } else {
         // Still loading or no data, wait a bit more
-        setState(() {
-          _loadingMessage = 'Preparing your journal...';
-        });
+        if (mounted && !_isDisposed) {
+          setState(() {
+            _loadingMessage = 'Preparing your journal...';
+          });
+        }
         await Future.delayed(const Duration(milliseconds: 1000));
-        await _navigateToHome();
+
+        if (_isDisposed) return;
+
+        if (mounted && !_isDisposed) {
+          await _navigateToHome();
+        }
       }
     } catch (e) {
       // Handle any errors gracefully
-      print('Splash screen error: $e');
-      setState(() {
-        _loadingMessage = 'Something went wrong...';
-      });
+      if (mounted && !_isDisposed) {
+        setState(() {
+          _loadingMessage = 'Something went wrong...';
+        });
+      }
       await Future.delayed(const Duration(milliseconds: 1000));
+
+      if (_isDisposed) return;
 
       // Clear any stale data and go to auth
       ref.read(userDataProvider.notifier).clearUserData();
-      await _navigateToAuth();
+      if (mounted && !_isDisposed) {
+        await _navigateToAuth();
+      }
     }
   }
 
   Future<void> _navigateToAuth() async {
-    if (mounted) {
+    if (mounted && !_isDisposed) {
       // Navigate directly to LoginScreen instead of AuthWrapper to avoid loading issues
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (context) => const LoginScreen()),
@@ -154,7 +210,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   }
 
   Future<void> _navigateToHome() async {
-    if (mounted) {
+    if (mounted && !_isDisposed) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (context) => const HomeScreen()),
       );
@@ -163,6 +219,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
   @override
   void dispose() {
+    _isDisposed = true;
     _fadeController.dispose();
     _scaleController.dispose();
     _pulseController.dispose();
@@ -391,6 +448,16 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
         ),
       ),
     );
+  }
+
+  // Helper method to get EntryService instance
+  Future<EntryService> _getEntryService() async {
+    return EntryService();
+  }
+
+  // Helper method to get SyncWorker instance
+  Future<SyncWorker> _getSyncWorker() async {
+    return SyncWorker();
   }
 }
 
