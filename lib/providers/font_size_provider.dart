@@ -62,7 +62,7 @@ class FontSizeNotifier extends Notifier<FontSize> {
       await prefs.setString(_fontSizeKey, size.value);
     } catch (e) {
       // Handle error silently or log it
-      print('Error saving font size: $e');
+
     }
   }
 

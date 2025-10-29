@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import '../../models/entry_models.dart';
+import '../error_logging_service.dart';
 
 class SupabaseSyncService {
   final SupabaseClient _supabase = Supabase.instance.client;
@@ -11,6 +12,18 @@ class SupabaseSyncService {
       await _supabase.from('entries').upsert(entry.toSupabaseJson());
       return true;
     } catch (e) {
+      // Log error
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS101',
+        errorMessage: 'Entry sync failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'entry_id': entry.id,
+          'user_id': entry.userId,
+          'entry_date': entry.entryDate.toIso8601String(),
+          'operation': 'sync_entry',
+        },
+      );
       return false;
     }
   }
@@ -26,6 +39,17 @@ class SupabaseSyncService {
       });
       return true;
     } catch (e) {
+      // Log error
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS102',
+        errorMessage: 'Affirmations sync failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'entry_id': affirmations.entryId,
+          'affirmations_count': affirmations.affirmations.length,
+          'operation': 'sync_affirmations',
+        },
+      );
       return false;
     }
   }
@@ -39,6 +63,17 @@ class SupabaseSyncService {
       });
       return true;
     } catch (e) {
+      // Log error
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS103',
+        errorMessage: 'Priorities sync failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'entry_id': priorities.entryId,
+          'priorities_count': priorities.priorities.length,
+          'operation': 'sync_priorities',
+        },
+      );
       return false;
     }
   }
@@ -49,6 +84,13 @@ class SupabaseSyncService {
       await _supabase.from('entry_meals').upsert(meals.toJson());
       return true;
     } catch (e) {
+      // Log error
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS104',
+        errorMessage: 'Meals sync failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {'entry_id': meals.entryId, 'operation': 'sync_meals'},
+      );
       return false;
     }
   }
@@ -64,6 +106,17 @@ class SupabaseSyncService {
       });
       return true;
     } catch (e) {
+      // Log error
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS105',
+        errorMessage: 'Gratitude sync failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'entry_id': gratitude.entryId,
+          'grateful_items_count': gratitude.gratefulItems.length,
+          'operation': 'sync_gratitude',
+        },
+      );
       return false;
     }
   }
@@ -74,6 +127,16 @@ class SupabaseSyncService {
       await _supabase.from('entry_self_care').upsert(selfCare.toJson());
       return true;
     } catch (e) {
+      // Log error
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS106',
+        errorMessage: 'Self care sync failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'entry_id': selfCare.entryId,
+          'operation': 'sync_self_care',
+        },
+      );
       return false;
     }
   }
@@ -84,6 +147,16 @@ class SupabaseSyncService {
       await _supabase.from('entry_shower_bath').upsert(showerBath.toJson());
       return true;
     } catch (e) {
+      // Log error
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS107',
+        errorMessage: 'Shower bath sync failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'entry_id': showerBath.entryId,
+          'operation': 'sync_shower_bath',
+        },
+      );
       return false;
     }
   }
@@ -99,6 +172,17 @@ class SupabaseSyncService {
       });
       return true;
     } catch (e) {
+      // Log error
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS108',
+        errorMessage: 'Tomorrow notes sync failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'entry_id': tomorrowNotes.entryId,
+          'tomorrow_notes_count': tomorrowNotes.tomorrowNotes.length,
+          'operation': 'sync_tomorrow_notes',
+        },
+      );
       return false;
     }
   }
@@ -118,6 +202,17 @@ class SupabaseSyncService {
       if (response == null) return null;
       return Entry.fromSupabaseJson(response);
     } catch (e) {
+      // Log error
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS109',
+        errorMessage: 'Entry fetch failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'user_id': userId,
+          'entry_date': dateStr,
+          'operation': 'fetch_entry',
+        },
+      );
       return null;
     }
   }
@@ -134,6 +229,13 @@ class SupabaseSyncService {
       if (response == null) return null;
       return EntryAffirmations.fromSupabaseJson(response);
     } catch (e) {
+      // Log error
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS110',
+        errorMessage: 'Affirmations fetch failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {'entry_id': entryId, 'operation': 'fetch_affirmations'},
+      );
       return null;
     }
   }
@@ -150,6 +252,13 @@ class SupabaseSyncService {
       if (response == null) return null;
       return EntryPriorities.fromSupabaseJson(response);
     } catch (e) {
+      // Log error
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS111',
+        errorMessage: 'Priorities fetch failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {'entry_id': entryId, 'operation': 'fetch_priorities'},
+      );
       return null;
     }
   }
@@ -166,6 +275,13 @@ class SupabaseSyncService {
       if (response == null) return null;
       return EntryMeals.fromJson(response);
     } catch (e) {
+      // Log error
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS112',
+        errorMessage: 'Meals fetch failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {'entry_id': entryId, 'operation': 'fetch_meals'},
+      );
       return null;
     }
   }
@@ -182,6 +298,13 @@ class SupabaseSyncService {
       if (response == null) return null;
       return EntryGratitude.fromSupabaseJson(response);
     } catch (e) {
+      // Log error
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS113',
+        errorMessage: 'Gratitude fetch failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {'entry_id': entryId, 'operation': 'fetch_gratitude'},
+      );
       return null;
     }
   }
@@ -198,6 +321,13 @@ class SupabaseSyncService {
       if (response == null) return null;
       return EntrySelfCare.fromJson(response);
     } catch (e) {
+      // Log error
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS114',
+        errorMessage: 'Self care fetch failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {'entry_id': entryId, 'operation': 'fetch_self_care'},
+      );
       return null;
     }
   }
@@ -214,6 +344,13 @@ class SupabaseSyncService {
       if (response == null) return null;
       return EntryShowerBath.fromJson(response);
     } catch (e) {
+      // Log error
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS115',
+        errorMessage: 'Shower bath fetch failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {'entry_id': entryId, 'operation': 'fetch_shower_bath'},
+      );
       return null;
     }
   }
@@ -232,6 +369,16 @@ class SupabaseSyncService {
       if (response == null) return null;
       return EntryTomorrowNotes.fromSupabaseJson(response);
     } catch (e) {
+      // Log error
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS116',
+        errorMessage: 'Tomorrow notes fetch failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'entry_id': entryId,
+          'operation': 'fetch_tomorrow_notes',
+        },
+      );
       return null;
     }
   }

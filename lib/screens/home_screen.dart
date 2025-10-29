@@ -6,8 +6,9 @@ import 'wellness_tracker_screen.dart';
 import 'gratitude_reflection_screen.dart';
 import 'new_diary_screen.dart';
 import '../widgets/app_drawer.dart';
-import '../widgets/streak_display_widget.dart';
 import '../providers/user_data_provider.dart';
+import '../providers/grace_system_provider.dart';
+import '../widgets/grace_system_info_card.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -18,6 +19,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _hasLoadedUserData = false;
+  String? _currentUserId;
 
   @override
   void initState() {
@@ -284,21 +286,127 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildStreakCard(BuildContext context, int currentStreak) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            StreakDisplayWidget(currentStreak: currentStreak, isCompact: true),
-            const SizedBox(height: 6),
-            const Text(
-              'Streak',
-              style: TextStyle(fontSize: 12),
-              textAlign: TextAlign.center,
+    return Consumer(
+      builder: (context, ref, child) {
+        final graceState = ref.watch(graceSystemProvider);
+        final user = supabase.Supabase.instance.client.auth.currentUser;
+
+        // Initialize grace system if user is available and not already initialized
+        if (user != null) {
+          if (_currentUserId == null || _currentUserId != user.id) {
+            _currentUserId = user.id;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              ref.read(graceSystemProvider.notifier).initialize(user.id);
+            });
+          }
+        }
+
+        return Card(
+          child: InkWell(
+            onTap: () => _showStreakDetails(context, currentStreak, graceState),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Top row: Icon and number
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        graceState.graceDaysAvailable > 0
+                            ? Icons.shield
+                            : Icons.local_fire_department,
+                        color: graceState.graceDaysAvailable > 0
+                            ? Colors.blue
+                            : Colors.orange,
+                        size: 28,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '$currentStreak',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  // Streak label
+                  Text(
+                    'Streak',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                    textAlign: TextAlign.center,
+                  ),
+                  // Bottom row: Grace days indicator - only show if not loading
+                  if (!graceState.isLoading) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.favorite,
+                          size: 12,
+                          color: graceState.graceDaysAvailable > 0
+                              ? Colors.green.shade700
+                              : Colors.blue.shade700,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          graceState.graceDaysAvailable > 0
+                              ? '${graceState.graceDaysAvailable} grace'
+                              : '${graceState.piecesToday.toStringAsFixed(1)}/2.0',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: graceState.graceDaysAvailable > 0
+                                ? Colors.green.shade700
+                                : Colors.blue.shade700,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        GestureDetector(
+                          onTap: () => _showStreakDetails(
+                            context,
+                            currentStreak,
+                            graceState,
+                          ),
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade200,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(
+                              Icons.info_outline,
+                              size: 12,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
             ),
-          ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showStreakDetails(
+    BuildContext context,
+    int currentStreak,
+    GraceSystemState graceState,
+  ) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: const GraceSystemInfoCard(),
         ),
       ),
     );

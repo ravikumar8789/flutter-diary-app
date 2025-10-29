@@ -4,6 +4,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'database/local_entry_service.dart';
 import 'sync/supabase_sync_service.dart';
 import '../models/entry_models.dart';
+import 'error_logging_service.dart';
 
 class EntryService {
   final LocalEntryService _localService = LocalEntryService();
@@ -19,7 +20,14 @@ class EntryService {
       // Additional check with actual internet connection
       final result = await InternetAddress.lookup('google.com');
       return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
-    } catch (_) {
+    } catch (e) {
+      // Log error
+      await ErrorLoggingService.logLowError(
+        errorCode: 'ERRSYS129',
+        errorMessage: 'Connectivity check failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {'operation': 'check_connectivity'},
+      );
       return false;
     }
   }

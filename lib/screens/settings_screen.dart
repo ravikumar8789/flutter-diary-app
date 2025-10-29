@@ -6,7 +6,8 @@ import '../providers/theme_provider.dart';
 import '../providers/paper_style_provider.dart';
 import '../providers/font_size_provider.dart';
 import '../providers/privacy_lock_provider.dart';
-import '../providers/streak_compassion_provider.dart';
+import '../providers/grace_system_provider.dart';
+import '../widgets/grace_system_info_card.dart';
 import '../providers/auth_provider.dart';
 import '../screens/pin_setup_screen.dart';
 
@@ -355,7 +356,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
               // Journaling
               _buildSectionTitle(context, 'Journaling'),
-              _buildStreakCompassionSection(context),
+              _buildGraceSystemSection(context),
               const SizedBox(height: 24),
 
               // About
@@ -401,154 +402,133 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  Widget _buildStreakCompassionSection(BuildContext context) {
+  Widget _buildGraceSystemSection(BuildContext context) {
     return Consumer(
       builder: (context, ref, child) {
-        final compassionState = ref.watch(streakCompassionProvider);
+        final graceState = ref.watch(graceSystemProvider);
         final authRepo = ref.watch(authRepositoryProvider);
         final currentUser = authRepo.currentUser;
 
-        print('🔥 Settings: currentUser from authRepo: ${currentUser?.id}');
-        print(
-          '🔥 Settings: compassionState.isInitialized: ${compassionState.isInitialized}',
-        );
-
-        // Initialize compassion provider when user data is available
-        if (currentUser != null && !compassionState.isInitialized) {
-          print(
-            '🔥 Settings: Initializing compassion provider for user ${currentUser.id}',
-          );
-          // Use addPostFrameCallback to avoid calling during build
+        // Initialize grace system provider when user data is available
+        if (currentUser != null &&
+            !graceState.isLoading &&
+            graceState.graceDaysAvailable == 0 &&
+            graceState.gracePiecesTotal == 0) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            ref
-                .read(streakCompassionProvider.notifier)
-                .initialize(currentUser.id);
+            ref.read(graceSystemProvider.notifier).initialize(currentUser.id);
           });
         }
 
         return Card(
           child: Column(
             children: [
-              SwitchListTile(
-                title: const Text('Streak Compassion'),
-                subtitle: const Text('Allow grace period for missed days'),
-                value: compassionState.compassionEnabled,
-                onChanged: compassionState.isLoading
-                    ? null
-                    : (value) {
-                        print('🔥 Settings: Toggle switch changed to $value');
-                        ref
-                            .read(streakCompassionProvider.notifier)
-                            .toggleCompassion(value);
-                      },
+              // Header with info button
+              ListTile(
+                title: const Text('Grace Days System'),
+                subtitle: const Text('Earn protection for your streak'),
+                leading: const Icon(Icons.favorite, color: Colors.blue),
+                trailing: const GraceSystemInfoButton(),
               ),
-              if (compassionState.compassionEnabled) ...[
-                const Divider(height: 1),
-                ListTile(
-                  title: const Text('Grace Periods Remaining'),
-                  subtitle: Text(
-                    '${compassionState.freezeCreditsRemaining} grace periods available',
+
+              const Divider(height: 1),
+
+              // Grace Days Available
+              ListTile(
+                title: const Text('Grace Days Available'),
+                subtitle: Text(
+                  graceState.graceDaysAvailable > 0
+                      ? '${graceState.graceDaysAvailable} grace days earned'
+                      : 'Complete daily tasks to earn grace days',
+                ),
+                leading: Icon(
+                  Icons.shield,
+                  color: graceState.graceDaysAvailable > 0
+                      ? Colors.green
+                      : Colors.grey,
+                ),
+                trailing: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
                   ),
-                  leading: const Icon(Icons.favorite, color: Colors.green),
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
+                  decoration: BoxDecoration(
+                    color: graceState.graceDaysAvailable > 0
+                        ? Colors.green.shade100
+                        : Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Text(
+                    '${graceState.graceDaysAvailable}',
+                    style: TextStyle(
+                      color: graceState.graceDaysAvailable > 0
+                          ? Colors.green.shade800
+                          : Colors.grey.shade600,
+                      fontWeight: FontWeight.bold,
                     ),
-                    decoration: BoxDecoration(
-                      color: Colors.green.shade100,
-                      borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+
+              // Today's Progress
+              ListTile(
+                title: const Text('Today\'s Progress'),
+                subtitle: Text(
+                  '${graceState.tasksCompletedToday}/4 tasks completed',
+                ),
+                leading: const Icon(Icons.today, color: Colors.orange),
+                trailing: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '${graceState.piecesToday.toStringAsFixed(1)}/2.0 pieces',
+                      style: const TextStyle(fontSize: 12),
                     ),
-                    child: Text(
-                      '${compassionState.freezeCreditsRemaining}',
-                      style: const TextStyle(
-                        color: Colors.green,
-                        fontWeight: FontWeight.bold,
+                    const SizedBox(height: 4),
+                    SizedBox(
+                      width: 60,
+                      child: LinearProgressIndicator(
+                        value: graceState.progressPercentage / 100.0,
+                        backgroundColor: Colors.grey.shade300,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          graceState.progressPercentage >= 100
+                              ? Colors.green
+                              : Colors.blue,
+                        ),
                       ),
                     ),
+                  ],
+                ),
+              ),
+
+              // Total Progress
+              ListTile(
+                title: const Text('Total Earned'),
+                subtitle: Text(
+                  '${graceState.gracePiecesTotal.toStringAsFixed(1)} pieces total',
+                ),
+                leading: const Icon(Icons.trending_up, color: Colors.purple),
+                trailing: Text(
+                  '${(graceState.gracePiecesTotal / 10).floor()} grace days',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.purple,
                   ),
                 ),
-                ListTile(
-                  title: const Text('Grace Period Days'),
-                  subtitle: Text(
-                    '${compassionState.gracePeriodDays} day grace period',
-                  ),
-                  leading: const Icon(Icons.schedule, color: Colors.blue),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.remove),
-                        onPressed: compassionState.isLoading
-                            ? null
-                            : () {
-                                if (compassionState.gracePeriodDays > 1) {
-                                  ref
-                                      .read(streakCompassionProvider.notifier)
-                                      .updateGracePeriodDays(
-                                        compassionState.gracePeriodDays - 1,
-                                      );
-                                }
-                              },
-                      ),
-                      Text('${compassionState.gracePeriodDays}'),
-                      IconButton(
-                        icon: const Icon(Icons.add),
-                        onPressed: compassionState.isLoading
-                            ? null
-                            : () {
-                                if (compassionState.gracePeriodDays < 3) {
-                                  ref
-                                      .read(streakCompassionProvider.notifier)
-                                      .updateGracePeriodDays(
-                                        compassionState.gracePeriodDays + 1,
-                                      );
-                                }
-                              },
-                      ),
-                    ],
-                  ),
-                ),
-                if (compassionState.gracePeriodActive) ...[
-                  ListTile(
-                    title: const Text('Grace Period Active'),
-                    subtitle: const Text('Your streak is currently protected'),
-                    leading: const Icon(Icons.shield, color: Colors.blue),
-                    trailing: const Icon(
-                      Icons.check_circle,
-                      color: Colors.green,
-                    ),
-                  ),
-                ],
-                ListTile(
-                  title: const Text('Compassion Used'),
-                  subtitle: Text(
-                    '${compassionState.compassionUsedCount} times this month',
-                  ),
-                  leading: const Icon(Icons.history, color: Colors.orange),
-                  trailing: const Icon(Icons.info_outline, color: Colors.grey),
-                ),
-              ],
-              if (!compassionState.compassionEnabled) ...[
-                const Divider(height: 1),
-                ListTile(
-                  title: const Text('Strict Mode'),
-                  subtitle: const Text('Any missed day will reset your streak'),
-                  leading: const Icon(Icons.warning, color: Colors.red),
-                  trailing: const Icon(Icons.info_outline, color: Colors.grey),
-                ),
-              ],
-              if (compassionState.error != null) ...[
+              ),
+
+              // Error handling
+              if (graceState.error != null) ...[
                 const Divider(height: 1),
                 ListTile(
                   title: Text(
-                    'Error: ${compassionState.error}',
+                    'Error: ${graceState.error}',
                     style: const TextStyle(color: Colors.red),
                   ),
                   trailing: IconButton(
                     icon: const Icon(Icons.close),
                     onPressed: () {
-                      ref.read(streakCompassionProvider.notifier).clearError();
+                      ref.read(graceSystemProvider.notifier).clearError();
                     },
                   ),
                 ),

@@ -26,7 +26,6 @@ class NativeAlarmManager {
       );
       return result == true;
     } catch (e) {
-      print('🔔 NATIVE: Error scheduling alarm: $e');
       return false;
     }
   }
@@ -38,10 +37,8 @@ class NativeAlarmManager {
         'notification_id': notificationId,
       });
 
-      print('🔔 NATIVE: Alarm $notificationId cancelled');
       return result == true;
     } catch (e) {
-      print('🔔 NATIVE: Error cancelling alarm: $e');
       return false;
     }
   }

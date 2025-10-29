@@ -58,7 +58,7 @@ class PinAuthService {
 
       return digest.toString() == storedDigest;
     } catch (e) {
-      print('Error validating PIN: $e');
+
       await ErrorLoggingService.logHighError(
         errorCode: 'ERRSYS061',
         errorMessage: 'PIN validation failed: ${e.toString()}',
@@ -87,7 +87,7 @@ class PinAuthService {
       await _secureStorage.write(key: _pinHashKey, value: pinHash);
       return true;
     } catch (e) {
-      print('Error setting up PIN: $e');
+
       await ErrorLoggingService.logHighError(
         errorCode: 'ERRSYS062',
         errorMessage: 'PIN setup failed: ${e.toString()}',
@@ -127,7 +127,7 @@ class PinAuthService {
       await _secureStorage.write(key: _pinHashKey, value: pinHash);
       return true;
     } catch (e) {
-      print('Error changing PIN: $e');
+
       await ErrorLoggingService.logHighError(
         errorCode: 'ERRSYS063',
         errorMessage: 'PIN change failed: ${e.toString()}',
@@ -147,7 +147,7 @@ class PinAuthService {
       final pinHash = await _secureStorage.read(key: _pinHashKey);
       return pinHash != null;
     } catch (e) {
-      print('Error checking PIN setup: $e');
+
       return false;
     }
   }
@@ -172,7 +172,7 @@ class PinAuthService {
       );
       return true;
     } catch (e) {
-      print('Error setting security questions: $e');
+
       return false;
     }
   }
@@ -197,7 +197,7 @@ class PinAuthService {
 
       return hashedAnswer1 == storedAnswer1 && hashedAnswer2 == storedAnswer2;
     } catch (e) {
-      print('Error verifying security answers: $e');
+
       return false;
     }
   }
@@ -210,7 +210,7 @@ class PinAuthService {
 
       return {'question1': question1 ?? '', 'question2': question2 ?? ''};
     } catch (e) {
-      print('Error getting security questions: $e');
+
       return {'question1': '', 'question2': ''};
     }
   }
@@ -224,7 +224,7 @@ class PinAuthService {
       await _prefs!.setInt(_failedAttemptsKey, 0);
       return true;
     } catch (e) {
-      print('Error enabling privacy lock: $e');
+
       await ErrorLoggingService.logHighError(
         errorCode: 'ERRSYS068',
         errorMessage: 'Privacy lock enable failed: ${e.toString()}',
@@ -256,7 +256,7 @@ class PinAuthService {
 
       return true;
     } catch (e) {
-      print('Error disabling privacy lock: $e');
+
       await ErrorLoggingService.logHighError(
         errorCode: 'ERRSYS069',
         errorMessage: 'Privacy lock disable failed: ${e.toString()}',
@@ -276,7 +276,7 @@ class PinAuthService {
       await _initPrefs();
       return _prefs!.getBool(_privacyLockEnabledKey) ?? false;
     } catch (e) {
-      print('Error checking privacy lock status: $e');
+
       return false;
     }
   }
@@ -288,7 +288,7 @@ class PinAuthService {
       await _prefs!.setInt(_autoLockTimeoutKey, minutes);
       return true;
     } catch (e) {
-      print('Error setting auto-lock timeout: $e');
+
       return false;
     }
   }
@@ -299,7 +299,7 @@ class PinAuthService {
       await _initPrefs();
       return _prefs!.getInt(_autoLockTimeoutKey) ?? 5;
     } catch (e) {
-      print('Error getting auto-lock timeout: $e');
+
       return 5;
     }
   }
@@ -315,7 +315,7 @@ class PinAuthService {
       await _prefs!.setInt(_failedAttemptsKey, 0);
       await _prefs!.remove(_lockoutUntilKey);
     } catch (e) {
-      print('Error recording successful unlock: $e');
+
     }
   }
 
@@ -340,7 +340,7 @@ class PinAuthService {
         );
       }
     } catch (e) {
-      print('Error recording failed attempt: $e');
+
     }
   }
 
@@ -361,7 +361,7 @@ class PinAuthService {
       final lockoutUntil = DateTime.parse(lockoutUntilStr);
       return DateTime.now().isBefore(lockoutUntil);
     } catch (e) {
-      print('Error checking lockout status: $e');
+
       return false;
     }
   }
@@ -380,7 +380,7 @@ class PinAuthService {
 
       return lockoutUntil.difference(now).inMinutes;
     } catch (e) {
-      print('Error getting remaining lockout time: $e');
+
       return 0;
     }
   }
@@ -402,7 +402,7 @@ class PinAuthService {
       final timeSinceUnlock = DateTime.now().difference(lastUnlock);
       return timeSinceUnlock.inMinutes >= autoLockTimeout;
     } catch (e) {
-      print('Error checking if app should be locked: $e');
+
       return true; // Default to locked for security
     }
   }
@@ -425,7 +425,7 @@ class PinAuthService {
       await _prefs!.remove(_failedAttemptsKey);
       await _prefs!.remove(_lockoutUntilKey);
     } catch (e) {
-      print('Error clearing privacy lock data: $e');
+
     }
   }
 }

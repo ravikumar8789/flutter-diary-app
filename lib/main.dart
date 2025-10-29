@@ -87,6 +87,7 @@ class _MyAppState extends State<MyApp> {
   Future<void> _initializeServices() async {
     // Initialize notification service
     await _notificationService.initialize();
+    
 
     // Request notification permissions
     await _notificationService.requestPermissions();

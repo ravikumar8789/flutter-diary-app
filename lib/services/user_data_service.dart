@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'error_logging_service.dart';
 
 class UserDataService {
   static final SupabaseClient _supabase = Supabase.instance.client;
@@ -44,6 +45,13 @@ class UserDataService {
 
       return UserDataResult(success: true, userData: userData);
     } catch (e) {
+      // Log error
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS117',
+        errorMessage: 'User data fetch failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {'operation': 'fetch_user_data'},
+      );
       return UserDataResult(
         success: false,
         error: 'Failed to fetch user data: $e',
@@ -63,6 +71,13 @@ class UserDataService {
 
       return DataResult(success: true, data: response);
     } catch (e) {
+      // Log error
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS118',
+        errorMessage: 'User profile fetch failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {'user_id': userId, 'operation': 'fetch_user_profile'},
+      );
       // If user doesn't exist in users table, create a basic one
       try {
         final user = _supabase.auth.currentUser!;
@@ -83,9 +98,17 @@ class UserDataService {
         await _supabase.from('users').insert(newUser);
         return DataResult(success: true, data: newUser);
       } catch (createError) {
+        // Log create user error
+        await ErrorLoggingService.logHighError(
+          errorCode: 'ERRSYS118',
+          errorMessage: 'User creation failed: ${createError.toString()}',
+          stackTrace: StackTrace.current.toString(),
+          errorContext: {'user_id': userId, 'operation': 'create_user'},
+        );
         return DataResult(
           success: false,
           error: 'Failed to create user: $createError',
+          data: null,
         );
       }
     }
@@ -96,7 +119,7 @@ class UserDataService {
     try {
       // Get diary entries count
       final entriesResponse = await _supabase
-          .from('diary_entries')
+          .from('entries')
           .select('id, created_at')
           .eq('user_id', userId);
 
@@ -123,6 +146,13 @@ class UserDataService {
 
       return DataResult(success: true, data: stats);
     } catch (e) {
+      // Log error
+      await ErrorLoggingService.logMediumError(
+        errorCode: 'ERRSYS119',
+        errorMessage: 'User stats fetch failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {'user_id': userId, 'operation': 'fetch_user_stats'},
+      );
       // Return default stats if there's an error
       return DataResult(
         success: true,
@@ -165,50 +195,50 @@ class UserDataService {
     return streak;
   }
 
-  /// Calculate streak with compassion logic
-  static Future<int> calculateStreakWithCompassion(
+  /// Calculate streak with grace system logic
+  static Future<int> calculateStreakWithGrace(
     String userId,
     List entries,
   ) async {
     try {
-      // Get compassion settings
-      final compassionSettings = await _supabase
+      // Get grace system settings
+      final graceSettings = await _supabase
           .from('user_settings')
-          .select('streak_compassion_enabled, grace_period_days')
+          .select('grace_system_enabled')
           .eq('user_id', userId)
           .single();
 
-      final compassionEnabled =
-          compassionSettings['streak_compassion_enabled'] ?? false;
-      final gracePeriodDays = compassionSettings['grace_period_days'] ?? 1;
+      final graceSystemEnabled = graceSettings['grace_system_enabled'] ?? true;
 
-      if (!compassionEnabled) {
+      if (!graceSystemEnabled) {
         // Use strict streak calculation
         return await _calculateStreak(entries);
       }
 
-      // Get current streak data
-      final streakData = await _supabase
-          .from('streaks')
-          .select('current, freeze_credits, grace_period_active')
-          .eq('user_id', userId)
+      // Get grace system data from habits_daily
+      final today = DateTime.now().toIso8601String().split('T')[0];
+      final graceData = await _supabase
+          .rpc(
+            'calculate_grace_days_from_habits',
+            params: {
+              'p_user_id': userId,
+              'p_date': today, // Pass app's current date
+            },
+          )
           .single();
 
-      final currentStreak = streakData['current'] ?? 0;
-      final freezeCredits = streakData['freeze_credits'] ?? 0;
-      final gracePeriodActive = streakData['grace_period_active'] ?? false;
+      final graceDaysAvailable = graceData['grace_days_available'] ?? 0;
 
+      // Calculate days since last entry
       if (entries.isEmpty) {
-        // No entries, check if grace period can be used
-        if (freezeCredits > 0 && !gracePeriodActive) {
-          // Use freeze credit to maintain streak
-          await _useFreezeCreditForStreak(userId, currentStreak);
-          return currentStreak;
+        if (graceDaysAvailable > 0) {
+          // Use grace day to maintain streak
+          await _useGraceDayForStreak(userId);
+          return await _getCurrentStreak(userId);
         }
         return 0;
       }
 
-      // Calculate days since last entry
       final lastEntryDate = DateTime.parse(entries.first['created_at']);
       final daysSinceLastEntry = DateTime.now()
           .difference(lastEntryDate)
@@ -216,20 +246,23 @@ class UserDataService {
 
       if (daysSinceLastEntry == 0) {
         // Entry written today, maintain streak
-        return currentStreak;
-      } else if (daysSinceLastEntry <= gracePeriodDays) {
-        // Within grace period, check if freeze credit can be used
-        if (freezeCredits > 0 && !gracePeriodActive) {
-          await _useFreezeCreditForStreak(userId, currentStreak);
-          return currentStreak;
-        }
-        // No freeze credit available, break streak
-        return 0;
+        return await _getCurrentStreak(userId);
+      } else if (daysSinceLastEntry == 1 && graceDaysAvailable > 0) {
+        // Missed yesterday, use grace day
+        await _useGraceDayForStreak(userId);
+        return await _getCurrentStreak(userId);
       } else {
-        // Grace period exceeded, break streak
+        // Multiple days missed or no grace days, break streak
         return 0;
       }
     } catch (e) {
+      // Log error
+      await ErrorLoggingService.logMediumError(
+        errorCode: 'ERRSYS119',
+        errorMessage: 'Streak calculation with grace failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {'operation': 'calculate_streak_with_grace'},
+      );
       // Fallback to regular streak calculation
       return await _calculateStreak(entries);
     }
@@ -249,7 +282,68 @@ class UserDataService {
       });
     } catch (e) {
       // Log error but don't throw
-      print('Error using freeze credit: $e');
+      await ErrorLoggingService.logLowError(
+        errorCode: 'ERRSYS119',
+        errorMessage: 'Freeze credit usage failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {'user_id': userId, 'operation': 'use_freeze_credit'},
+      );
+    }
+  }
+
+  /// Use grace day to maintain streak
+  static Future<void> _useGraceDayForStreak(String userId) async {
+    try {
+      // Get current streak
+      final currentStreak = await _getCurrentStreak(userId);
+
+      // Record grace day usage
+      await _supabase.from('streak_freeze_usage').insert({
+        'user_id': userId,
+        'reason': 'grace_day_used',
+        'streak_maintained': currentStreak,
+        'grace_day_used': true,
+        'grace_period_days': 1,
+      });
+
+      // Update streaks table (decrease grace days)
+      final currentStreakData = await _supabase
+          .from('streaks')
+          .select('freeze_credits')
+          .eq('user_id', userId)
+          .single();
+
+      final currentGraceDays = currentStreakData['freeze_credits'] ?? 0;
+
+      await _supabase
+          .from('streaks')
+          .update({
+            'freeze_credits': currentGraceDays - 1,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('user_id', userId);
+    } catch (e) {
+      // Log error
+      await ErrorLoggingService.logMediumError(
+        errorCode: 'ERRSYS121',
+        errorMessage: 'Failed to use grace day: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {'user_id': userId, 'operation': 'use_grace_day'},
+      );
+    }
+  }
+
+  /// Get current streak from database
+  static Future<int> _getCurrentStreak(String userId) async {
+    try {
+      final response = await _supabase
+          .from('streaks')
+          .select('current')
+          .eq('user_id', userId)
+          .single();
+      return response['current'] ?? 0;
+    } catch (e) {
+      return 0;
     }
   }
 
@@ -257,13 +351,23 @@ class UserDataService {
   static Future<DataResult> _fetchUserPreferences(String userId) async {
     try {
       final response = await _supabase
-          .from('user_preferences')
+          .from('user_settings')
           .select('*')
           .eq('user_id', userId)
           .single();
 
       return DataResult(success: true, data: response);
     } catch (e) {
+      // Log error
+      await ErrorLoggingService.logMediumError(
+        errorCode: 'ERRSYS120',
+        errorMessage: 'User preferences fetch failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'user_id': userId,
+          'operation': 'fetch_user_preferences',
+        },
+      );
       // Return default preferences if none exist
       return DataResult(
         success: true,

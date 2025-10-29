@@ -4,6 +4,7 @@ import '../services/entry_service.dart';
 import '../models/entry_models.dart';
 import '../services/error_logging_service.dart';
 import 'sync_status_provider.dart';
+import 'grace_system_provider.dart';
 
 class EntryState {
   final Entry? entry;
@@ -141,6 +142,11 @@ class EntryNotifier extends Notifier<EntryState> {
       try {
         await _entryService.saveDiaryText(userId, date, text);
         ref.read(syncStatusProvider.notifier).setSaved();
+
+        // Track diary completion for grace system AFTER sync
+        ref
+            .read(graceSystemProvider.notifier)
+            .trackTaskCompletion('diary', text.trim().isNotEmpty);
       } catch (e) {
         // Log error to Supabase
         await ErrorLoggingService.logHighError(
@@ -184,6 +190,11 @@ class EntryNotifier extends Notifier<EntryState> {
       try {
         await _entryService.saveAffirmations(userId, date, affirmations);
         ref.read(syncStatusProvider.notifier).setSaved();
+
+        // Track affirmations completion for grace system AFTER sync
+        ref
+            .read(graceSystemProvider.notifier)
+            .trackTaskCompletion('affirmations', affirmations.isNotEmpty);
       } catch (e) {
         ref.read(syncStatusProvider.notifier).setError(e.toString());
         state = state.copyWith(error: 'Failed to save affirmations: $e');
@@ -253,6 +264,16 @@ class EntryNotifier extends Notifier<EntryState> {
           waterCups,
         );
         ref.read(syncStatusProvider.notifier).setSaved();
+
+        // Track self-care completion for grace system AFTER sync
+        final hasWellnessData =
+            breakfast?.isNotEmpty == true ||
+            lunch?.isNotEmpty == true ||
+            dinner?.isNotEmpty == true ||
+            waterCups > 0;
+        ref
+            .read(graceSystemProvider.notifier)
+            .trackTaskCompletion('self_care', hasWellnessData);
       } catch (e) {
         ref.read(syncStatusProvider.notifier).setError(e.toString());
         state = state.copyWith(error: 'Failed to save meals: $e');
@@ -281,6 +302,11 @@ class EntryNotifier extends Notifier<EntryState> {
       try {
         await _entryService.saveGratitude(userId, date, gratefulItems);
         ref.read(syncStatusProvider.notifier).setSaved();
+
+        // Track gratitude completion for grace system AFTER sync
+        ref
+            .read(graceSystemProvider.notifier)
+            .trackTaskCompletion('gratitude', gratefulItems.isNotEmpty);
       } catch (e) {
         ref.read(syncStatusProvider.notifier).setError(e.toString());
         state = state.copyWith(error: 'Failed to save gratitude: $e');

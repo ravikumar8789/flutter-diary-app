@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../services/error_logging_service.dart';
 
 // FIXED: Add StreamController to force stream updates
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
@@ -80,6 +81,18 @@ class AuthController {
         data: {'display_name': displayName, 'gender': gender},
       );
     } catch (e) {
+      // Log error
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS130',
+        errorMessage: 'Auth provider sign up failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'email': email,
+          'display_name': displayName,
+          'gender': gender,
+          'operation': 'auth_provider_sign_up',
+        },
+      );
       rethrow;
     }
   }
@@ -91,6 +104,13 @@ class AuthController {
         password: password,
       );
     } catch (e) {
+      // Log error
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS131',
+        errorMessage: 'Auth provider sign in failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {'email': email, 'operation': 'auth_provider_sign_in'},
+      );
       rethrow;
     }
   }
@@ -99,6 +119,13 @@ class AuthController {
     try {
       await _ref.read(authRepositoryProvider).signOut();
     } catch (e) {
+      // Log error
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS132',
+        errorMessage: 'Auth provider sign out failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {'operation': 'auth_provider_sign_out'},
+      );
       rethrow;
     }
   }

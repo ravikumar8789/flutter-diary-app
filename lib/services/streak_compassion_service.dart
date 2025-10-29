@@ -9,10 +9,6 @@ class StreakCompassionService {
     String userId,
   ) async {
     try {
-      print(
-        '🔥 StreakCompassionService: getUserCompassionSettings called for userId=$userId',
-      );
-
       final response = await _supabase
           .from('user_settings')
           .select(
@@ -20,19 +16,11 @@ class StreakCompassionService {
           )
           .eq('user_id', userId);
 
-      print(
-        '🔥 StreakCompassionService: getUserCompassionSettings response=$response',
-      );
-
       // Handle case when no user_settings record exists
       if (response.isNotEmpty) {
-        print('🔥 StreakCompassionService: Returning existing settings');
         return response.first;
       } else {
         // Return default values if no settings record exists
-        print(
-          '🔥 StreakCompassionService: No settings found, returning defaults',
-        );
         return {
           'streak_compassion_enabled': true, // Default from schema
           'grace_period_days': 1,
@@ -41,9 +29,6 @@ class StreakCompassionService {
         };
       }
     } catch (e) {
-      print(
-        '🔥 StreakCompassionService: ERROR in getUserCompassionSettings: $e',
-      );
       ErrorLoggingService.logHighError(
         errorCode: 'ERRDATA101',
         errorMessage: 'Failed to get user compassion settings: $e',
@@ -64,10 +49,6 @@ class StreakCompassionService {
     int? maxFreezeCredits,
   }) async {
     try {
-      print(
-        '🔥 StreakCompassionService: updateCompassionSettings called for user=$userId, enabled=$compassionEnabled',
-      );
-
       final updateData = <String, dynamic>{
         'streak_compassion_enabled': compassionEnabled,
       };
@@ -91,7 +72,6 @@ class StreakCompassionService {
             .from('user_settings')
             .update(updateData)
             .eq('user_id', userId);
-        print('🔥 StreakCompassionService: Settings updated successfully');
       } else {
         // No record exists, create one
         final insertData = Map<String, dynamic>.from(updateData);
@@ -104,14 +84,10 @@ class StreakCompassionService {
         insertData['freeze_credits_earned'] = 0;
 
         await _supabase.from('user_settings').insert(insertData);
-        print('🔥 StreakCompassionService: New settings created successfully');
       }
 
       return true;
     } catch (e) {
-      print(
-        '🔥 StreakCompassionService: ERROR in updateCompassionSettings: $e',
-      );
       ErrorLoggingService.logHighError(
         errorCode: 'ERRDATA102',
         errorMessage: 'Failed to update compassion settings: $e',
@@ -299,10 +275,6 @@ class StreakCompassionService {
   /// Get compassion statistics for user
   static Future<Map<String, dynamic>?> getCompassionStats(String userId) async {
     try {
-      print(
-        '🔥 StreakCompassionService: getCompassionStats called for userId=$userId',
-      );
-
       // Get streak data - handle case when no streak record exists
       final streakResponse = await _supabase
           .from('streaks')
@@ -335,7 +307,6 @@ class StreakCompassionService {
 
       return result;
     } catch (e) {
-      print('🔥 StreakCompassionService: ERROR in getCompassionStats: $e');
       ErrorLoggingService.logHighError(
         errorCode: 'ERRDATA109',
         errorMessage: 'Failed to get compassion stats: $e',

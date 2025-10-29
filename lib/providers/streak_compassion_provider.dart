@@ -63,7 +63,7 @@ class StreakCompassionNotifier extends Notifier<StreakCompassionState> {
 
   /// Initialize the provider with user data
   Future<void> initialize(String userId) async {
-    print('🔥 StreakCompassion: initialize called with userId=$userId');
+
     _currentUserId = userId;
     state = state.copyWith(isLoading: true, error: null);
 
@@ -110,34 +110,34 @@ class StreakCompassionNotifier extends Notifier<StreakCompassionState> {
 
   /// Toggle compassion enabled/disabled
   Future<void> toggleCompassion(bool enabled) async {
-    print('🔥 StreakCompassion: toggleCompassion called with enabled=$enabled');
-    print('🔥 StreakCompassion: _currentUserId=$_currentUserId');
+
+
 
     if (_currentUserId == null) {
-      print('🔥 StreakCompassion: No user ID, returning early');
+
       return;
     }
 
     state = state.copyWith(isLoading: true, error: null);
 
     try {
-      print('🔥 StreakCompassion: Calling updateCompassionSettings...');
+
       final success = await StreakCompassionService.updateCompassionSettings(
         userId: _currentUserId!,
         compassionEnabled: enabled,
       );
 
-      print('🔥 StreakCompassion: updateCompassionSettings result: $success');
+
 
       if (success) {
         state = state.copyWith(compassionEnabled: enabled, isLoading: false);
-        print('🔥 StreakCompassion: State updated successfully');
+
       } else {
         state = state.copyWith(
           isLoading: false,
           error: 'Failed to update compassion settings',
         );
-        print('🔥 StreakCompassion: Failed to update settings');
+
       }
     } catch (e) {
       ErrorLoggingService.logHighError(

@@ -66,7 +66,7 @@ class ThemeNotifier extends Notifier<ThemeMode> {
       await prefs.setString(_themeKey, themeString);
     } catch (e) {
       // Handle error silently or log it
-      print('Error saving theme: $e');
+
     }
   }
 

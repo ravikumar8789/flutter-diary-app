@@ -358,6 +358,56 @@ ERRSYS097 - pin_setup_screen.dart - _showSecurityQuestionsForm() - Security ques
 ERRSYS098 - pin_setup_screen.dart - _saveSecurityQuestions() - Security questions saving failed
 ERRSYS099 - pin_setup_screen.dart - _showError() - Error display failed
 ERRSYS100 - pin_setup_screen.dart - _resetToFirstStep() - Setup reset failed
+ERRSYS101 - supabase_sync_service.dart - syncEntry() - Entry sync failed
+ERRSYS102 - supabase_sync_service.dart - syncAffirmations() - Affirmations sync failed
+ERRSYS103 - supabase_sync_service.dart - syncPriorities() - Priorities sync failed
+ERRSYS104 - supabase_sync_service.dart - syncMeals() - Meals sync failed
+ERRSYS105 - supabase_sync_service.dart - syncGratitude() - Gratitude sync failed
+ERRSYS106 - supabase_sync_service.dart - syncSelfCare() - Self care sync failed
+ERRSYS107 - supabase_sync_service.dart - syncShowerBath() - Shower bath sync failed
+ERRSYS108 - supabase_sync_service.dart - syncTomorrowNotes() - Tomorrow notes sync failed
+ERRSYS109 - supabase_sync_service.dart - fetchEntryFromCloud() - Entry fetch failed
+ERRSYS110 - supabase_sync_service.dart - fetchAffirmationsFromCloud() - Affirmations fetch failed
+ERRSYS111 - supabase_sync_service.dart - fetchPrioritiesFromCloud() - Priorities fetch failed
+ERRSYS112 - supabase_sync_service.dart - fetchMealsFromCloud() - Meals fetch failed
+ERRSYS113 - supabase_sync_service.dart - fetchGratitudeFromCloud() - Gratitude fetch failed
+ERRSYS114 - supabase_sync_service.dart - fetchSelfCareFromCloud() - Self care fetch failed
+ERRSYS115 - supabase_sync_service.dart - fetchShowerBathFromCloud() - Shower bath fetch failed
+ERRSYS116 - supabase_sync_service.dart - fetchTomorrowNotesFromCloud() - Tomorrow notes fetch failed
+ERRSYS117 - user_data_service.dart - fetchUserData() - User data fetch failed
+ERRSYS118 - user_data_service.dart - _fetchUserProfile() - User profile fetch failed
+ERRSYS119 - user_data_service.dart - _fetchUserStats() - User stats fetch failed
+ERRSYS120 - user_data_service.dart - _fetchUserPreferences() - User preferences fetch failed
+ERRSYS121 - user_data_service.dart - _fetchUserStreaks() - User streaks fetch failed
+ERRSYS122 - user_data_service.dart - _fetchUserGoals() - User goals fetch failed
+ERRSYS123 - user_data_service.dart - _fetchUserSettings() - User settings fetch failed
+ERRSYS124 - auth_service.dart - signIn() - Sign in failed
+ERRSYS125 - auth_service.dart - signUp() - Sign up failed
+ERRSYS126 - auth_service.dart - signOut() - Sign out failed
+ERRSYS127 - auth_service.dart - resetPassword() - Password reset failed
+ERRSYS128 - auth_service.dart - updatePassword() - Password update failed
+ERRSYS129 - entry_service.dart - loadEntryForDate() - Entry load failed
+ERRSYS130 - auth_provider.dart - signIn() - Auth provider sign in failed
+ERRSYS131 - auth_provider.dart - signUp() - Auth provider sign up failed
+ERRSYS132 - auth_provider.dart - signOut() - Auth provider sign out failed
+ERRSYS133 - settings_screen.dart - _loadSettings() - Settings load failed
+ERRSYS134 - settings_screen.dart - _saveSettings() - Settings save failed
+ERRSYS135 - splash_screen.dart - _initializeApp() - App initialization failed
+ERRSYS136 - font_size_provider.dart - setFontSize() - Font size setting failed
+ERRSYS137 - font_size_provider.dart - loadFontSize() - Font size load failed
+ERRSYS138 - paper_style_provider.dart - setPaperStyle() - Paper style setting failed
+ERRSYS139 - paper_style_provider.dart - loadPaperStyle() - Paper style load failed
+ERRSYS140 - theme_provider.dart - setTheme() - Theme setting failed
+ERRSYS141 - theme_provider.dart - loadTheme() - Theme load failed
+ERRSYS142 - native_alarm_manager.dart - scheduleAlarm() - Alarm scheduling failed
+ERRSYS143 - native_alarm_manager.dart - cancelAlarm() - Alarm cancellation failed
+ERRSYS144 - notification_test_screen.dart - _testNotification() - Notification test failed
+ERRSYS145 - notification_test_screen.dart - _scheduleTestNotification() - Test notification scheduling failed
+ERRSYS146 - notification_test_screen.dart - _cancelTestNotification() - Test notification cancellation failed
+ERRSYS147 - notification_test_screen.dart - _checkPermissions() - Permission check failed
+ERRSYS148 - notification_test_screen.dart - _requestPermissions() - Permission request failed
+ERRSYS149 - notification_test_screen.dart - _showNotificationHistory() - Notification history display failed
+ERRSYS150 - notification_test_screen.dart - _clearNotificationHistory() - Notification history clear failed
 ```
 
 ---
@@ -424,9 +474,19 @@ String getErrorDescription(String errorCode) {
 
 ---
 
-**Total Error Codes: 350**
+# Grace System Service Errors (ERRDATA120-ERRDATA130)
+ERRDATA120 - Grace status fetch failed
+ERRDATA121 - Task completion tracking failed
+ERRDATA122 - Grace day usage failed
+ERRDATA123 - Grace system initialization failed
+ERRDATA124 - Grace system task completion failed
+ERRDATA125 - Grace system grace day usage failed
+ERRDATA126 - Grace status refresh failed
+ERRDATA127 - Today habits record creation failed
+
+**Total Error Codes: 408**
 - **AUTH:** 50 codes (ERRAUTH001-ERRAUTH050)
 - **DATA:** 50 codes (ERRDATA001-ERRDATA050)
 - **NET:** 50 codes (ERRNET001-ERRNET050)
 - **UI:** 50 codes (ERRUI001-ERRUI050)
-- **SYS:** 150 codes (ERRSYS001-ERRSYS100)
+- **SYS:** 200 codes (ERRSYS001-ERRSYS150)

@@ -60,14 +60,10 @@ CREATE TABLE public.user_settings (
   reminder_enabled boolean DEFAULT true,
   reminder_time_local time without time zone,
   reminder_days ARRAY DEFAULT '{1,2,3,4,5,6,7}'::smallint[],
-  streak_compassion_enabled boolean DEFAULT true,
+  grace_system_enabled boolean DEFAULT true,
   privacy_lock_enabled boolean DEFAULT false,
   region_preference text,
   export_format_default text DEFAULT 'json'::text CHECK (export_format_default = ANY (ARRAY['pdf'::text, 'csv'::text, 'json'::text])),
-  -- Streak Compassion Settings
-  grace_period_days integer DEFAULT 1,
-  max_freeze_credits integer DEFAULT 3,
-  freeze_credits_earned integer DEFAULT 0,
   CONSTRAINT user_settings_pkey PRIMARY KEY (user_id),
   CONSTRAINT user_settings_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
@@ -257,12 +253,9 @@ CREATE TABLE public.streaks (
   current integer DEFAULT 0,
   longest integer DEFAULT 0,
   last_entry_date date,
-  freeze_credits integer DEFAULT 0,
+  freeze_credits integer DEFAULT 0, -- Now represents grace days available (0-5)
+  grace_pieces_total numeric(5,1) DEFAULT 0.0, -- Total grace pieces earned
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
-  -- Streak Compassion Fields
-  grace_period_active boolean DEFAULT false,
-  grace_period_expires_at timestamp with time zone,
-  compassion_used_count integer DEFAULT 0,
   CONSTRAINT streaks_pkey PRIMARY KEY (user_id),
   CONSTRAINT streaks_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
@@ -272,9 +265,10 @@ CREATE TABLE public.streak_freeze_usage (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
   used_at timestamp with time zone DEFAULT now(),
-  reason text NOT NULL CHECK (reason = ANY (ARRAY['missed_day', 'manual_use', 'recovery'])),
+  reason text NOT NULL CHECK (reason = ANY (ARRAY['missed_day', 'manual_use', 'recovery', 'grace_day_used'])),
   streak_maintained integer NOT NULL,
   grace_period_days integer NOT NULL DEFAULT 1,
+  grace_day_used boolean DEFAULT false, -- Track if this was a grace day usage
   created_at timestamp with time zone DEFAULT now()
 );
 
@@ -291,9 +285,13 @@ CREATE TABLE public.habits_daily (
   filled_affirmations boolean DEFAULT false,
   filled_gratitude boolean DEFAULT false,
   self_care_completed_count smallint DEFAULT 0,
+  grace_pieces_earned numeric(3,1) DEFAULT 0.0, -- Grace pieces earned for this day (0.5 per task)
   CONSTRAINT habits_daily_pkey PRIMARY KEY (id),
   CONSTRAINT habits_daily_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
+
+-- Index for grace pieces performance
+CREATE INDEX idx_habits_daily_grace_pieces ON public.habits_daily(user_id, date) WHERE grace_pieces_earned > 0;
 
 -- =============================
 -- 7) FILES & STORAGE
@@ -479,7 +477,7 @@ CREATE INDEX idx_error_logs_severity ON public.error_logs(error_severity);
 CREATE INDEX idx_error_logs_resolved ON public.error_logs(resolved_at) WHERE resolved_at IS NOT NULL;
 
 -- =============================
--- 13) STREAK COMPASSION FEATURE
+-- 13) GRACE SYSTEM FEATURE
 -- =============================
 
 -- RLS Policies for streak_freeze_usage
@@ -494,59 +492,85 @@ CREATE POLICY "Users can insert their own freeze usage" ON public.streak_freeze_
 CREATE POLICY "Users can update their own freeze usage" ON public.streak_freeze_usage
   FOR UPDATE USING (auth.uid() = user_id);
 
--- Function to calculate streak with compassion
-CREATE OR REPLACE FUNCTION calculate_streak_with_compassion(p_user_id uuid)
+-- Function to calculate grace days from habits
+CREATE OR REPLACE FUNCTION calculate_grace_days_from_habits(p_user_id uuid)
 RETURNS TABLE(
-  current_streak integer,
-  freeze_credits integer,
-  grace_period_active boolean,
-  compassion_enabled boolean
-) 
+  grace_days_available integer,
+  grace_pieces_total numeric(5,1),
+  pieces_today numeric(3,1),
+  tasks_completed_today integer
+)
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
-  streak_record RECORD;
-  settings_record RECORD;
-  days_since_last_entry integer;
+  total_pieces numeric(5,1) := 0;
+  grace_days integer := 0;
+  today_pieces numeric(3,1) := 0;
+  today_tasks integer := 0;
+  today_record RECORD;
 BEGIN
-  -- Get streak data
-  SELECT * INTO streak_record FROM public.streaks WHERE user_id = p_user_id;
+  -- Get today's habits record
+  SELECT * INTO today_record 
+  FROM public.habits_daily 
+  WHERE user_id = p_user_id AND date = CURRENT_DATE;
   
-  -- Get user settings
-  SELECT * INTO settings_record FROM public.user_settings WHERE user_id = p_user_id;
-  
-  -- Calculate days since last entry
-  IF streak_record.last_entry_date IS NOT NULL THEN
-    days_since_last_entry := EXTRACT(DAY FROM (CURRENT_DATE - streak_record.last_entry_date));
-  ELSE
-    days_since_last_entry := 999; -- No entries yet
+  -- Calculate today's pieces and tasks
+  IF today_record.id IS NOT NULL THEN
+    today_pieces := COALESCE(today_record.grace_pieces_earned, 0);
+    today_tasks := (
+      CASE WHEN today_record.filled_affirmations THEN 1 ELSE 0 END +
+      CASE WHEN today_record.filled_gratitude THEN 1 ELSE 0 END +
+      CASE WHEN today_record.wrote_entry THEN 1 ELSE 0 END +
+      CASE WHEN today_record.self_care_completed_count > 0 THEN 1 ELSE 0 END
+    );
   END IF;
   
-  -- Return streak data with compassion logic
-  -- Handle case when no streak record exists
-  RETURN QUERY SELECT
-    COALESCE(streak_record.current, 0) as current_streak,
-    COALESCE(streak_record.freeze_credits, 0) as freeze_credits,
-    (days_since_last_entry <= COALESCE(settings_record.grace_period_days, 1) AND 
-     COALESCE(settings_record.streak_compassion_enabled, false)) as grace_period_active,
-    COALESCE(settings_record.streak_compassion_enabled, false) as compassion_enabled;
+  -- Calculate total pieces from all time
+  SELECT COALESCE(SUM(grace_pieces_earned), 0) INTO total_pieces
+  FROM public.habits_daily
+  WHERE user_id = p_user_id;
+  
+  -- Calculate grace days (10 pieces = 1 grace day, max 5)
+  grace_days := LEAST(FLOOR(total_pieces / 10), 5);
+  
+  RETURN QUERY SELECT grace_days, total_pieces, today_pieces, today_tasks;
 END;
 $$;
 
--- Trigger function to update streak when freeze credit is used
-CREATE OR REPLACE FUNCTION update_streak_on_freeze_usage()
+-- Function to update grace pieces when tasks complete
+CREATE OR REPLACE FUNCTION update_grace_pieces_on_task_completion()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
+DECLARE
+  new_pieces numeric(3,1) := 0;
+  total_pieces numeric(5,1) := 0;
+  grace_days integer := 0;
 BEGIN
-  -- Update streak to maintain current count
+  -- Calculate pieces based on completed tasks (0.5 per task)
+  new_pieces := (
+    CASE WHEN NEW.filled_affirmations THEN 0.5 ELSE 0 END +
+    CASE WHEN NEW.filled_gratitude THEN 0.5 ELSE 0 END +
+    CASE WHEN NEW.wrote_entry THEN 0.5 ELSE 0 END +
+    CASE WHEN NEW.self_care_completed_count > 0 THEN 0.5 ELSE 0 END
+  );
+  
+  -- Update the grace_pieces_earned for this record
+  NEW.grace_pieces_earned := new_pieces;
+  
+  -- Calculate total pieces and grace days
+  SELECT COALESCE(SUM(grace_pieces_earned), 0) INTO total_pieces
+  FROM public.habits_daily
+  WHERE user_id = NEW.user_id;
+  
+  grace_days := LEAST(FLOOR(total_pieces / 10), 5);
+  
+  -- Update streaks table
   UPDATE public.streaks 
   SET 
-    freeze_credits = freeze_credits - 1,
-    grace_period_active = true,
-    grace_period_expires_at = CURRENT_DATE + INTERVAL '1 day',
-    compassion_used_count = compassion_used_count + 1,
+    freeze_credits = grace_days,
+    grace_pieces_total = total_pieces,
     updated_at = now()
   WHERE user_id = NEW.user_id;
   
@@ -554,11 +578,11 @@ BEGIN
 END;
 $$;
 
--- Create trigger for freeze usage
-CREATE TRIGGER trigger_update_streak_on_freeze_usage
-  AFTER INSERT ON public.streak_freeze_usage
+-- Create trigger for automatic grace pieces calculation
+CREATE TRIGGER trigger_update_grace_pieces
+  BEFORE INSERT OR UPDATE ON public.habits_daily
   FOR EACH ROW
-  EXECUTE FUNCTION update_streak_on_freeze_usage();
+  EXECUTE FUNCTION update_grace_pieces_on_task_completion();
 
 -- =============================
 -- END OF SCHEMA

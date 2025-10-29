@@ -131,7 +131,7 @@ class PrivacyLockNotifier extends Notifier<PrivacyLockData> {
         errorMessage: null,
       );
     } catch (e) {
-      print('Error initializing privacy lock: $e');
+
       await ErrorLoggingService.logHighError(
         errorCode: 'ERRSYS079',
         errorMessage: 'Privacy lock initialization failed: ${e.toString()}',
@@ -176,7 +176,7 @@ class PrivacyLockNotifier extends Notifier<PrivacyLockData> {
         return false;
       }
     } catch (e) {
-      print('Error enabling privacy lock: $e');
+
       await ErrorLoggingService.logHighError(
         errorCode: 'ERRSYS080',
         errorMessage: 'Privacy lock enable failed: ${e.toString()}',
@@ -223,7 +223,7 @@ class PrivacyLockNotifier extends Notifier<PrivacyLockData> {
         return false;
       }
     } catch (e) {
-      print('Error disabling privacy lock: $e');
+
       state = state.copyWith(
         pinEntryState: PinEntryState.failure,
         errorMessage: 'Error disabling privacy lock: $e',
@@ -257,7 +257,7 @@ class PrivacyLockNotifier extends Notifier<PrivacyLockData> {
         return false;
       }
     } catch (e) {
-      print('Error setting up PIN: $e');
+
       state = state.copyWith(
         pinEntryState: PinEntryState.failure,
         errorMessage: e.toString(),
@@ -307,7 +307,7 @@ class PrivacyLockNotifier extends Notifier<PrivacyLockData> {
         return false;
       }
     } catch (e) {
-      print('Error validating PIN: $e');
+
       state = state.copyWith(
         pinEntryState: PinEntryState.failure,
         errorMessage: 'Error validating PIN: $e',
@@ -345,7 +345,7 @@ class PrivacyLockNotifier extends Notifier<PrivacyLockData> {
         return false;
       }
     } catch (e) {
-      print('Error changing PIN: $e');
+
       state = state.copyWith(
         pinEntryState: PinEntryState.failure,
         errorMessage: e.toString(),
@@ -385,7 +385,7 @@ class PrivacyLockNotifier extends Notifier<PrivacyLockData> {
         return false;
       }
     } catch (e) {
-      print('Error setting security questions: $e');
+
       state = state.copyWith(
         pinEntryState: PinEntryState.failure,
         errorMessage: 'Error setting security questions: $e',
@@ -418,7 +418,7 @@ class PrivacyLockNotifier extends Notifier<PrivacyLockData> {
         return false;
       }
     } catch (e) {
-      print('Error verifying security answers: $e');
+
       state = state.copyWith(
         pinEntryState: PinEntryState.failure,
         errorMessage: 'Error verifying security answers: $e',
@@ -440,7 +440,7 @@ class PrivacyLockNotifier extends Notifier<PrivacyLockData> {
         return false;
       }
     } catch (e) {
-      print('Error setting auto-lock timeout: $e');
+
       state = state.copyWith(
         errorMessage: 'Error setting auto-lock timeout: $e',
       );
@@ -460,7 +460,7 @@ class PrivacyLockNotifier extends Notifier<PrivacyLockData> {
         );
       }
     } catch (e) {
-      print('Error checking auto-lock: $e');
+
     }
   }
 
@@ -485,7 +485,7 @@ class PrivacyLockNotifier extends Notifier<PrivacyLockData> {
     try {
       return await _pinAuthService.getSecurityQuestions();
     } catch (e) {
-      print('Error getting security questions: $e');
+
       return {'question1': '', 'question2': ''};
     }
   }
@@ -495,7 +495,7 @@ class PrivacyLockNotifier extends Notifier<PrivacyLockData> {
     try {
       return await _pinAuthService.isPinSetUp();
     } catch (e) {
-      print('Error checking PIN setup: $e');
+
       return false;
     }
   }

@@ -61,7 +61,7 @@ class PaperStyleNotifier extends Notifier<PaperStyle> {
       await prefs.setString(_paperStyleKey, style.value);
     } catch (e) {
       // Handle error silently or log it
-      print('Error saving paper style: $e');
+
     }
   }
 

@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart' as supabase;
+import 'error_logging_service.dart';
 
 class AuthService {
   static final supabase.SupabaseClient _client =
@@ -34,6 +35,13 @@ class AuthService {
 
       return response;
     } catch (e) {
+      // Log error
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS124',
+        errorMessage: 'Sign in failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {'email': email, 'operation': 'sign_in'},
+      );
       rethrow;
     }
   }
@@ -53,6 +61,18 @@ class AuthService {
       );
       return response;
     } catch (e) {
+      // Log error
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS125',
+        errorMessage: 'Sign up failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'email': email,
+          'display_name': displayName,
+          'gender': gender,
+          'operation': 'sign_up',
+        },
+      );
       rethrow;
     }
   }
@@ -62,6 +82,13 @@ class AuthService {
     try {
       await _client.auth.signOut();
     } catch (e) {
+      // Log error
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS126',
+        errorMessage: 'Sign out failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {'operation': 'sign_out'},
+      );
       rethrow;
     }
   }
@@ -71,6 +98,13 @@ class AuthService {
     try {
       await _client.auth.resetPasswordForEmail(email);
     } catch (e) {
+      // Log error
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS127',
+        errorMessage: 'Password reset failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {'email': email, 'operation': 'reset_password'},
+      );
       rethrow;
     }
   }
@@ -80,6 +114,13 @@ class AuthService {
     try {
       await _client.auth.resend(type: supabase.OtpType.signup, email: email);
     } catch (e) {
+      // Log error
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS127',
+        errorMessage: 'Resend verification failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {'email': email, 'operation': 'resend_verification'},
+      );
       rethrow;
     }
   }

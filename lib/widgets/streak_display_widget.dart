@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../providers/streak_compassion_provider.dart';
+import '../providers/grace_system_provider.dart';
 
 class StreakDisplayWidget extends ConsumerWidget {
   final int currentStreak;
@@ -16,29 +16,26 @@ class StreakDisplayWidget extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final compassionState = ref.watch(streakCompassionProvider);
+    final graceState = ref.watch(graceSystemProvider);
 
     if (isCompact) {
-      return _buildCompactStreak(context, compassionState);
+      return _buildCompactStreak(context, graceState);
     } else if (showDetails) {
-      return _buildDetailedStreak(context, compassionState);
+      return _buildDetailedStreak(context, graceState);
     } else {
-      return _buildBasicStreak(context, compassionState);
+      return _buildBasicStreak(context, graceState);
     }
   }
 
-  Widget _buildBasicStreak(
-    BuildContext context,
-    StreakCompassionState compassionState,
-  ) {
+  Widget _buildBasicStreak(BuildContext context, GraceSystemState graceState) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(
-          compassionState.gracePeriodActive
+          graceState.graceDaysAvailable > 0
               ? Icons.shield
               : Icons.local_fire_department,
-          color: compassionState.gracePeriodActive
+          color: graceState.graceDaysAvailable > 0
               ? Colors.blue
               : Colors.orange,
           size: 16,
@@ -48,7 +45,7 @@ class StreakDisplayWidget extends ConsumerWidget {
           '$currentStreak days',
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
-        if (compassionState.gracePeriodActive) ...[
+        if (graceState.graceDaysAvailable > 0) ...[
           const SizedBox(width: 4),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -56,9 +53,9 @@ class StreakDisplayWidget extends ConsumerWidget {
               color: Colors.blue.shade100,
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Text(
-              'Protected',
-              style: TextStyle(
+            child: Text(
+              '${graceState.graceDaysAvailable} grace',
+              style: const TextStyle(
                 fontSize: 10,
                 color: Colors.blue,
                 fontWeight: FontWeight.bold,
@@ -72,37 +69,37 @@ class StreakDisplayWidget extends ConsumerWidget {
 
   Widget _buildCompactStreak(
     BuildContext context,
-    StreakCompassionState compassionState,
+    GraceSystemState graceState,
   ) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: compassionState.gracePeriodActive
+        color: graceState.graceDaysAvailable > 0
             ? Colors.blue.shade100
             : Colors.orange.shade100,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            compassionState.gracePeriodActive
+            graceState.graceDaysAvailable > 0
                 ? Icons.shield
                 : Icons.local_fire_department,
-            color: compassionState.gracePeriodActive
+            color: graceState.graceDaysAvailable > 0
                 ? Colors.blue
                 : Colors.orange,
-            size: 14,
+            size: 12,
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 2),
           Text(
             '$currentStreak days',
             style: TextStyle(
-              color: compassionState.gracePeriodActive
+              color: graceState.graceDaysAvailable > 0
                   ? Colors.blue
                   : Colors.orange,
               fontWeight: FontWeight.bold,
-              fontSize: 12,
+              fontSize: 10,
             ),
           ),
         ],
@@ -112,7 +109,7 @@ class StreakDisplayWidget extends ConsumerWidget {
 
   Widget _buildDetailedStreak(
     BuildContext context,
-    StreakCompassionState compassionState,
+    GraceSystemState graceState,
   ) {
     return Card(
       child: Padding(
@@ -123,10 +120,10 @@ class StreakDisplayWidget extends ConsumerWidget {
             Row(
               children: [
                 Icon(
-                  compassionState.gracePeriodActive
+                  graceState.graceDaysAvailable > 0
                       ? Icons.shield
                       : Icons.local_fire_department,
-                  color: compassionState.gracePeriodActive
+                  color: graceState.graceDaysAvailable > 0
                       ? Colors.blue
                       : Colors.orange,
                 ),
@@ -141,50 +138,59 @@ class StreakDisplayWidget extends ConsumerWidget {
             Text(
               '$currentStreak days',
               style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                color: compassionState.gracePeriodActive
+                color: graceState.graceDaysAvailable > 0
                     ? Colors.blue
                     : Colors.orange,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            if (compassionState.compassionEnabled) ...[
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Icon(Icons.favorite, color: Colors.green, size: 16),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${compassionState.freezeCreditsRemaining} grace periods remaining',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-              ),
-              if (compassionState.gracePeriodActive) ...[
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blue.shade200),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.info, color: Colors.blue.shade700, size: 16),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Your streak is currently protected by grace period',
-                          style: TextStyle(
-                            color: Colors.blue.shade700,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Icon(Icons.favorite, color: Colors.green, size: 16),
+                const SizedBox(width: 4),
+                Text(
+                  '${graceState.graceDaysAvailable} grace days available',
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(Icons.star, color: Colors.blue, size: 16),
+                const SizedBox(width: 4),
+                Text(
+                  '${graceState.piecesToday.toStringAsFixed(1)}/10 pieces today',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+            if (graceState.graceDaysAvailable > 0) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info, color: Colors.blue.shade700, size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Your streak is protected by grace days',
+                        style: TextStyle(
+                          color: Colors.blue.shade700,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ],
         ),
@@ -200,12 +206,12 @@ class StreakBadgeWidget extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final compassionState = ref.watch(streakCompassionProvider);
+    final graceState = ref.watch(graceSystemProvider);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: compassionState.gracePeriodActive
+        color: graceState.graceDaysAvailable > 0
             ? Colors.blue.shade100
             : Colors.orange.shade100,
         borderRadius: BorderRadius.circular(12),
@@ -214,14 +220,14 @@ class StreakBadgeWidget extends ConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            compassionState.gracePeriodActive ? '🛡️' : '🔥',
+            graceState.graceDaysAvailable > 0 ? '🛡️' : '🔥',
             style: const TextStyle(fontSize: 14),
           ),
           const SizedBox(width: 4),
           Text(
             '$currentStreak days',
             style: TextStyle(
-              color: compassionState.gracePeriodActive
+              color: graceState.graceDaysAvailable > 0
                   ? Colors.blue
                   : Colors.orange,
               fontWeight: FontWeight.bold,

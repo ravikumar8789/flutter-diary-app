@@ -78,7 +78,7 @@ class AppLifecycleService extends WidgetsBindingObserver {
       );
       privacyLockNotifier.checkAutoLock();
     } catch (e) {
-      print('Error checking privacy lock auto-lock: $e');
+
     }
   }
 
@@ -91,10 +91,10 @@ class AppLifecycleService extends WidgetsBindingObserver {
       if (privacyLockData.isEnabled && privacyLockData.isUnlocked) {
         // Auto-lock timer is handled by the privacy lock provider
         // This is just a placeholder for future timer implementation
-        print('Auto-lock timer started');
+
       }
     } catch (e) {
-      print('Error starting auto-lock timer: $e');
+
     }
   }
 

@@ -40,15 +40,15 @@ class ErrorLoggingService {
       });
 
       if (kDebugMode) {
-        print('✅ Error logged successfully: $errorCode');
+
       }
     } catch (e) {
       // Fallback: Log to console if Supabase fails
       if (kDebugMode) {
-        print('❌ Error logging failed: $e');
-        print('Error Code: $errorCode');
-        print('Error Message: $errorMessage');
-        print('Severity: $severity');
+
+
+
+
       }
     }
   }
