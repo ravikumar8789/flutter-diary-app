@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/user_preference_sync_service.dart';
+import '../services/error_logging_service.dart';
 
 /// Theme mode provider
 final themeProvider = NotifierProvider<ThemeNotifier, ThemeMode>(() {
@@ -67,6 +69,23 @@ class ThemeNotifier extends Notifier<ThemeMode> {
     } catch (e) {
       // Handle error silently or log it
 
+    }
+
+    // Best-effort cloud sync
+    try {
+      await UserPreferenceSyncService.syncAppearanceToCloud(themeMode: state);
+    } catch (e) {
+      await ErrorLoggingService.logError(
+        errorCode: 'ERRSYS134',
+        errorMessage:
+            'Settings save failed (cloud theme sync): ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        severity: 'LOW',
+        errorContext: {
+          'operation': 'sync_theme',
+          'theme': currentThemeString,
+        },
+      );
     }
   }
 

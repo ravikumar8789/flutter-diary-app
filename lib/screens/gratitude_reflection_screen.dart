@@ -61,50 +61,43 @@ class _GratitudeReflectionScreenState
         currentDate,
       );
 
-      // Clear existing controllers
-      for (var controller in _gratitudeControllers) {
-        controller.dispose();
+      // Pooling: gratitude (min 2 fields)
+      final List<String> gratitudeTexts = (entryData?.gratitude?.gratefulItems
+                  .map((g) => g.text)
+                  .toList() ??
+              [])
+          .toList();
+      while (gratitudeTexts.length < 2) gratitudeTexts.add('');
+      while (_gratitudeControllers.length < gratitudeTexts.length) {
+        final c = TextEditingController();
+        c.addListener(() => _onGratitudeChanged());
+        _gratitudeControllers.add(c);
       }
-      for (var controller in _tomorrowControllers) {
-        controller.dispose();
+      while (_gratitudeControllers.length > gratitudeTexts.length) {
+        _gratitudeControllers.removeLast().dispose();
       }
-      _gratitudeControllers.clear();
-      _tomorrowControllers.clear();
-
-      // Populate gratitude - if database has data, use it; otherwise use 2 defaults
-      if (entryData?.gratitude != null &&
-          entryData!.gratitude!.gratefulItems.isNotEmpty) {
-        // Database has data - use it
-        for (var item in entryData.gratitude!.gratefulItems) {
-          final controller = TextEditingController(text: item.text);
-          controller.addListener(() => _onGratitudeChanged());
-          _gratitudeControllers.add(controller);
-        }
-      } else {
-        // No data - create 2 default empty fields
-        for (int i = 0; i < 2; i++) {
-          final controller = TextEditingController();
-          controller.addListener(() => _onGratitudeChanged());
-          _gratitudeControllers.add(controller);
-        }
+      for (int i = 0; i < gratitudeTexts.length; i++) {
+        _gratitudeControllers[i].text = gratitudeTexts[i];
       }
 
-      // Populate tomorrow notes - if database has data, use it; otherwise use 2 defaults
-      if (entryData?.tomorrowNotes != null &&
-          entryData!.tomorrowNotes!.tomorrowNotes.isNotEmpty) {
-        // Database has data - use it
-        for (var item in entryData.tomorrowNotes!.tomorrowNotes) {
-          final controller = TextEditingController(text: item.text);
-          controller.addListener(() => _onTomorrowChanged());
-          _tomorrowControllers.add(controller);
-        }
-      } else {
-        // No data - create 2 default empty fields
-        for (int i = 0; i < 2; i++) {
-          final controller = TextEditingController();
-          controller.addListener(() => _onTomorrowChanged());
-          _tomorrowControllers.add(controller);
-        }
+      // Pooling: tomorrow notes (min 2 fields)
+      final List<String> tomorrowTexts = (entryData?.tomorrowNotes
+                  ?.tomorrowNotes
+                  .map((t) => t.text)
+                  .toList() ??
+              [])
+          .toList();
+      while (tomorrowTexts.length < 2) tomorrowTexts.add('');
+      while (_tomorrowControllers.length < tomorrowTexts.length) {
+        final c = TextEditingController();
+        c.addListener(() => _onTomorrowChanged());
+        _tomorrowControllers.add(c);
+      }
+      while (_tomorrowControllers.length > tomorrowTexts.length) {
+        _tomorrowControllers.removeLast().dispose();
+      }
+      for (int i = 0; i < tomorrowTexts.length; i++) {
+        _tomorrowControllers[i].text = tomorrowTexts[i];
       }
 
       setState(() {

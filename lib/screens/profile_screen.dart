@@ -414,6 +414,16 @@ class ProfileScreen extends ConsumerWidget {
 
   void _performLogout(WidgetRef ref) async {
     try {
+      // Show blocking progress while logging out
+      if (ref.context.mounted) {
+        showDialog(
+          context: ref.context,
+          barrierDismissible: false,
+          builder: (_) => const Center(
+            child: CircularProgressIndicator(),
+          ),
+        );
+      }
       // Clear user data first
       ref.read(userDataProvider.notifier).clearUserData();
 
@@ -424,6 +434,8 @@ class ProfileScreen extends ConsumerWidget {
       Future.microtask(() {
         final context = ref.context;
         if (context.mounted) {
+          // Dismiss progress dialog if shown
+          Navigator.of(context, rootNavigator: true).pop();
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (_) => const LoginScreen()),
             (route) => false,
@@ -458,6 +470,8 @@ class ProfileScreen extends ConsumerWidget {
       Future.microtask(() {
         final context = ref.context;
         if (context.mounted) {
+          // Dismiss progress dialog if shown
+          Navigator.of(context, rootNavigator: true).pop();
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (_) => const LoginScreen()),
             (route) => false,

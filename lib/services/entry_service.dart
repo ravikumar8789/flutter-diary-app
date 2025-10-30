@@ -46,33 +46,35 @@ class EntryService {
         if (localEntry == null ||
             cloudEntry.updatedAt.isAfter(localEntry.updatedAt)) {
           await _localService.upsertEntry(cloudEntry);
-          return _buildEntryData(cloudEntry);
+          return _buildEntryDataParallel(cloudEntry);
         }
       }
     }
 
-    return localEntry != null ? _buildEntryData(localEntry) : null;
+    return localEntry != null ? _buildEntryDataParallel(localEntry) : null;
   }
 
   // Build complete entry data with all related fields
-  Future<EntryData> _buildEntryData(Entry entry) async {
-    final affirmations = await _localService.getAffirmations(entry.id);
-    final priorities = await _localService.getPriorities(entry.id);
-    final meals = await _localService.getMeals(entry.id);
-    final gratitude = await _localService.getGratitude(entry.id);
-    final selfCare = await _localService.getSelfCare(entry.id);
-    final showerBath = await _localService.getShowerBath(entry.id);
-    final tomorrowNotes = await _localService.getTomorrowNotes(entry.id);
+  Future<EntryData> _buildEntryDataParallel(Entry entry) async {
+    final results = await Future.wait([
+      _localService.getAffirmations(entry.id),
+      _localService.getPriorities(entry.id),
+      _localService.getMeals(entry.id),
+      _localService.getGratitude(entry.id),
+      _localService.getSelfCare(entry.id),
+      _localService.getShowerBath(entry.id),
+      _localService.getTomorrowNotes(entry.id),
+    ]);
 
     return EntryData(
       entry: entry,
-      affirmations: affirmations,
-      priorities: priorities,
-      meals: meals,
-      gratitude: gratitude,
-      selfCare: selfCare,
-      showerBath: showerBath,
-      tomorrowNotes: tomorrowNotes,
+      affirmations: results[0] as EntryAffirmations?,
+      priorities: results[1] as EntryPriorities?,
+      meals: results[2] as EntryMeals?,
+      gratitude: results[3] as EntryGratitude?,
+      selfCare: results[4] as EntrySelfCare?,
+      showerBath: results[5] as EntryShowerBath?,
+      tomorrowNotes: results[6] as EntryTomorrowNotes?,
     );
   }
 

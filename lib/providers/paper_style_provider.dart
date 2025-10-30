@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/user_preference_sync_service.dart';
+import '../services/error_logging_service.dart';
 
 /// Paper style enum
 enum PaperStyle {
@@ -62,6 +64,25 @@ class PaperStyleNotifier extends Notifier<PaperStyle> {
     } catch (e) {
       // Handle error silently or log it
 
+    }
+
+    // Best-effort cloud sync
+    try {
+      await UserPreferenceSyncService.syncAppearanceToCloud(
+        paperStyle: state.value,
+      );
+    } catch (e) {
+      await ErrorLoggingService.logError(
+        errorCode: 'ERRSYS134',
+        errorMessage:
+            'Settings save failed (cloud paper style sync): ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        severity: 'LOW',
+        errorContext: {
+          'operation': 'sync_paper_style',
+          'paper_style': state.value,
+        },
+      );
     }
   }
 

@@ -112,7 +112,6 @@ class _WellnessTrackerScreenState extends ConsumerState<WellnessTrackerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final syncState = ref.watch(syncStatusProvider);
     final entryState = ref.watch(entryProvider);
     final size = MediaQuery.of(context).size;
     final isTablet = size.width > 600;
@@ -149,8 +148,12 @@ class _WellnessTrackerScreenState extends ConsumerState<WellnessTrackerScreen> {
         appBar: AppBar(
           title: const Text('Wellness Tracker'),
           actions: [
-            // Sync status indicator
-            _buildSyncStatusIcon(syncState),
+            Consumer(
+              builder: (context, ref, _) {
+                final syncState = ref.watch(syncStatusProvider);
+                return _buildSyncStatusIcon(syncState);
+              },
+            ),
           ],
         ),
         drawer: const AppDrawer(currentRoute: 'wellness'),

@@ -8,6 +8,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import '../services/error_logging_service.dart';
 import 'native_alarm_manager.dart';
+import 'user_preference_sync_service.dart';
 
 /// Top-level callback functions for AlarmManager
 /// MUST be top-level for Android to access them
@@ -440,6 +441,22 @@ class NotificationService {
     await _notifications.cancelAll();
     if (settings.notificationsEnabled) {
       await scheduleAllNotifications();
+    }
+
+    // Sync to Supabase (best-effort)
+    try {
+      await UserPreferenceSyncService.syncNotificationSettingsToCloud(settings);
+    } catch (e) {
+      await ErrorLoggingService.logError(
+        errorCode: 'ERRSYS134',
+        errorMessage:
+            'Settings save failed (syncNotificationSettingsToCloud call): ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        severity: 'LOW',
+        errorContext: {
+          'operation': 'notification_settings_sync_call',
+        },
+      );
     }
   }
 

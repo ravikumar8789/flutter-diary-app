@@ -9,6 +9,64 @@ import '../widgets/app_drawer.dart';
 import '../providers/user_data_provider.dart';
 import '../providers/grace_system_provider.dart';
 import '../widgets/grace_system_info_card.dart';
+import '../providers/home_summary_provider.dart';
+import '../models/home_summary_models.dart';
+
+// Lightweight shimmer (no external deps)
+class _SkeletonShimmer extends StatefulWidget {
+  final Widget child;
+  const _SkeletonShimmer({required this.child});
+
+  @override
+  State<_SkeletonShimmer> createState() => _SkeletonShimmerState();
+}
+
+class _SkeletonShimmerState extends State<_SkeletonShimmer>
+    with SingleTickerProviderStateMixin {
+  static const Duration _period = Duration(milliseconds: 1100);
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: _period)..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // Extra grey tones for stronger contrast against backgrounds
+    final base = isDark ? Colors.grey.shade800 : Colors.grey.shade300;
+    final highlight = isDark ? Colors.grey.shade600 : Colors.grey.shade100;
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final v = _controller.value; // 0..1
+        final s1 = (v - 0.2).clamp(0.0, 1.0);
+        final s2 = v.clamp(0.0, 1.0);
+        final s3 = (v + 0.2).clamp(0.0, 1.0);
+        return ShaderMask(
+          shaderCallback: (rect) {
+            return LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: [base, highlight, base],
+              stops: [s1 as double, s2 as double, s3 as double],
+            ).createShader(rect);
+          },
+          blendMode: BlendMode.srcATop,
+          child: widget.child,
+        );
+      },
+    );
+  }
+}
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -28,6 +86,55 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadUserData();
     });
+  }
+
+  Widget _buildAiInsightCard(BuildContext context) {
+    const insight =
+        'You’re most consistent mid‑week and reflect deeply on Thursdays. Water intake rises on productive days. Keep the evening wind‑down to sustain streaks.';
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('AI Insights coming soon')),
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.auto_awesome, color: Colors.purple[600]),
+                  const SizedBox(width: 8),
+                  Text(
+                    'AI Insight',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                insight,
+                style: Theme.of(context).textTheme.bodyMedium,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Based on your recent entries',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _loadUserData() async {
@@ -116,7 +223,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               Text(
                                 'Ready to journal today?',
                                 style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(color: Colors.grey[600]),
+                                    ?.copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                    ),
                               ),
                             ],
                           ),
@@ -127,50 +238,76 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
                 const SizedBox(height: 10),
 
-                // Quick stats
+                // Quick stats (two cards)
                 Text(
                   'Quick Stats',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 8),
+                Consumer(
+                  builder: (context, ref, _) {
+                    final summaryAsync = ref.watch(homeSummaryProvider);
+                    return summaryAsync.when(
+                      loading: () => _buildSummarySkeleton(isTablet, count: 2),
+                      error: (e, st) => _buildSummaryError(context),
+                      data: (summary) {
+                        final crossAxisCount = isTablet ? 2 : 2;
+                        return GridView.count(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          crossAxisCount: crossAxisCount,
+                          crossAxisSpacing: 8,
+                          mainAxisSpacing: 8,
+                          childAspectRatio: isTablet ? 1.8 : 1.4,
+                          children: [
+                            _buildStreakCard(
+                              context,
+                              (summary.streak?.current ??
+                                      userStats?['current_streak'] ??
+                                      0)
+                                  as int,
+                            ),
+                            Consumer(
+                              builder: (context, ref, _) {
+                                final grace = ref.watch(graceSystemProvider);
+                                // Derive tasks from piecesToday (0.5 per task)
+                                int tasks = ((grace.piecesToday / 0.5).round())
+                                    .clamp(0, 4);
+                                bool wrote = tasks >= 1;
+                                bool aff = tasks >= 2;
+                                bool grat = tasks >= 3;
+                                int selfCareCount = tasks >= 4 ? 1 : 0;
 
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final crossAxisCount = isTablet ? 4 : 2;
-                    return GridView.count(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      crossAxisCount: crossAxisCount,
-                      crossAxisSpacing: 8,
-                      mainAxisSpacing: 8,
-                      childAspectRatio: isTablet ? 1.5 : 1.4,
-                      children: [
-                        _buildStreakCard(
-                          context,
-                          userStats?['current_streak'] ?? 0,
-                        ),
-                        _buildStatCard(
-                          context,
-                          'Entries',
-                          '${userStats?['entries_count'] ?? 0}',
-                          Icons.edit_note,
-                          Colors.blue,
-                        ),
-                        _buildStatCard(
-                          context,
-                          'Mood',
-                          'Happy',
-                          Icons.sentiment_satisfied_alt,
-                          Colors.green,
-                        ),
-                        _buildStatCard(
-                          context,
-                          'Days Active',
-                          '${userStats?['days_active'] ?? 0}',
-                          Icons.calendar_today,
-                          Colors.purple,
-                        ),
-                      ],
+                                final todaySummary = TodayProgressSummary(
+                                  wroteEntry: wrote,
+                                  filledAffirmations: aff,
+                                  filledGratitude: grat,
+                                  selfCareCompletedCount: selfCareCount,
+                                  gracePiecesEarned: grace.piecesToday,
+                                  waterCups: summary.today?.waterCups ?? 0,
+                                );
+                                return _buildTodayProgressCard(
+                                  context,
+                                  todaySummary,
+                                );
+                              },
+                            ),
+                          ],
+                        );
+                      },
+                    );
+                  },
+                ),
+                const SizedBox(height: 18),
+
+                // AI Insight full-width card
+                Consumer(
+                  builder: (context, ref, _) {
+                    final summaryAsync = ref.watch(homeSummaryProvider);
+                    return summaryAsync.when(
+                      loading: () => _skeletonInsightCard(context),
+                      error: (e, st) => _buildSummaryError(context),
+                      data: (summary) => _buildAiInsightCard(context),
                     );
                   },
                 ),
@@ -249,41 +386,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  Widget _buildStatCard(
-    BuildContext context,
-    String label,
-    String value,
-    IconData icon,
-    Color color,
-  ) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: color, size: 28),
-            const SizedBox(height: 6),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(value, style: Theme.of(context).textTheme.titleLarge),
-            ),
-            const SizedBox(height: 2),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                label,
-                style: Theme.of(context).textTheme.bodyMedium,
-                textAlign: TextAlign.center,
-                maxLines: 1,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // Removed generic stat card helper
 
   Widget _buildStreakCard(BuildContext context, int currentStreak) {
     return Consumer(
@@ -373,13 +476,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           child: Container(
                             padding: const EdgeInsets.all(2),
                             decoration: BoxDecoration(
-                              color: Colors.grey.shade200,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.surfaceVariant,
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Icon(
                               Icons.info_outline,
                               size: 12,
-                              color: Colors.grey.shade600,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                             ),
                           ),
                         ),
@@ -394,6 +501,316 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       },
     );
   }
+
+  Widget _buildSummarySkeleton(bool isTablet, {int count = 2}) {
+    final cross = isTablet ? 2 : 2;
+    final items = <Widget>[
+      _skeletonStreakCard(context),
+      _skeletonTodayCard(context),
+    ];
+    return GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: cross,
+      crossAxisSpacing: 8,
+      mainAxisSpacing: 8,
+      childAspectRatio: isTablet ? 1.8 : 1.4,
+      children: items.take(count).toList(),
+    );
+  }
+
+  Widget _buildSummaryError(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            const Icon(Icons.error_outline, color: Colors.red),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Could not load summary. Pull to refresh later.',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ---- Shimmer skeletons (no external deps) ----
+  Widget _skeletonBase(
+    BuildContext context, {
+    double height = 12,
+    double width = double.infinity,
+    double radius = 8,
+  }) {
+    return _SkeletonShimmer(
+      child: Container(
+        height: height,
+        width: width,
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceVariant,
+          borderRadius: BorderRadius.circular(radius),
+        ),
+      ),
+    );
+  }
+
+  Widget _skeletonStreakCard(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _skeletonBase(context, height: 22, width: 22, radius: 11),
+                const SizedBox(width: 8),
+                _skeletonBase(context, height: 20, width: 40, radius: 6),
+              ],
+            ),
+            const SizedBox(height: 8),
+            _skeletonBase(context, height: 10, width: 50, radius: 6),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _skeletonTodayCard(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _skeletonBase(context, height: 22, width: 22, radius: 11),
+                const SizedBox(width: 8),
+                _skeletonBase(context, height: 18, width: 60, radius: 6),
+              ],
+            ),
+            const SizedBox(height: 8),
+            _skeletonBase(context, height: 12, width: 80, radius: 6),
+            const SizedBox(height: 8),
+            _skeletonBase(context, height: 10, width: 70, radius: 6),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _skeletonInsightCard(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                _skeletonBase(context, height: 20, width: 20, radius: 10),
+                const SizedBox(width: 8),
+                _skeletonBase(context, height: 18, width: 80, radius: 6),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _skeletonBase(
+              context,
+              height: 12,
+              width: double.infinity,
+              radius: 6,
+            ),
+            const SizedBox(height: 8),
+            _skeletonBase(
+              context,
+              height: 12,
+              width: double.infinity,
+              radius: 6,
+            ),
+            const SizedBox(height: 8),
+            _skeletonBase(context, height: 12, width: 180, radius: 6),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Insight skeleton alias (kept for clarity; referenced in code paths as needed)
+  Widget _buildTodayProgressCard(
+    BuildContext context,
+    TodayProgressSummary? today,
+  ) {
+    final tasks = today?.tasksCompletedCount ?? 0;
+    final cups = today?.waterCups ?? 0;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.task_alt,
+                  color: Theme.of(context).colorScheme.primary,
+                  size: 22,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'Today',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '$tasks/4 tasks',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.water_drop, size: 16, color: Colors.blue),
+                const SizedBox(width: 4),
+                Text(
+                  '$cups/8 cups',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Removed WeeklySnapshot card (replaced by AI Insight full-width card)
+
+  // Removed Grace card (merged into Today Progress/AI insight layout)
+  /*Widget _buildGraceCard(BuildContext context, HomeSummary summary) {
+    final freeze = summary.streak?.freezeCredits ?? 0;
+    final totalPieces = summary.streak?.gracePiecesTotal ?? 0.0;
+    final towardNext = (totalPieces % 10);
+    final todayPieces = summary.today?.gracePiecesEarned ?? 0.0;
+
+    final progress = (towardNext / 10).clamp(0.0, 1.0);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.shield, color: Colors.blue[600], size: 22),
+                const SizedBox(width: 6),
+                Text(
+                  'Grace Status',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceVariant,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text('Grace $freeze',
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant)),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceVariant,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text('Today ${todayPieces.toStringAsFixed(1)}/2.0',
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 6,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: LinearProgressIndicator(
+                  value: progress,
+                  backgroundColor:
+                      Theme.of(context).colorScheme.surfaceVariant,
+                  color: Colors.blue[600],
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${towardNext.toStringAsFixed(1)}/10 to next grace day',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Earn 0.5 per completed task',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color:
+                        Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const MorningRitualsScreen(),
+                  ),
+                );
+              },
+              child: const Text('Complete tasks'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }*/
+
+  // Chip helper removed (no longer needed)
 
   void _showStreakDetails(
     BuildContext context,
@@ -451,9 +868,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     const SizedBox(height: 4),
                     Text(
                       subtitle,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodySmall?.copyWith(color: Colors.grey[700]),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),

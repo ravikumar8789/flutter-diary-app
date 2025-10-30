@@ -10,6 +10,8 @@ import '../providers/grace_system_provider.dart';
 import '../widgets/grace_system_info_card.dart';
 import '../providers/auth_provider.dart';
 import '../screens/pin_setup_screen.dart';
+import '../screens/terms_screen.dart';
+import '../screens/privacy_policy_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -374,7 +376,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       leading: const Icon(Icons.description_outlined),
                       trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                       onTap: () {
-                        // TODO: Open terms
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const TermsScreen(),
+                          ),
+                        );
                       },
                     ),
                     ListTile(
@@ -382,7 +388,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       leading: const Icon(Icons.privacy_tip_outlined),
                       trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                       onTap: () {
-                        // TODO: Open privacy policy
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const PrivacyPolicyScreen(),
+                          ),
+                        );
                       },
                     ),
                   ],

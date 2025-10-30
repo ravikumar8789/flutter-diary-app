@@ -19,6 +19,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isPasswordVisible = false;
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -34,6 +35,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   void _login() async {
     if (_formKey.currentState!.validate()) {
+      setState(() => _isLoading = true);
       try {
         // Use Riverpod auth controller instead of direct Supabase calls
         await ref
@@ -123,6 +125,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         } else {
           SnackbarUtils.showGenericError(context, errorCode);
         }
+      } finally {
+        if (mounted) setState(() => _isLoading = false);
       }
     }
   }
@@ -166,147 +170,169 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return Scaffold(
       body: SafeArea(
         child: Center(
-          child: SingleChildScrollView(
-            padding: EdgeInsets.all(isTablet ? 48 : 24),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: isTablet ? 500 : double.infinity,
-              ),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Logo/Icon
-                    Icon(
-                      Icons.auto_stories_outlined,
-                      size: isTablet ? 80 : 64,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Title
-                    Text(
-                      'Welcome Back',
-                      style: Theme.of(context).textTheme.displayLarge,
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-
-                    // Subtitle
-                    Text(
-                      'Sign in to continue your journey',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 48),
-
-                    // Email field
-                    TextFormField(
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: const InputDecoration(
-                        labelText: 'Email',
-                        prefixIcon: Icon(Icons.email_outlined),
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter your email';
-                        }
-                        if (!value.contains('@')) {
-                          return 'Please enter a valid email';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Password field
-                    TextFormField(
-                      controller: _passwordController,
-                      obscureText: !_isPasswordVisible,
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-                        prefixIcon: const Icon(Icons.lock_outline),
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _isPasswordVisible
-                                ? Icons.visibility_off_outlined
-                                : Icons.visibility_outlined,
-                          ),
-                          onPressed: () {
-                            setState(() {
-                              _isPasswordVisible = !_isPasswordVisible;
-                            });
-                          },
-                        ),
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter your password';
-                        }
-                        if (value.length < 6) {
-                          return 'Password must be at least 6 characters';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Forgot password
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton(
-                        onPressed: _forgotPassword,
-                        child: Text(
-                          'Forgot Password?',
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Login button
-                    ElevatedButton(
-                      onPressed: _login,
-                      child: const Text('Sign In'),
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Register link
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          "Don't have an account? ",
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                        TextButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const RegisterScreen(),
-                              ),
-                            );
-                          },
-                          child: Text(
-                            'Sign Up',
-                            style: TextStyle(
+          child: Stack(
+            children: [
+              SingleChildScrollView(
+                padding: EdgeInsets.all(isTablet ? 48 : 24),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: isTablet ? 500 : double.infinity,
+                  ),
+                  child: AbsorbPointer(
+                    absorbing: _isLoading,
+                    child: Opacity(
+                      opacity: _isLoading ? 0.6 : 1,
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // Logo/Icon
+                            Icon(
+                              Icons.auto_stories_outlined,
+                              size: isTablet ? 80 : 64,
                               color: Theme.of(context).colorScheme.primary,
-                              fontWeight: FontWeight.w600,
                             ),
-                          ),
+                            const SizedBox(height: 24),
+
+                            // Title
+                            Text(
+                              'Welcome Back',
+                              style: Theme.of(context).textTheme.displayLarge,
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 8),
+
+                            // Subtitle
+                            Text(
+                              'Sign in to continue your journey',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 48),
+
+                            // Email field
+                            TextFormField(
+                              controller: _emailController,
+                              keyboardType: TextInputType.emailAddress,
+                              decoration: const InputDecoration(
+                                labelText: 'Email',
+                                prefixIcon: Icon(Icons.email_outlined),
+                              ),
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Please enter your email';
+                                }
+                                if (!value.contains('@')) {
+                                  return 'Please enter a valid email';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 16),
+
+                            // Password field
+                            TextFormField(
+                              controller: _passwordController,
+                              obscureText: !_isPasswordVisible,
+                              decoration: InputDecoration(
+                                labelText: 'Password',
+                                prefixIcon: const Icon(Icons.lock_outline),
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _isPasswordVisible
+                                        ? Icons.visibility_off_outlined
+                                        : Icons.visibility_outlined,
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      _isPasswordVisible = !_isPasswordVisible;
+                                    });
+                                  },
+                                ),
+                              ),
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Please enter your password';
+                                }
+                                if (value.length < 6) {
+                                  return 'Password must be at least 6 characters';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 12),
+
+                            // Forgot password
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton(
+                                onPressed: _forgotPassword,
+                                child: Text(
+                                  'Forgot Password?',
+                                  style: TextStyle(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+
+                            // Login button
+                            ElevatedButton(
+                              onPressed: _isLoading ? null : _login,
+                              child: const Text('Sign In'),
+                            ),
+                            const SizedBox(height: 24),
+
+                            // Register link
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  "Don't have an account? ",
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                ),
+                                TextButton(
+                                  onPressed: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            const RegisterScreen(),
+                                      ),
+                                    );
+                                  },
+                                  child: Text(
+                                    'Sign Up',
+                                    style: TextStyle(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.primary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
-                  ],
+                  ),
                 ),
               ),
-            ),
+              if (_isLoading)
+                const Positioned.fill(
+                  child: ColoredBox(
+                    color: Color(0x10000000),
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                ),
+            ],
           ),
         ),
       ),

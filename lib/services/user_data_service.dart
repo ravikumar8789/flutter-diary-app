@@ -129,6 +129,13 @@ class UserDataService {
       // Calculate current streak
       final streak = await _calculateStreak(entries);
 
+      // Persist streak counters to DB so Home can read from streaks table
+      await _persistStreak(
+        userId,
+        streak,
+        lastEntryIso: entries.isNotEmpty ? entries.first['created_at'] : null,
+      );
+
       // Get days since first entry
       final firstEntry = entries.isNotEmpty
           ? DateTime.parse(entries.first['created_at'])
@@ -193,6 +200,62 @@ class UserDataService {
     }
 
     return streak;
+  }
+
+  /// Persist computed streak into public.streaks (current/longest/last_entry_date)
+  static Future<void> _persistStreak(
+    String userId,
+    int computedStreak, {
+    String? lastEntryIso,
+  }) async {
+    try {
+      // Get existing row (if any)
+      final existing = await _supabase
+          .from('streaks')
+          .select('longest')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      final todayDateOnly = DateTime.now().toIso8601String().split('T')[0];
+      final lastDate = lastEntryIso != null
+          ? DateTime.parse(lastEntryIso).toIso8601String().split('T')[0]
+          : todayDateOnly;
+
+      if (existing == null) {
+        await _supabase.from('streaks').insert({
+          'user_id': userId,
+          'current': computedStreak,
+          'longest': computedStreak,
+          'last_entry_date': lastDate,
+          'updated_at': DateTime.now().toIso8601String(),
+        });
+        return;
+      }
+
+      final longest = (existing['longest'] ?? 0) as int;
+      final newLongest = computedStreak > longest ? computedStreak : longest;
+
+      await _supabase
+          .from('streaks')
+          .update({
+            'current': computedStreak,
+            'longest': newLongest,
+            'last_entry_date': lastDate,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('user_id', userId);
+    } catch (e) {
+      await ErrorLoggingService.logLowError(
+        errorCode: 'ERRSYS156',
+        errorMessage: 'Persist streak failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'user_id': userId,
+          'operation': 'persist_streak',
+          'computed': computedStreak,
+        },
+      );
+    }
   }
 
   /// Calculate streak with grace system logic

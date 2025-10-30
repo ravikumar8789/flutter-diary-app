@@ -46,7 +46,7 @@ ERRAUTH013 - register_screen.dart - _register() - Email validation
 ERRAUTH014 - register_screen.dart - _register() - Registration timeout
 ERRAUTH015 - register_screen.dart - _register() - Invalid name
 ERRAUTH016 - register_screen.dart - _register() - Terms not accepted
-ERRAUTH017 - register_screen.dart - _register() - Age verification
+ERRAUTH017 - register_screen.dart - _register() - Rate limit exceeded (signup)
 ERRAUTH018 - register_screen.dart - _register() - Service error
 ERRAUTH019 - register_screen.dart - _register() - Email sending failed
 ERRAUTH020 - register_screen.dart - _register() - Account creation failed

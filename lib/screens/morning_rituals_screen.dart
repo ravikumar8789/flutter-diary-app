@@ -55,16 +55,6 @@ class _MorningRitualsScreenState extends ConsumerState<MorningRitualsScreen>
         _isLoading = true;
       });
 
-      // Clear existing controllers first
-      for (var controller in _affirmationControllers) {
-        controller.dispose();
-      }
-      for (var controller in _priorityControllers) {
-        controller.dispose();
-      }
-      _affirmationControllers.clear();
-      _priorityControllers.clear();
-
       // Load fresh data from database directly (bypass global provider)
       final entryService = EntryService();
       final entryData = await entryService.loadEntryForDate(
@@ -72,44 +62,54 @@ class _MorningRitualsScreenState extends ConsumerState<MorningRitualsScreen>
         currentDate,
       );
 
-      // Populate affirmations - if database has data, use it; otherwise use 2 defaults
-      if (entryData?.affirmations != null &&
-          entryData!.affirmations!.affirmations.isNotEmpty) {
-        // Database has data - use it
-        for (var item in entryData.affirmations!.affirmations) {
-          final controller = TextEditingController(text: item.text);
-          controller.addListener(() => _onAffirmationChanged());
-          _affirmationControllers.add(controller);
-        }
-      } else {
-        // No data - create 2 default empty fields
-        for (int i = 0; i < 2; i++) {
-          final controller = TextEditingController();
-          controller.addListener(() => _onAffirmationChanged());
-          _affirmationControllers.add(controller);
-        }
+      // Populate affirmations with controller pooling (min 2 fields)
+      final List<String> affirmationTexts = (entryData?.affirmations
+                  ?.affirmations
+                  .map((a) => a.text)
+                  .toList() ??
+              [])
+          .toList();
+      while (affirmationTexts.length < 2) {
+        affirmationTexts.add('');
+      }
+      // Ensure we have enough controllers
+      while (_affirmationControllers.length < affirmationTexts.length) {
+        final c = TextEditingController();
+        c.addListener(() => _onAffirmationChanged());
+        _affirmationControllers.add(c);
+      }
+      // Remove excess controllers
+      while (_affirmationControllers.length > affirmationTexts.length) {
+        _affirmationControllers.removeLast().dispose();
+      }
+      // Update texts
+      for (int i = 0; i < affirmationTexts.length; i++) {
+        _affirmationControllers[i].text = affirmationTexts[i];
       }
 
-      // Populate priorities - if database has data, use it; otherwise use 2 defaults
-      if (entryData?.priorities != null &&
-          entryData!.priorities!.priorities.isNotEmpty) {
-        // Database has data - use it
-        for (var item in entryData.priorities!.priorities) {
-          final controller = TextEditingController(text: item.text);
-          controller.addListener(() => _onPriorityChanged());
-          _priorityControllers.add(controller);
-        }
-      } else {
-        // No data - create 2 default empty fields
-        for (int i = 0; i < 2; i++) {
-          final controller = TextEditingController();
-          controller.addListener(() => _onPriorityChanged());
-          _priorityControllers.add(controller);
-        }
+      // Populate priorities with controller pooling (min 2 fields)
+      final List<String> priorityTexts = (entryData?.priorities?.priorities
+                  .map((p) => p.text)
+                  .toList() ??
+              [])
+          .toList();
+      while (priorityTexts.length < 2) {
+        priorityTexts.add('');
+      }
+      while (_priorityControllers.length < priorityTexts.length) {
+        final c = TextEditingController();
+        c.addListener(() => _onPriorityChanged());
+        _priorityControllers.add(c);
+      }
+      while (_priorityControllers.length > priorityTexts.length) {
+        _priorityControllers.removeLast().dispose();
+      }
+      for (int i = 0; i < priorityTexts.length; i++) {
+        _priorityControllers[i].text = priorityTexts[i];
       }
 
       // Load mood from database
-      final moodScore = entryData?.entry?.moodScore;
+      final moodScore = entryData?.entry.moodScore;
       if (moodScore != null) {
         _selectedMood = moodScore;
       }
