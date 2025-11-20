@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart' as supabase;
 import 'error_logging_service.dart';
+import 'timezone_service.dart';
 
 class AuthService {
   static final supabase.SupabaseClient _client =
@@ -59,6 +60,27 @@ class AuthService {
         password: password,
         data: {'display_name': displayName, 'gender': gender},
       );
+
+      // Initialize timezone after successful signup
+      if (response.user != null) {
+        // Don't await - let it run in background
+        TimezoneService.initializeUserTimezone(response.user!.id).catchError((
+          e,
+        ) {
+          // Log but don't block signup
+          ErrorLoggingService.logLowError(
+            errorCode: 'ERRSYS162',
+            errorMessage: 'Timezone init failed after signup: ${e.toString()}',
+            stackTrace: StackTrace.current.toString(),
+            errorContext: {
+              'user_id': response.user!.id,
+              'operation': 'signup_timezone_init',
+            },
+          );
+          return 'UTC'; // Return fallback value
+        });
+      }
+
       return response;
     } catch (e) {
       // Log error

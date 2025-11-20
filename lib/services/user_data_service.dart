@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'error_logging_service.dart';
+import 'timezone_service.dart';
 
 class UserDataService {
   static final SupabaseClient _supabase = Supabase.instance.client;
@@ -69,6 +70,23 @@ class UserDataService {
           .eq('id', userId)
           .single();
 
+      // Check if timezone is null and update it
+      if (response['timezone'] == null) {
+        // Update timezone in background (don't await)
+        TimezoneService.initializeUserTimezone(userId).catchError((e) {
+          ErrorLoggingService.logLowError(
+            errorCode: 'ERRSYS165',
+            errorMessage: 'Timezone update failed for existing user: ${e.toString()}',
+            stackTrace: StackTrace.current.toString(),
+            errorContext: {
+              'user_id': userId,
+              'operation': 'update_existing_user_timezone',
+            },
+          );
+          return 'UTC';
+        });
+      }
+
       return DataResult(success: true, data: response);
     } catch (e) {
       // Log error
@@ -86,11 +104,15 @@ class UserDataService {
             user.email?.split('@')[0] ??
             'User';
 
+        // Get device timezone
+        final timezone = await TimezoneService.getDeviceTimezone();
+
         final newUser = {
           'id': userId,
           'email': user.email,
           'display_name': displayName,
           'avatar_url': null,
+          'timezone': timezone,
           'created_at': DateTime.now().toIso8601String(),
           'updated_at': DateTime.now().toIso8601String(),
         };

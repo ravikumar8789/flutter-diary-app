@@ -11,6 +11,9 @@ import '../providers/grace_system_provider.dart';
 import '../widgets/grace_system_info_card.dart';
 import '../providers/home_summary_provider.dart';
 import '../models/home_summary_models.dart';
+import '../widgets/yesterday_insight_card.dart';
+
+// Import aiInsightProvider from home_summary_provider
 
 // Lightweight shimmer (no external deps)
 class _SkeletonShimmer extends StatefulWidget {
@@ -57,7 +60,7 @@ class _SkeletonShimmerState extends State<_SkeletonShimmer>
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
               colors: [base, highlight, base],
-              stops: [s1 as double, s2 as double, s3 as double],
+              stops: [s1, s2, s3],
             ).createShader(rect);
           },
           blendMode: BlendMode.srcATop,
@@ -89,52 +92,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildAiInsightCard(BuildContext context) {
-    const insight =
-        'You’re most consistent mid‑week and reflect deeply on Thursdays. Water intake rises on productive days. Keep the evening wind‑down to sustain streaks.';
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('AI Insights coming soon')),
-          );
-        },
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.auto_awesome, color: Colors.purple[600]),
-                  const SizedBox(width: 8),
-                  Text(
-                    'AI Insight',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                insight,
-                style: Theme.of(context).textTheme.bodyMedium,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Based on your recent entries',
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    return const YesterdayInsightCard();
   }
 
   Future<void> _loadUserData() async {
@@ -301,16 +259,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 const SizedBox(height: 18),
 
                 // AI Insight full-width card
-                Consumer(
-                  builder: (context, ref, _) {
-                    final summaryAsync = ref.watch(homeSummaryProvider);
-                    return summaryAsync.when(
-                      loading: () => _skeletonInsightCard(context),
-                      error: (e, st) => _buildSummaryError(context),
-                      data: (summary) => _buildAiInsightCard(context),
-                    );
-                  },
-                ),
+                _buildAiInsightCard(context),
                 const SizedBox(height: 18),
 
                 // Journal Categories
@@ -606,43 +555,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  Widget _skeletonInsightCard(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                _skeletonBase(context, height: 20, width: 20, radius: 10),
-                const SizedBox(width: 8),
-                _skeletonBase(context, height: 18, width: 80, radius: 6),
-              ],
-            ),
-            const SizedBox(height: 12),
-            _skeletonBase(
-              context,
-              height: 12,
-              width: double.infinity,
-              radius: 6,
-            ),
-            const SizedBox(height: 8),
-            _skeletonBase(
-              context,
-              height: 12,
-              width: double.infinity,
-              radius: 6,
-            ),
-            const SizedBox(height: 8),
-            _skeletonBase(context, height: 12, width: 180, radius: 6),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // Insight skeleton alias (kept for clarity; referenced in code paths as needed)
   Widget _buildTodayProgressCard(
     BuildContext context,
     TodayProgressSummary? today,

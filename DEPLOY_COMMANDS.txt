@@ -1,0 +1,17 @@
+# Supabase Edge Functions Deployment Commands
+
+# Make sure you're in the project root directory
+cd C:\Users\mrrav\OneDrive\Desktop\diaryapp
+
+# Step 1: Deploy modified ai-analyze-daily function
+supabase functions deploy ai-analyze-daily
+
+# Step 2: Deploy new process-ai-queue function
+supabase functions deploy process-ai-queue
+
+# Step 3: Deploy new scheduled-daily-analysis function
+supabase functions deploy scheduled-daily-analysis
+
+# Verify all functions are deployed
+supabase functions list
+

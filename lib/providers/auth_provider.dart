@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/error_logging_service.dart';
+import '../services/timezone_service.dart';
 
 // FIXED: Add StreamController to force stream updates
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
@@ -75,11 +76,31 @@ class AuthController {
     String? gender,
   }) async {
     try {
-      await Supabase.instance.client.auth.signUp(
+      final response = await Supabase.instance.client.auth.signUp(
         email: email,
         password: password,
         data: {'display_name': displayName, 'gender': gender},
       );
+
+      // Initialize timezone after successful signup
+      if (response.user != null) {
+        // Don't await - let it run in background
+        TimezoneService.initializeUserTimezone(response.user!.id).catchError((
+          e,
+        ) {
+          // Log but don't block signup
+          ErrorLoggingService.logLowError(
+            errorCode: 'ERRSYS162',
+            errorMessage: 'Timezone init failed after signup: ${e.toString()}',
+            stackTrace: StackTrace.current.toString(),
+            errorContext: {
+              'user_id': response.user!.id,
+              'operation': 'signup_timezone_init',
+            },
+          );
+          return 'UTC'; // Return fallback value
+        });
+      }
     } catch (e) {
       // Log error
       await ErrorLoggingService.logHighError(

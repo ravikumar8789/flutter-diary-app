@@ -96,6 +96,8 @@ class EntryService {
       _syncService.syncEntry(updatedEntry).then((success) {
         if (success) {
           _localService.markAsSynced(updatedEntry.id);
+          // AI analysis triggered by database completion check
+          // No immediate trigger needed
         }
       });
     }
@@ -116,9 +118,15 @@ class EntryService {
 
     await _localService.upsertAffirmations(entryAffirmations);
 
-    // Sync to cloud (non-blocking)
+    // Sync to cloud - ensure entry exists first
     if (await _isOnline()) {
-      _syncService.syncAffirmations(entryAffirmations);
+      // FIRST: Ensure entry exists in Supabase
+      final entrySynced = await _syncService.syncEntry(entry);
+      
+      // THEN: Sync affirmations (only if entry sync succeeded)
+      if (entrySynced) {
+        _syncService.syncAffirmations(entryAffirmations);
+      }
     }
   }
 
@@ -137,9 +145,15 @@ class EntryService {
 
     await _localService.upsertPriorities(entryPriorities);
 
-    // Sync to cloud (non-blocking)
+    // Sync to cloud - ensure entry exists first
     if (await _isOnline()) {
-      _syncService.syncPriorities(entryPriorities);
+      // FIRST: Ensure entry exists in Supabase
+      final entrySynced = await _syncService.syncEntry(entry);
+      
+      // THEN: Sync priorities (only if entry sync succeeded)
+      if (entrySynced) {
+        _syncService.syncPriorities(entryPriorities);
+      }
     }
   }
 
@@ -164,9 +178,15 @@ class EntryService {
 
     await _localService.upsertMeals(entryMeals);
 
-    // Sync to cloud (non-blocking)
+    // Sync to cloud - ensure entry exists first
     if (await _isOnline()) {
-      _syncService.syncMeals(entryMeals);
+      // FIRST: Ensure entry exists in Supabase
+      final entrySynced = await _syncService.syncEntry(entry);
+      
+      // THEN: Sync meals (only if entry sync succeeded)
+      if (entrySynced) {
+        _syncService.syncMeals(entryMeals);
+      }
     }
   }
 
@@ -185,9 +205,15 @@ class EntryService {
 
     await _localService.upsertGratitude(entryGratitude);
 
-    // Sync to cloud (non-blocking)
+    // Sync to cloud - ensure entry exists first
     if (await _isOnline()) {
-      _syncService.syncGratitude(entryGratitude);
+      // FIRST: Ensure entry exists in Supabase
+      final entrySynced = await _syncService.syncEntry(entry);
+      
+      // THEN: Sync gratitude (only if entry sync succeeded)
+      if (entrySynced) {
+        _syncService.syncGratitude(entryGratitude);
+      }
     }
   }
 
@@ -215,9 +241,15 @@ class EntryService {
 
     await _localService.upsertSelfCare(entrySelfCare);
 
-    // Sync to cloud (non-blocking)
+    // Sync to cloud - ensure entry exists first
     if (await _isOnline()) {
-      _syncService.syncSelfCare(entrySelfCare);
+      // FIRST: Ensure entry exists in Supabase
+      final entrySynced = await _syncService.syncEntry(entry);
+      
+      // THEN: Sync self-care (only if entry sync succeeded)
+      if (entrySynced) {
+        _syncService.syncSelfCare(entrySelfCare);
+      }
     }
   }
 
@@ -238,9 +270,15 @@ class EntryService {
 
     await _localService.upsertShowerBath(entryShowerBath);
 
-    // Sync to cloud (non-blocking)
+    // Sync to cloud - ensure entry exists first
     if (await _isOnline()) {
-      _syncService.syncShowerBath(entryShowerBath);
+      // FIRST: Ensure entry exists in Supabase
+      final entrySynced = await _syncService.syncEntry(entry);
+      
+      // THEN: Sync shower/bath (only if entry sync succeeded)
+      if (entrySynced) {
+        _syncService.syncShowerBath(entryShowerBath);
+      }
     }
   }
 
@@ -259,9 +297,15 @@ class EntryService {
 
     await _localService.upsertTomorrowNotes(entryTomorrowNotes);
 
-    // Sync to cloud (non-blocking)
+    // Sync to cloud - ensure entry exists first
     if (await _isOnline()) {
-      _syncService.syncTomorrowNotes(entryTomorrowNotes);
+      // FIRST: Ensure entry exists in Supabase
+      final entrySynced = await _syncService.syncEntry(entry);
+      
+      // THEN: Sync tomorrow notes (only if entry sync succeeded)
+      if (entrySynced) {
+        _syncService.syncTomorrowNotes(entryTomorrowNotes);
+      }
     }
   }
 

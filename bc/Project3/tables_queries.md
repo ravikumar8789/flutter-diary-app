@@ -187,24 +187,53 @@ CREATE TABLE public.entry_insights (
   cost_tokens_completion integer DEFAULT 0,
   status text DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'success'::text, 'error'::text])),
   error_message text,
+  -- AI-specific columns
+  ai_generated boolean DEFAULT false,
+  analysis_type text CHECK (analysis_type IN ('daily', 'weekly', 'monthly')),
+  insight_text text,
+  key_takeaways jsonb DEFAULT '[]'::jsonb,
+  action_items jsonb DEFAULT '[]'::jsonb,
   CONSTRAINT entry_insights_pkey PRIMARY KEY (id),
   CONSTRAINT entry_insights_entry_id_fkey FOREIGN KEY (entry_id) REFERENCES public.entries(id)
 );
+
+-- Indexes for entry_insights
+CREATE INDEX idx_entry_insights_entry_id ON public.entry_insights(entry_id);
+CREATE INDEX idx_entry_insights_status ON public.entry_insights(status);
 
 -- Weekly insights
 CREATE TABLE public.weekly_insights (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL,
   week_start date NOT NULL,
+  week_end date,
   mood_avg numeric,
   cups_avg numeric,
   self_care_rate numeric,
   top_topics ARRAY,
   highlights text,
   generated_at timestamp with time zone DEFAULT now(),
+  -- AI-specific columns
+  ai_generated boolean DEFAULT true,
+  mood_trend text CHECK (mood_trend IN ('improving', 'declining', 'stable', 'volatile')),
+  key_insights text[],
+  recommendations text[],
+  habit_correlations jsonb DEFAULT '{}'::jsonb,
+  consistency_score numeric(3,2),
+  entries_count integer DEFAULT 0,
+  word_count_total integer DEFAULT 0,
+  model_version text,
+  cost_tokens_prompt integer DEFAULT 0,
+  cost_tokens_completion integer DEFAULT 0,
+  status text DEFAULT 'pending' CHECK (status IN ('pending', 'success', 'error')),
+  error_message text,
   CONSTRAINT weekly_insights_pkey PRIMARY KEY (id),
-  CONSTRAINT weekly_insights_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
+  CONSTRAINT weekly_insights_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
+  CONSTRAINT unique_user_week UNIQUE (user_id, week_start)
 );
+
+-- Indexes for weekly_insights
+CREATE INDEX idx_weekly_insights_user_week ON public.weekly_insights(user_id, week_start);
 
 -- Analytics events
 CREATE TABLE public.analytics_events (
@@ -215,6 +244,58 @@ CREATE TABLE public.analytics_events (
   props jsonb DEFAULT '{}'::jsonb,
   CONSTRAINT analytics_events_pkey PRIMARY KEY (id),
   CONSTRAINT analytics_events_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
+);
+
+-- =============================
+-- AI REQUESTS LOG
+-- =============================
+
+-- AI requests log (tracks all AI API calls for cost monitoring and debugging)
+CREATE TABLE public.ai_requests_log (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id uuid NOT NULL REFERENCES public.users(id),
+  entry_id uuid REFERENCES public.entries(id), -- NULL for weekly/monthly
+  analysis_type text NOT NULL CHECK (analysis_type IN ('daily', 'weekly', 'monthly', 'affirmation')),
+  prompt_tokens integer NOT NULL DEFAULT 0,
+  completion_tokens integer NOT NULL DEFAULT 0,
+  total_tokens integer NOT NULL DEFAULT 0,
+  cost_usd numeric(10,6) NOT NULL DEFAULT 0, -- Cost in USD
+  model_used text DEFAULT 'gpt-4o-mini',
+  status text DEFAULT 'success' CHECK (status IN ('success', 'error', 'rate_limited', 'timeout')),
+  error_message text,
+  request_duration_ms integer,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Indexes for ai_requests_log
+CREATE INDEX idx_ai_requests_user_id ON public.ai_requests_log(user_id);
+CREATE INDEX idx_ai_requests_created_at ON public.ai_requests_log(created_at);
+CREATE INDEX idx_ai_requests_analysis_type ON public.ai_requests_log(analysis_type);
+CREATE INDEX idx_ai_requests_entry_id ON public.ai_requests_log(entry_id);
+
+-- RLS for ai_requests_log
+ALTER TABLE public.ai_requests_log ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own AI request logs" ON public.ai_requests_log
+  FOR SELECT USING (auth.uid() = user_id);
+
+-- =============================
+-- AI PROMPT TEMPLATES
+-- =============================
+
+-- AI prompt templates (store prompt templates for easy updates without code changes)
+CREATE TABLE public.ai_prompt_templates (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  template_name text UNIQUE NOT NULL,
+  system_prompt text NOT NULL,
+  user_prompt_template text NOT NULL, -- With {placeholders}
+  temperature numeric(3,2) DEFAULT 0.7,
+  max_tokens integer DEFAULT 500,
+  analysis_type text NOT NULL CHECK (analysis_type IN ('daily', 'weekly', 'monthly', 'affirmation')),
+  version integer DEFAULT 1,
+  is_active boolean DEFAULT true,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
 );
 
 -- =============================
@@ -583,6 +664,68 @@ CREATE TRIGGER trigger_update_grace_pieces
   BEFORE INSERT OR UPDATE ON public.habits_daily
   FOR EACH ROW
   EXECUTE FUNCTION update_grace_pieces_on_task_completion();
+
+-- =============================
+-- AI PROMPT TEMPLATES DEFAULT DATA
+-- =============================
+
+-- Default daily analysis template
+INSERT INTO public.ai_prompt_templates (
+  template_name, system_prompt, user_prompt_template, 
+  temperature, max_tokens, analysis_type, is_active
+) VALUES (
+  'daily_analysis_v1',
+  'You are a compassionate and insightful AI wellness assistant. Analyze diary entries with emotional intelligence and provide helpful, actionable insights. Always be supportive and non-judgmental. Keep responses concise (2-3 sentences maximum).',
+  'User''s Recent Context:
+- Current mood: {mood_score}/5
+- Recent topics: {recent_topics}
+- Self-care completion: {self_care_summary}
+- Last 3 days mood trend: {mood_trend}
+
+Today''s Entry: "{diary_text}"
+
+Please provide a brief insight (2-3 sentences) that:
+1. Acknowledges the emotional tone
+2. Offers one supportive observation
+3. Gently suggests one actionable next step (if applicable)
+
+Keep it warm, specific, and under 100 words.',
+  0.7,
+  200,
+  'daily',
+  true
+) ON CONFLICT (template_name) DO NOTHING;
+
+-- Default weekly analysis template
+INSERT INTO public.ai_prompt_templates (
+  template_name, system_prompt, user_prompt_template,
+  temperature, max_tokens, analysis_type, is_active
+) VALUES (
+  'weekly_analysis_v1',
+  'You are an analytical but compassionate AI assistant that identifies patterns in personal journal data. Provide insightful weekly summaries that help users understand their emotional patterns and habit impacts. Focus on patterns and practical insights.',
+  'Weekly Data Summary:
+- Date range: {week_start} to {week_end}
+- Entries written: {entries_count}/7
+- Average mood: {avg_mood}/5
+- Mood scores: {mood_scores}
+- Self-care completion: {self_care_summary}
+- Key topics mentioned: {weekly_topics}
+
+Habit Analysis:
+{habit_correlations}
+
+Please provide:
+1. Weekly mood pattern (1-2 sentences)
+2. Top 2 positive influences on mood
+3. One area for potential improvement
+4. Two specific, actionable recommendations for next week
+
+Keep it concise and actionable (under 150 words total).',
+  0.5,
+  400,
+  'weekly',
+  true
+) ON CONFLICT (template_name) DO NOTHING;
 
 -- =============================
 -- END OF SCHEMA

@@ -1,11 +1,14 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/home_summary_models.dart';
 import '../services/error_logging_service.dart';
+import 'ai_service.dart';
 
 class HomeSummaryService {
   final SupabaseClient _supabase;
-  HomeSummaryService({SupabaseClient? client})
-      : _supabase = client ?? Supabase.instance.client;
+  final AIService _aiService;
+  HomeSummaryService({SupabaseClient? client, AIService? aiService})
+      : _supabase = client ?? Supabase.instance.client,
+        _aiService = aiService ?? AIService(client: client);
 
   Future<HomeSummary> fetchAll(String userId) async {
     try {
@@ -266,6 +269,27 @@ class HomeSummaryService {
         },
       );
       rethrow;
+    }
+  }
+
+  /// Fetch AI insight with fallback ladder
+  /// DEPRECATED: Use yesterdayInsightProvider instead
+  Future<String?> fetchAiInsight(String userId) async {
+    try {
+      final insight = await _aiService.getYesterdayInsight(userId);
+      return insight?.insightText;
+    } catch (e) {
+      await ErrorLoggingService.logError(
+        errorCode: 'ERRSYS156',
+        errorMessage: 'AI insight fetch failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        severity: 'LOW',
+        errorContext: {
+          'operation': 'home_summary_fetchAiInsight',
+          'user_id': userId,
+        },
+      );
+      return null;
     }
   }
 }

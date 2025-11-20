@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/notification_service.dart';
 import '../widgets/app_drawer.dart';
-import 'package:timezone/timezone.dart' as tz;
 
 class NotificationTestScreen extends ConsumerStatefulWidget {
   const NotificationTestScreen({super.key});
