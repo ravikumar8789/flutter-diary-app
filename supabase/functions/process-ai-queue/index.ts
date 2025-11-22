@@ -88,8 +88,8 @@ serve(async (req) => {
           yesterdayInUserTz = new Date(yesterdayData).toISOString().split('T')[0]
         }
 
-        // Only process if target_date matches yesterday in user's timezone
-        if (job.target_date === yesterdayInUserTz) {
+        // Process if target_date is yesterday or older in user's timezone
+        if (job.target_date <= yesterdayInUserTz) {
           queueItems.push(job)
         } else {
           console.log(`[PROCESS] ⏭️ Skipping job ${job.id}: target_date=${job.target_date}, user_yesterday=${yesterdayInUserTz}, timezone=${userTimezone}`)
