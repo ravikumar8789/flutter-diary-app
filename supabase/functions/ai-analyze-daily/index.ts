@@ -248,8 +248,16 @@ Please provide a structured response in JSON format:
   "what_went_well": "1-1.5 lines about one specific positive thing from the data",
   "progress_area": "1-1.5 lines about what's lacking and one actionable step to improve",
   "self_care_balance": "1-1.5 lines about self-care activities and what could be added",
-  "emotional_pattern": "1-1.5 lines about emotional patterns observed from diary and mood"
+  "emotional_pattern": "1-1.5 lines about emotional patterns observed from diary and mood",
+  "tags": ["word1", "word2", "word3", "word4"]
 }
+
+IMPORTANT for tags:
+- Provide exactly 3-4 single-word tags (no phrases, no spaces)
+- Tags should be the most relevant keywords/themes from the entry
+- Examples: "gratitude", "exercise", "work", "family", "anxiety", "growth"
+- Use lowercase, no punctuation
+- Focus on main themes, emotions, activities, or topics mentioned
 
 Keep it warm, specific, and actionable. Each point should reference actual data from the entry. Return ONLY valid JSON, no additional text.`
 
@@ -300,7 +308,8 @@ Keep it warm, specific, and actionable. Each point should reference actual data 
         what_went_well: null,
         progress_area: null,
         self_care_balance: null,
-        emotional_pattern: null
+        emotional_pattern: null,
+        tags: [] // Empty array if parsing fails
       }
     }
 
@@ -310,6 +319,21 @@ Keep it warm, specific, and actionable. Each point should reference actual data 
       progress_area: insightData.progress_area || null,
       self_care_balance: insightData.self_care_balance || null,
       emotional_pattern: insightData.emotional_pattern || null
+    }
+
+    // Extract and validate tags
+    let tags: string[] = []
+    if (insightData.tags && Array.isArray(insightData.tags)) {
+      tags = insightData.tags
+        .filter((tag: any) => typeof tag === 'string' && tag.trim().length > 0)
+        .map((tag: string) => tag.trim().toLowerCase())
+        .filter((tag: string) => tag.length <= 20) // Max 20 chars per tag
+        .slice(0, 4) // Limit to 4 tags max
+    }
+
+    // Fallback: If AI doesn't provide tags, leave empty array (don't fail)
+    if (tags.length === 0) {
+      console.warn('No tags provided by AI, continuing without tags')
     }
 
     // 9. Calculate cost (GPT-4o-mini pricing: $0.15/1M input, $0.60/1M output)
@@ -323,6 +347,7 @@ Keep it warm, specific, and actionable. Each point should reference actual data 
         insight_text: insightText,  // Main 3-4 sentence insight
         summary: insightText,  // Keep for backward compatibility
         insight_details: insightDetails,  // NEW: Structured sub-points
+        topics: tags,  // NEW: AI-generated tags
         ai_generated: true,
         analysis_type: 'daily',
         status: 'success',
