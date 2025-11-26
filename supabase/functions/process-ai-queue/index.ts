@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { logAIError } from '../_shared/ai_error_logger.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -10,6 +11,8 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
+
+  const startTime = Date.now()
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
@@ -55,6 +58,20 @@ serve(async (req) => {
 
     if (usersError) {
       console.error(`[PROCESS] Error fetching user timezones:`, usersError)
+      const duration = Date.now() - startTime
+      
+      await logAIError(supabase, usersError, {
+        userId: undefined,
+        entryId: null,
+        analysisType: 'daily',
+        errorCode: 'ERRQUEUE_PROCESS_002',
+        requestBody: { user_ids: userIds },
+        requestDurationMs: duration,
+        edgeFunctionName: 'process-ai-queue',
+        failedAtStep: 'fetch_users',
+        errorDetails: { error: usersError.message, code: usersError.code }
+      })
+      
       throw usersError
     }
 
@@ -96,6 +113,29 @@ serve(async (req) => {
         }
       } catch (error) {
         console.error(`[PROCESS] Error checking timezone for job ${job.id}:`, error)
+        
+        // Log timezone calculation error
+        try {
+          await logAIError(supabase, error, {
+            userId: job.user_id,
+            entryId: job.entry_id || null,
+            analysisType: job.analysis_type || 'daily',
+            errorCode: 'ERRQUEUE_PROCESS_005',
+            requestBody: { 
+              job_id: job.id,
+              job_type: job.analysis_type,
+              user_timezone: userTimezone,
+              target_date: job.target_date
+            },
+            requestDurationMs: Date.now() - startTime,
+            edgeFunctionName: 'process-ai-queue',
+            failedAtStep: 'timezone_check',
+            errorDetails: { job_id: job.id, user_timezone: userTimezone }
+          })
+        } catch (logError) {
+          console.error('Failed to log timezone error:', logError)
+        }
+        
         // Skip this job on error
       }
     }
@@ -248,6 +288,50 @@ serve(async (req) => {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
         console.log(`[PROCESS] ❌ Job ${job.id} failed: ${errorMessage}`)
         const newAttempts = job.attempts + 1
+        const jobDuration = Date.now() - startTime
+
+        // Determine error code and failed step
+        let errorCode = 'ERRQUEUE_PROCESS_003'
+        let failedStep = 'job_processing'
+        
+        if (errorMessage.includes('invoke') || errorMessage.includes('Function')) {
+          errorCode = 'ERRQUEUE_PROCESS_004'
+          failedStep = 'invoke_function'
+        } else if (errorMessage.includes('Missing') || errorMessage.includes('required')) {
+          errorCode = 'ERRQUEUE_PROCESS_003'
+          failedStep = 'validate_job'
+        }
+
+        // Log job processing error
+        try {
+          await logAIError(supabase, error, {
+            userId: job.user_id,
+            entryId: job.entry_id || null,
+            analysisType: job.analysis_type || 'daily',
+            errorCode: errorCode,
+            requestBody: {
+              job_id: job.id,
+              job_type: job.analysis_type,
+              target_date: job.target_date,
+              entry_id: job.entry_id,
+              week_start: job.week_start,
+              month_start: job.month_start,
+              attempts: job.attempts
+            },
+            requestDurationMs: jobDuration,
+            retryAttempt: job.attempts,
+            edgeFunctionName: 'process-ai-queue',
+            failedAtStep: failedStep,
+            errorDetails: {
+              job_id: job.id,
+              analysis_type: job.analysis_type,
+              max_attempts: job.max_attempts,
+              current_attempts: newAttempts
+            }
+          })
+        } catch (logError) {
+          console.error('Failed to log job error:', logError)
+        }
 
         if (newAttempts >= job.max_attempts) {
           // Max retries reached, mark as failed
@@ -296,10 +380,49 @@ serve(async (req) => {
     )
 
   } catch (error) {
+    const duration = Date.now() - startTime
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+
+    // Log overall function error
+    try {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+      const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      
+      if (supabaseUrl && supabaseServiceKey) {
+        const supabase = createClient(supabaseUrl, supabaseServiceKey)
+        
+        // Determine error code
+        let errorCode = 'ERRQUEUE_PROCESS_002'
+        let failedStep = 'unknown'
+        
+        if (errorMessage.includes('Missing Supabase')) {
+          errorCode = 'ERRQUEUE_PROCESS_001'
+          failedStep = 'config_check'
+        } else if (errorMessage.includes('queue') || errorMessage.includes('fetch')) {
+          errorCode = 'ERRQUEUE_PROCESS_002'
+          failedStep = 'fetch_queue'
+        }
+        
+        await logAIError(supabase, error, {
+          userId: undefined,
+          entryId: null,
+          analysisType: 'daily',
+          errorCode: errorCode,
+          requestBody: null,
+          requestDurationMs: duration,
+          edgeFunctionName: 'process-ai-queue',
+          failedAtStep: failedStep,
+          errorDetails: { error_message: errorMessage }
+        })
+      }
+    } catch (logError) {
+      console.error('Failed to log function error:', logError)
+    }
+
     return new Response(
       JSON.stringify({
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: errorMessage
       }),
       {
         status: 500,

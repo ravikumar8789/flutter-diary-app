@@ -1,0 +1,24 @@
+# Error Logging Deployment Commands
+# ===================================
+# These commands deploy the updated functions with error logging
+
+# Step 1: Deploy populate-analysis-queue function
+supabase functions deploy populate-analysis-queue
+
+# Step 2: Deploy process-ai-queue function
+supabase functions deploy process-ai-queue
+
+# Step 3: Verify deployment (optional - check logs)
+supabase functions logs populate-analysis-queue --limit 10
+supabase functions logs process-ai-queue --limit 10
+
+# Step 4: Test error logging (optional - trigger manually via dashboard)
+# Go to Supabase Dashboard > Edge Functions > Test the functions
+
+# ===================================
+# What was added:
+# - Error logging to ai_errors_log table for both functions
+# - Error codes: ERRQUEUE_POPULATE_001-003, ERRQUEUE_PROCESS_001-005
+# - Comprehensive error context (duration, retry attempts, job details)
+# - No changes to existing functionality - only added logging
+
