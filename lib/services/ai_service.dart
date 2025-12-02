@@ -280,7 +280,7 @@ class AIService {
           .lte('entries.entry_date', endStr)
           .eq('status', 'success')
           .not('insight_text', 'is', null)
-          .order('entries.entry_date', ascending: true);
+          .order('processed_at', ascending: true);
 
       if (response.isEmpty) {
         return [];

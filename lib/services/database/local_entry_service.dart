@@ -265,6 +265,66 @@ class LocalEntryService {
     return results.map((json) => Entry.fromJson(json)).toList();
   }
 
+  /// Get mood map for date range (lightweight query - only date + mood)
+  /// Used for calendar view to show mood indicators without loading full entries
+  Future<Map<String, int>> getMoodMapForDateRange(
+    String userId,
+    DateTime start,
+    DateTime end,
+  ) async {
+    try {
+      final db = await _dbManager.database;
+      final startStr = DateFormat('yyyy-MM-dd').format(start);
+      final endStr = DateFormat('yyyy-MM-dd').format(end);
+
+      // Query only entry_date and mood_score columns (lightweight)
+      final results = await db.query(
+        'entries',
+        columns: ['entry_date', 'mood_score'],
+        where: 'user_id = ? AND entry_date BETWEEN ? AND ?',
+        whereArgs: [userId, startStr, endStr],
+      );
+
+      final moodMap = <String, int>{};
+      for (var row in results) {
+        final dateStr = row['entry_date'] as String;
+        // Default mood to 3 if NULL (consistent with card display)
+        final moodScore = row['mood_score'] as int? ?? 3;
+        moodMap[dateStr] = moodScore;
+      }
+
+      return moodMap;
+    } catch (e) {
+      // Return empty map on error (graceful degradation)
+      return {};
+    }
+  }
+
+  /// Get distinct months that have entries (for Load More button)
+  /// Returns list of month keys (e.g., ["2024-01", "2024-02"]) sorted oldest first
+  Future<List<String>> getMonthsWithEntries(String userId) async {
+    try {
+      final db = await _dbManager.database;
+
+      // Query distinct months using SQLite date functions
+      final results = await db.rawQuery('''
+        SELECT DISTINCT 
+          strftime('%Y-%m', entry_date) as month_key
+        FROM entries
+        WHERE user_id = ?
+        ORDER BY month_key ASC
+      ''', [userId]);
+
+      return results
+          .map((row) => row['month_key'] as String?)
+          .whereType<String>()
+          .toList();
+    } catch (e) {
+      // Return empty list on error (graceful degradation)
+      return [];
+    }
+  }
+
   // Mark entry as synced
   Future<void> markAsSynced(String entryId) async {
     final db = await _dbManager.database;
