@@ -94,18 +94,38 @@ serve(async (req) => {
 
     // Calculate self-care rates
     const entryIds = entries.map(e => e.id)
-    const { data: selfCareData } = await supabase
-      .from('entry_self_care')
-      .select('*')
-      .in('entry_id', entryIds)
+    
+    // Fetch all related data in parallel for performance
+    const [
+      selfCareResult,
+      mealsResult,
+      dailyInsightsResult,
+      affirmationsResult,
+      gratitudeResult,
+      prioritiesResult,
+      tomorrowNotesResult,
+      showerBathResult
+    ] = await Promise.all([
+      supabase.from('entry_self_care').select('*').in('entry_id', entryIds),
+      supabase.from('entry_meals').select('entry_id, water_cups, breakfast, lunch, dinner').in('entry_id', entryIds),
+      supabase.from('entry_insights').select('entry_id, insight_text, sentiment_label, insight_details, topics').in('entry_id', entryIds).eq('status', 'success').order('processed_at', { ascending: true }),
+      supabase.from('entry_affirmations').select('entry_id, affirmations').in('entry_id', entryIds),
+      supabase.from('entry_gratitude').select('entry_id, grateful_items').in('entry_id', entryIds),
+      supabase.from('entry_priorities').select('entry_id, priorities').in('entry_id', entryIds),
+      supabase.from('entry_tomorrow_notes').select('entry_id, tomorrow_notes').in('entry_id', entryIds),
+      supabase.from('entry_shower_bath').select('entry_id, took_shower, shower_note').in('entry_id', entryIds)
+    ])
 
-    const selfCareRates = calculateSelfCareRate(selfCareData || [], entries.length)
+    const selfCareData = selfCareResult.data || []
+    const mealsData = mealsResult.data || []
+    const dailyInsights = dailyInsightsResult.data || []
+    const affirmationsData = affirmationsResult.data || []
+    const gratitudeData = gratitudeResult.data || []
+    const prioritiesData = prioritiesResult.data || []
+    const tomorrowNotesData = tomorrowNotesResult.data || []
+    const showerBathData = showerBathResult.data || []
 
-    // Calculate water cups average
-    const { data: mealsData } = await supabase
-      .from('entry_meals')
-      .select('water_cups')
-      .in('entry_id', entryIds)
+    const selfCareRates = calculateSelfCareRate(selfCareData, entries.length)
 
     const cupsTotal = mealsData?.reduce((sum, m) => sum + (m.water_cups || 0), 0) || 0
     const cupsAvg = entries.length > 0 ? (cupsTotal / entries.length).toFixed(1) : '0'
@@ -119,13 +139,157 @@ serve(async (req) => {
     // Word count total
     const wordCountTotal = entries.reduce((sum, e) => sum + (e.diary_text?.split(/\s+/).length || 0), 0)
 
-    // 4. Build habit correlations (simple)
-    const habitCorrelations = {
-      mood_vs_entries: avgMood ? parseFloat(avgMood) : null,
-      self_care_completion: selfCareRates.completionRate
+    // 4. Build enhanced habit correlations
+    const gratitudeDays = gratitudeData.filter(g => 
+      g.grateful_items && Array.isArray(g.grateful_items) && g.grateful_items.length > 0
+    ).length
+
+    const affirmationDays = affirmationsData.filter(a => 
+      a.affirmations && Array.isArray(a.affirmations) && a.affirmations.length > 0
+    ).length
+
+    const sentimentCounts = {
+      positive: dailyInsights.filter(i => i.sentiment_label === 'positive').length,
+      neutral: dailyInsights.filter(i => i.sentiment_label === 'neutral').length,
+      negative: dailyInsights.filter(i => i.sentiment_label === 'negative').length
     }
 
-    // 5. Get prompt template
+    const habitCorrelations = {
+      mood_vs_entries: avgMood ? parseFloat(avgMood) : null,
+      self_care_completion: selfCareRates.completionRate,
+      mood_vs_gratitude: gratitudeDays > 0 ? (avgMood ? parseFloat(avgMood) : null) : null,
+      mood_vs_affirmations: affirmationDays > 0 ? (avgMood ? parseFloat(avgMood) : null) : null,
+      sentiment_distribution: sentimentCounts,
+      consistency_impact: consistencyScore > 70 ? 'high' : consistencyScore > 50 ? 'medium' : 'low'
+    }
+
+    // 5. Build full data strings (NO TRUNCATION - Premium Edition)
+    
+    // Build full daily insights with all details
+    let dailyInsightsFull = ''
+    if (dailyInsights.length > 0) {
+      dailyInsightsFull = dailyInsights.map((insight, index) => {
+        const entry = entries.find(e => e.id === insight.entry_id)
+        const date = entry ? entry.entry_date : 'Unknown'
+        const sentiment = insight.sentiment_label || 'neutral'
+        const text = insight.insight_text || 'No insight available'
+        const details = insight.insight_details || {}
+        const topics = insight.topics || []
+        
+        return `Day ${index + 1} (${date}, ${sentiment}):
+Main Insight: ${text}
+What Went Well: ${details.what_went_well || 'N/A'}
+Progress Area: ${details.progress_area || 'N/A'}
+Self-Care Balance: ${details.self_care_balance || 'N/A'}
+Emotional Pattern: ${details.emotional_pattern || 'N/A'}
+Topics: ${topics.join(', ') || 'None'}`
+      }).join('\n\n---\n\n')
+    } else {
+      dailyInsightsFull = 'No daily insights available for this week'
+    }
+
+    // Build full affirmations (all items)
+    let affirmationsFull = ''
+    if (affirmationsData.length > 0) {
+      affirmationsFull = affirmationsData.map((item) => {
+        const entry = entries.find(e => e.id === item.entry_id)
+        const date = entry ? entry.entry_date : 'Unknown'
+        const affirmations = item.affirmations || []
+        return `Day ${entries.findIndex(e => e.id === item.entry_id) + 1} (${date}): ${affirmations.length > 0 ? affirmations.join(' | ') : 'None'}`
+      }).join('\n')
+    } else {
+      affirmationsFull = 'No affirmations recorded this week'
+    }
+
+    // Build full gratitude (all items)
+    let gratitudeFull = ''
+    if (gratitudeData.length > 0) {
+      gratitudeFull = gratitudeData.map((item) => {
+        const entry = entries.find(e => e.id === item.entry_id)
+        const date = entry ? entry.entry_date : 'Unknown'
+        const items = item.grateful_items || []
+        return `Day ${entries.findIndex(e => e.id === item.entry_id) + 1} (${date}): ${items.length > 0 ? items.join(' | ') : 'None'}`
+      }).join('\n')
+    } else {
+      gratitudeFull = 'No gratitude items recorded this week'
+    }
+
+    // Build full priorities (all items)
+    let prioritiesFull = ''
+    if (prioritiesData.length > 0) {
+      prioritiesFull = prioritiesData.map((item) => {
+        const entry = entries.find(e => e.id === item.entry_id)
+        const date = entry ? entry.entry_date : 'Unknown'
+        const priorities = item.priorities || []
+        return `Day ${entries.findIndex(e => e.id === item.entry_id) + 1} (${date}): ${priorities.length > 0 ? priorities.join(' | ') : 'None'}`
+      }).join('\n')
+    } else {
+      prioritiesFull = 'No priorities recorded this week'
+    }
+
+    // Build full diary text (NO TRUNCATION)
+    const diaryFull = entries.map((entry, index) => {
+      const text = entry.diary_text || 'No diary text'
+      return `Day ${index + 1} (${entry.entry_date}, Mood: ${entry.mood_score || 'N/A'}):
+${text}`
+    }).join('\n\n---\n\n')
+
+    // Build full self-care details
+    let selfCareFull = ''
+    if (selfCareData.length > 0) {
+      const selfCareActivities = ['exercise', 'meditation', 'reading', 'hobby', 'social', 'nature', 'music', 'rest', 'nutrition', 'hygiene']
+      selfCareFull = selfCareData.map((item) => {
+        const entry = entries.find(e => e.id === item.entry_id)
+        const date = entry ? entry.entry_date : 'Unknown'
+        const activities = selfCareActivities.filter(activity => item[activity] === true)
+        return `Day ${entries.findIndex(e => e.id === item.entry_id) + 1} (${date}): ${activities.length > 0 ? activities.join(', ') : 'None'}`
+      }).join('\n')
+    } else {
+      selfCareFull = 'No self-care activities recorded this week'
+    }
+
+    // Build full meal details
+    let mealsFull = ''
+    if (mealsData.length > 0) {
+      mealsFull = mealsData.map((item) => {
+        const entry = entries.find(e => e.id === item.entry_id)
+        const date = entry ? entry.entry_date : 'Unknown'
+        return `Day ${entries.findIndex(e => e.id === item.entry_id) + 1} (${date}):
+Breakfast: ${item.breakfast || 'Not logged'}
+Lunch: ${item.lunch || 'Not logged'}
+Dinner: ${item.dinner || 'Not logged'}
+Water: ${item.water_cups || 0} cups`
+      }).join('\n\n')
+    } else {
+      mealsFull = 'No meal data recorded this week'
+    }
+
+    // Build tomorrow notes
+    let tomorrowNotesFull = ''
+    if (tomorrowNotesData.length > 0) {
+      tomorrowNotesFull = tomorrowNotesData.map((item) => {
+        const entry = entries.find(e => e.id === item.entry_id)
+        const date = entry ? entry.entry_date : 'Unknown'
+        const notes = item.tomorrow_notes || ''
+        return `Day ${entries.findIndex(e => e.id === item.entry_id) + 1} (${date}): ${notes || 'No notes'}`
+      }).join('\n\n')
+    } else {
+      tomorrowNotesFull = 'No tomorrow notes recorded this week'
+    }
+
+    // Build shower/bath details
+    let showerBathFull = ''
+    if (showerBathData.length > 0) {
+      showerBathFull = showerBathData.map((item) => {
+        const entry = entries.find(e => e.id === item.entry_id)
+        const date = entry ? entry.entry_date : 'Unknown'
+        return `Day ${entries.findIndex(e => e.id === item.entry_id) + 1} (${date}): ${item.took_shower ? 'Yes' : 'No'}${item.shower_note ? ` - ${item.shower_note}` : ''}`
+      }).join('\n')
+    } else {
+      showerBathFull = 'No shower/bath data recorded this week'
+    }
+
+    // 6. Get prompt template
     let template = null
     const { data: templateData } = await supabase
       .from('ai_prompt_templates')
@@ -137,35 +301,96 @@ serve(async (req) => {
     if (templateData) {
       template = templateData
     } else {
-      // Fallback template
+      // Fallback template (Premium Edition - Full Data)
       template = {
-        system_prompt: 'You are an analytical but compassionate AI assistant that identifies patterns in personal journal data. Provide insightful weekly summaries that help users understand their emotional patterns and habit impacts. Focus on patterns and practical insights.',
-        user_prompt_template: `Weekly Data Summary:
-- Date range: {week_start} to {week_end}
-- Entries written: {entries_count}/7
-- Average mood: {avg_mood}/5
-- Mood scores: {mood_scores}
-- Self-care completion: {self_care_summary}
-- Key topics mentioned: {weekly_topics}
+        system_prompt: 'You are an analytical but compassionate AI assistant that identifies patterns in personal journal data. You analyze weekly journal entries, daily insights, affirmations, gratitude, and priorities to provide deep, personalized insights. Focus on:\n\n1. Emotional patterns and mood trends\n2. Habit correlations and their impact on well-being\n3. Recurring themes in affirmations, gratitude, and priorities\n4. Actionable recommendations based on patterns\n5. Celebrating progress and identifying growth areas\n\nBe empathetic, specific, and actionable. Use the daily insights and structured data to provide context-rich analysis.',
+        user_prompt_template: `WEEKLY ANALYSIS REQUEST (PREMIUM)
+Date Range: {week_start} to {week_end}
+Entries Written: {entries_count}/7 days
 
-Habit Analysis:
+=== MOOD & SENTIMENT ANALYSIS ===
+Average Mood: {avg_mood}/5
+Mood Scores (Day by Day): {mood_scores}
+Mood Trend: {mood_trend}
+Sentiment Distribution: {sentiment_distribution}
+  - Positive days: {positive_count}
+  - Neutral days: {neutral_count}
+  - Negative days: {negative_count}
+
+=== COMPLETE DAILY INSIGHTS (ALL DETAILS) ===
+{daily_insights_full}
+
+=== COMPLETE DIARY ENTRIES (FULL TEXT) ===
+{diary_full}
+
+=== COMPLETE STRUCTURED DATA (ALL ITEMS) ===
+AFFIRMATIONS (All Items):
+{affirmations_full}
+
+GRATITUDE (All Items):
+{gratitude_full}
+
+PRIORITIES (All Items):
+{priorities_full}
+
+=== COMPLETE SELF-CARE DETAILS ===
+{self_care_full}
+
+=== COMPLETE MEAL DETAILS ===
+{meals_full}
+
+=== TOMORROW NOTES ===
+{tomorrow_notes_full}
+
+=== SHOWER/BATH DETAILS ===
+{shower_bath_full}
+
+=== HABIT & CONSISTENCY SUMMARY ===
+Self-Care Completion Rate: {self_care_summary}
+Water Intake Average: {cups_avg} cups/day
+Consistency Score: {consistency_score}%
+Entries Count: {entries_count}/7
+
+=== HABIT CORRELATIONS ===
 {habit_correlations}
 
-Please provide:
-1. Weekly mood pattern (1-2 sentences)
-2. Top 2 positive influences on mood
-3. One area for potential improvement
-4. Two specific, actionable recommendations for next week
+=== TOPICS MENTIONED ===
+{weekly_topics}
 
-Keep it concise and actionable (under 150 words total).`,
+=== ANALYSIS REQUEST ===
+Based on the above COMPREHENSIVE and COMPLETE data, provide a deep, personalized weekly analysis:
+
+1. **Weekly Highlights** (3-4 sentences):
+   - Overall mood pattern and emotional journey across the week
+   - Key positive moments, achievements, or breakthroughs
+   - Notable patterns, trends, or shifts in behavior/emotions
+   - Connection between different aspects (mood, habits, gratitude, etc.)
+
+2. **Key Insights** (4-5 specific insights):
+   - Insight 1: Deep emotional pattern or mood correlation
+   - Insight 2: Habit correlation and its impact on well-being
+   - Insight 3: Theme or pattern from affirmations/gratitude/priorities
+   - Insight 4: Connection between self-care activities and mood/energy
+   - Insight 5: Pattern in meal habits, planning (tomorrow notes), or routines
+
+3. **Recommendations** (3 actionable items):
+   - Recommendation 1: Specific action based on strongest pattern identified
+   - Recommendation 2: Habit to strengthen or area to focus based on correlations
+   - Recommendation 3: Area for growth or improvement based on complete data analysis
+
+Format your response clearly with sections labeled "Highlights:", "Key Insights:", and "Recommendations:". 
+- Be specific and reference actual data from the entries (dates, specific activities, patterns)
+- Connect different aspects of the data (e.g., "On days when you practiced gratitude, your mood was higher")
+- Be empathetic, encouraging, and actionable
+- Total response should be 300-400 words (premium depth)`,
         temperature: 0.5,
-        max_tokens: 400
+        max_tokens: 800
       }
     }
 
-    // 6. Build final prompt
+    // 7. Build final prompt (Premium Edition - All Variables)
     const moodScoresStr = moodScores.length > 0 
-      ? moodScores.map((m, i) => `${i + 1}: ${m}`).join(', ')
+      ? moodScores.map((m, i) => `Day ${i + 1}: ${m}`).join(', ')
       : 'No mood data'
     
     const selfCareSummary = `Completed ${selfCareRates.completedDays}/7 days with self-care activities`
@@ -176,11 +401,27 @@ Keep it concise and actionable (under 150 words total).`,
       .replace('{entries_count}', entries.length.toString())
       .replace('{avg_mood}', avgMood || 'N/A')
       .replace('{mood_scores}', moodScoresStr)
+      .replace('{mood_trend}', moodTrend)
+      .replace('{sentiment_distribution}', JSON.stringify(sentimentCounts))
+      .replace('{positive_count}', sentimentCounts.positive.toString())
+      .replace('{neutral_count}', sentimentCounts.neutral.toString())
+      .replace('{negative_count}', sentimentCounts.negative.toString())
+      .replace('{daily_insights_full}', dailyInsightsFull)
+      .replace('{diary_full}', diaryFull)
+      .replace('{affirmations_full}', affirmationsFull)
+      .replace('{gratitude_full}', gratitudeFull)
+      .replace('{priorities_full}', prioritiesFull)
+      .replace('{self_care_full}', selfCareFull)
+      .replace('{meals_full}', mealsFull)
+      .replace('{tomorrow_notes_full}', tomorrowNotesFull)
+      .replace('{shower_bath_full}', showerBathFull)
       .replace('{self_care_summary}', selfCareSummary)
+      .replace('{cups_avg}', cupsAvg)
+      .replace('{consistency_score}', consistencyScore.toFixed(2))
       .replace('{weekly_topics}', topics.slice(0, 10).join(', ') || 'None')
       .replace('{habit_correlations}', JSON.stringify(habitCorrelations))
 
-    // 7. Call OpenAI
+    // 8. Call OpenAI
     const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -194,7 +435,7 @@ Keep it concise and actionable (under 150 words total).`,
           { role: 'user', content: userPrompt }
         ],
         temperature: template.temperature || 0.5,
-        max_tokens: template.max_tokens || 400
+        max_tokens: template.max_tokens || 800
       })
     })
 
@@ -215,13 +456,13 @@ Keep it concise and actionable (under 150 words total).`,
       throw new Error('Empty response from OpenAI')
     }
 
-    // 8. Parse insight into structured format
+    // 9. Parse insight into structured format
     const { insights, recommendations } = parseWeeklyInsight(insightText)
 
-    // 9. Calculate cost
+    // 10. Calculate cost
     const costUsd = (tokensUsed.prompt / 1000000) * 0.15 + (tokensUsed.completion / 1000000) * 0.60
 
-    // 10. Save to weekly_insights
+    // 11. Save to weekly_insights
     const { error: insightError } = await supabase
       .from('weekly_insights')
       .upsert({
@@ -254,7 +495,7 @@ Keep it concise and actionable (under 150 words total).`,
       console.error('Error saving weekly insight:', insightError)
     }
 
-    // 11. Log request
+    // 12. Log request
     const duration = Date.now() - startTime
     await supabase
       .from('ai_requests_log')
@@ -412,46 +653,60 @@ function extractTopics(entries: any[]): string[] {
     .map(([word]) => word)
 }
 
-// Helper: Parse weekly insight text into structured format
+// Helper: Parse weekly insight text into structured format (Premium Edition - 4-5 insights, 3 recommendations)
 function parseWeeklyInsight(text: string): { insights: string[]; recommendations: string[] } {
   const insights: string[] = []
   const recommendations: string[] = []
   
-  // Simple parsing - look for numbered lists or bullet points
+  // Look for section headers
   const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0)
   
-  let currentSection = 'insights'
-  for (const line of lines) {
-    // Check if it's a recommendation section
-    if (line.toLowerCase().includes('recommend') || line.toLowerCase().includes('suggest')) {
+  let currentSection = 'highlights'
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    
+    // Detect section headers
+    if (line.toLowerCase().includes('highlights:')) {
+      currentSection = 'highlights'
+      continue
+    }
+    if (line.toLowerCase().includes('key insights:') || line.toLowerCase().includes('insights:')) {
+      currentSection = 'insights'
+      continue
+    }
+    if (line.toLowerCase().includes('recommendations:') || line.toLowerCase().includes('recommend')) {
       currentSection = 'recommendations'
       continue
     }
     
     // Extract numbered or bulleted items
-    const match = line.match(/^[0-9]+\.\s*(.+)|^[-•]\s*(.+)|^(.+)/)
+    const match = line.match(/^[0-9]+\.\s*(.+)|^[-•]\s*(.+)|^Insight\s+[0-9]+:\s*(.+)|^Recommendation\s+[0-9]+:\s*(.+)|^(.+)/)
     if (match) {
-      const item = match[1] || match[2] || match[3]
+      const item = match[1] || match[2] || match[3] || match[4] || match[5]
       if (item && item.length > 10) {
         if (currentSection === 'recommendations') {
           recommendations.push(item)
-        } else {
+        } else if (currentSection === 'insights') {
           insights.push(item)
         }
+        // Skip highlights section items
       }
     }
   }
   
-  // Fallback: if no structured data, use first 2 sentences as insights, last 2 as recommendations
+  // Fallback: if no structured data, try to extract from paragraphs
   if (insights.length === 0 && recommendations.length === 0) {
-    const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 10)
-    insights.push(...sentences.slice(0, 2))
-    recommendations.push(...sentences.slice(-2))
+    const paragraphs = text.split(/\n\n+/).filter(p => p.trim().length > 20)
+    // First few paragraphs as insights, last as recommendations
+    insights.push(...paragraphs.slice(0, 4).map(p => p.trim()))
+    if (paragraphs.length > 4) {
+      recommendations.push(...paragraphs.slice(-3).map(p => p.trim()))
+    }
   }
   
   return {
-    insights: insights.slice(0, 3),
-    recommendations: recommendations.slice(0, 2)
+    insights: insights.slice(0, 5), // Premium: up to 5 insights
+    recommendations: recommendations.slice(0, 3) // Premium: up to 3 recommendations
   }
 }
 

@@ -1,16 +1,18 @@
-# Weekly AI Analysis Enhancement Plan
+# Weekly AI Analysis Enhancement Plan (Premium Edition)
 
 ## 📋 Executive Summary
 
-**Objective:** Enhance weekly AI analysis to provide deeper, more engaging insights by including daily insights, structured user data, and better habit correlations.
+**Objective:** Enhance weekly AI analysis to provide **maximum depth and context** for **PREMIUM USERS ONLY** by including **complete, untruncated data** from all sources - full diary texts, complete daily insights, all structured data, and comprehensive habit details.
+
+**IMPORTANT:** Weekly and monthly analysis are **PREMIUM-ONLY** features. Non-premium users do NOT have access to these features.
 
 **Current Issue:** Weekly analysis only uses aggregated statistics (mood avg, counts, topics), missing rich context from daily insights and structured data (affirmations, gratitude, priorities).
 
-**Solution:** Fetch and include daily insights summaries, structured data, and enhanced habit correlations in the AI prompt for better analysis.
+**Solution:** Fetch and include **ALL data in full** - complete diary texts, full daily insights with all details, complete structured data arrays, full self-care activities, complete meal details, tomorrow notes, and shower/bath information. **NO TRUNCATION** - premium users get the best analysis possible.
 
-**Impact:** Minimal - Only Edge Function changes, no app/database changes needed.
+**Impact:** Minimal - Only Edge Function changes, no app/database changes needed. **Premium access control must be implemented at app level.**
 
-**Cost:** ~$0.0005 per weekly analysis (0.05 cents) - Very affordable.
+**Cost:** ~$0.002 per weekly analysis (0.2 cents) - Premium feature, cost justified by value.
 
 ---
 
@@ -37,15 +39,24 @@
 - Mood scores list
 - Self-care completion summary
 - Key topics (keywords only)
-- Basic habit correlations (mood vs entries, self-care completion)
+- Limited habit correlations (mood vs entries, self-care completion)
 
 ### **Current Limitations:**
 - ❌ No daily insights summaries (missing AI-generated daily insights)
 - ❌ No structured data (affirmations, gratitude, priorities)
 - ❌ No diary text context (only keywords extracted)
-- ❌ Limited habit correlations (only 2 basic correlations)
+- ❌ Limited habit correlations (only 2 correlations)
 - ❌ No sentiment patterns from daily insights
 - ❌ No emotional pattern analysis
+- ❌ No tomorrow notes context
+- ❌ No shower/bath details
+- ❌ No meal details (only water cups)
+- ❌ No specific self-care activity details
+
+### **Premium Access Requirement:**
+- ✅ **Weekly analysis:** Premium users only
+- ✅ **Monthly analysis:** Premium users only
+- ✅ **Daily insights:** Available to all users (free feature)
 
 ---
 
@@ -93,13 +104,29 @@ const { data: prioritiesData } = await supabase
   .in('entry_id', entryIds)
 ```
 
-**e) Meals (Expand):**
+**e) Meals (Full Details):**
 ```typescript
 // Change from: .select('water_cups')
 // To:
 const { data: mealsData } = await supabase
   .from('entry_meals')
   .select('entry_id, water_cups, breakfast, lunch, dinner')
+  .in('entry_id', entryIds)
+```
+
+**f) Tomorrow Notes:**
+```typescript
+const { data: tomorrowNotesData } = await supabase
+  .from('entry_tomorrow_notes')
+  .select('entry_id, tomorrow_notes')
+  .in('entry_id', entryIds)
+```
+
+**g) Shower/Bath:**
+```typescript
+const { data: showerBathData } = await supabase
+  .from('entry_shower_bath')
+  .select('entry_id, took_shower, shower_note')
   .in('entry_id', entryIds)
 ```
 
@@ -143,43 +170,151 @@ const habitCorrelations = {
 }
 ```
 
-#### **3. Enhanced Prompt Building:**
+#### **3. Enhanced Prompt Building (FULL DATA - NO TRUNCATION):**
 
-**Build Daily Insights Summary:**
+**Build Full Daily Insights (Complete):**
 ```typescript
-// Build daily insights summary
-let dailyInsightsSummary = ''
+// Build complete daily insights with all details
+let dailyInsightsFull = ''
 if (dailyInsights && dailyInsights.length > 0) {
-  dailyInsightsSummary = dailyInsights.map((insight, index) => {
+  dailyInsightsFull = dailyInsights.map((insight, index) => {
     const entry = entries.find(e => e.id === insight.entry_id)
     const date = entry ? entry.entry_date : 'Unknown'
     const sentiment = insight.sentiment_label || 'neutral'
     const text = insight.insight_text || 'No insight available'
-    return `Day ${index + 1} (${date}, ${sentiment}): ${text.substring(0, 100)}${text.length > 100 ? '...' : ''}`
-  }).join('\n')
+    const details = insight.insight_details || {}
+    const topics = insight.topics || []
+    
+    return `Day ${index + 1} (${date}, ${sentiment}):
+Main Insight: ${text}
+What Went Well: ${details.what_went_well || 'N/A'}
+Progress Area: ${details.progress_area || 'N/A'}
+Self-Care Balance: ${details.self_care_balance || 'N/A'}
+Emotional Pattern: ${details.emotional_pattern || 'N/A'}
+Topics: ${topics.join(', ') || 'None'}`
+  }).join('\n\n---\n\n')
 } else {
-  dailyInsightsSummary = 'No daily insights available for this week'
+  dailyInsightsFull = 'No daily insights available for this week'
 }
 ```
 
-**Build Structured Data Summary:**
+**Build Full Structured Data (Complete Arrays):**
 ```typescript
-// Extract common themes from affirmations
-const affirmationThemes = extractThemes(affirmationsData, 'affirmations')
-// Extract common themes from gratitude
-const gratitudeThemes = extractThemes(gratitudeData, 'grateful_items')
-// Extract common priorities
-const priorityThemes = extractThemes(prioritiesData, 'priorities')
+// Build complete affirmations (all items, not just themes)
+let affirmationsFull = ''
+if (affirmationsData && affirmationsData.length > 0) {
+  affirmationsFull = affirmationsData.map((item, index) => {
+    const entry = entries.find(e => e.id === item.entry_id)
+    const date = entry ? entry.entry_date : 'Unknown'
+    const affirmations = item.affirmations || []
+    return `Day ${index + 1} (${date}): ${affirmations.length > 0 ? affirmations.join(' | ') : 'None'}`
+  }).join('\n')
+} else {
+  affirmationsFull = 'No affirmations recorded this week'
+}
+
+// Build complete gratitude (all items)
+let gratitudeFull = ''
+if (gratitudeData && gratitudeData.length > 0) {
+  gratitudeFull = gratitudeData.map((item, index) => {
+    const entry = entries.find(e => e.id === item.entry_id)
+    const date = entry ? entry.entry_date : 'Unknown'
+    const items = item.grateful_items || []
+    return `Day ${index + 1} (${date}): ${items.length > 0 ? items.join(' | ') : 'None'}`
+  }).join('\n')
+} else {
+  gratitudeFull = 'No gratitude items recorded this week'
+}
+
+// Build complete priorities (all items)
+let prioritiesFull = ''
+if (prioritiesData && prioritiesData.length > 0) {
+  prioritiesFull = prioritiesData.map((item, index) => {
+    const entry = entries.find(e => e.id === item.entry_id)
+    const date = entry ? entry.entry_date : 'Unknown'
+    const priorities = item.priorities || []
+    return `Day ${index + 1} (${date}): ${priorities.length > 0 ? priorities.join(' | ') : 'None'}`
+  }).join('\n')
+} else {
+  prioritiesFull = 'No priorities recorded this week'
+}
 ```
 
-**Build Diary Excerpts (Truncated):**
+**Build Full Diary Text (NO TRUNCATION):**
 ```typescript
-// Build diary excerpts (first 100 words per entry)
-const diaryExcerpts = entries.map((entry, index) => {
+// Build complete diary entries (full text, no truncation)
+const diaryFull = entries.map((entry, index) => {
   const text = entry.diary_text || 'No diary text'
-  const truncated = text.split(/\s+/).slice(0, 100).join(' ')
-  return `Day ${index + 1} (${entry.entry_date}, Mood: ${entry.mood_score || 'N/A'}): ${truncated}${text.split(/\s+/).length > 100 ? '...' : ''}`
-}).join('\n\n')
+  return `Day ${index + 1} (${entry.entry_date}, Mood: ${entry.mood_score || 'N/A'}):
+${text}`
+}).join('\n\n---\n\n')
+```
+
+**Build Full Self-Care Details:**
+```typescript
+// Build detailed self-care activities per day
+let selfCareFull = ''
+if (selfCareData && selfCareData.length > 0) {
+  const selfCareActivities = ['exercise', 'meditation', 'reading', 'hobby', 'social', 'nature', 'music', 'rest', 'nutrition', 'hygiene']
+  selfCareFull = selfCareData.map((item, index) => {
+    const entry = entries.find(e => e.id === item.entry_id)
+    const date = entry ? entry.entry_date : 'Unknown'
+    const activities = selfCareActivities.filter(activity => item[activity] === true)
+    return `Day ${index + 1} (${date}): ${activities.length > 0 ? activities.join(', ') : 'None'}`
+  }).join('\n')
+} else {
+  selfCareFull = 'No self-care activities recorded this week'
+}
+```
+
+**Build Full Meals Details:**
+```typescript
+// Build complete meal details
+let mealsFull = ''
+if (mealsData && mealsData.length > 0) {
+  mealsFull = mealsData.map((item, index) => {
+    const entry = entries.find(e => e.id === item.entry_id)
+    const date = entry ? entry.entry_date : 'Unknown'
+    return `Day ${index + 1} (${date}):
+Breakfast: ${item.breakfast || 'Not logged'}
+Lunch: ${item.lunch || 'Not logged'}
+Dinner: ${item.dinner || 'Not logged'}
+Water: ${item.water_cups || 0} cups`
+  }).join('\n\n')
+} else {
+  mealsFull = 'No meal data recorded this week'
+}
+```
+
+**Build Tomorrow Notes:**
+```typescript
+// Build tomorrow notes
+let tomorrowNotesFull = ''
+if (tomorrowNotesData && tomorrowNotesData.length > 0) {
+  tomorrowNotesFull = tomorrowNotesData.map((item, index) => {
+    const entry = entries.find(e => e.id === item.entry_id)
+    const date = entry ? entry.entry_date : 'Unknown'
+    const notes = item.tomorrow_notes || ''
+    return `Day ${index + 1} (${date}): ${notes || 'No notes'}`
+  }).join('\n\n')
+} else {
+  tomorrowNotesFull = 'No tomorrow notes recorded this week'
+}
+```
+
+**Build Shower/Bath Details:**
+```typescript
+// Build shower/bath details
+let showerBathFull = ''
+if (showerBathData && showerBathData.length > 0) {
+  showerBathFull = showerBathData.map((item, index) => {
+    const entry = entries.find(e => e.id === item.entry_id)
+    const date = entry ? entry.entry_date : 'Unknown'
+    return `Day ${index + 1} (${date}): ${item.took_shower ? 'Yes' : 'No'}${item.shower_note ? ` - ${item.shower_note}` : ''}`
+  }).join('\n')
+} else {
+  showerBathFull = 'No shower/bath data recorded this week'
+}
 ```
 
 ---
@@ -199,9 +334,9 @@ You are an analytical but compassionate AI assistant that identifies patterns in
 Be empathetic, specific, and actionable. Use the daily insights and structured data to provide context-rich analysis.
 ```
 
-### **User Prompt Template:**
+### **User Prompt Template (PREMIUM - FULL DATA):**
 ```
-WEEKLY ANALYSIS REQUEST
+WEEKLY ANALYSIS REQUEST (PREMIUM)
 Date Range: {week_start} to {week_end}
 Entries Written: {entries_count}/7 days
 
@@ -214,20 +349,37 @@ Sentiment Distribution: {sentiment_distribution}
   - Neutral days: {neutral_count}
   - Negative days: {negative_count}
 
-=== DAILY INSIGHTS SUMMARY ===
-{daily_insights_summary}
+=== COMPLETE DAILY INSIGHTS (ALL DETAILS) ===
+{daily_insights_full}
 
-=== DIARY ENTRIES EXCERPTS ===
-{diary_excerpts}
+=== COMPLETE DIARY ENTRIES (FULL TEXT) ===
+{diary_full}
 
-=== STRUCTURED DATA PATTERNS ===
-Affirmations Themes: {affirmation_themes}
-Gratitude Focus: {gratitude_themes}
-Recurring Priorities: {priority_themes}
+=== COMPLETE STRUCTURED DATA (ALL ITEMS) ===
+AFFIRMATIONS (All Items):
+{affirmations_full}
 
-=== HABIT & CONSISTENCY ===
-Self-Care Completion: {self_care_summary}
-Water Intake: {cups_avg} cups/day average
+GRATITUDE (All Items):
+{gratitude_full}
+
+PRIORITIES (All Items):
+{priorities_full}
+
+=== COMPLETE SELF-CARE DETAILS ===
+{self_care_full}
+
+=== COMPLETE MEAL DETAILS ===
+{meals_full}
+
+=== TOMORROW NOTES ===
+{tomorrow_notes_full}
+
+=== SHOWER/BATH DETAILS ===
+{shower_bath_full}
+
+=== HABIT & CONSISTENCY SUMMARY ===
+Self-Care Completion Rate: {self_care_summary}
+Water Intake Average: {cups_avg} cups/day
 Consistency Score: {consistency_score}%
 Entries Count: {entries_count}/7
 
@@ -238,23 +390,31 @@ Entries Count: {entries_count}/7
 {weekly_topics}
 
 === ANALYSIS REQUEST ===
-Based on the above comprehensive data, provide:
+Based on the above COMPREHENSIVE and COMPLETE data, provide a deep, personalized weekly analysis:
 
-1. **Weekly Highlights** (2-3 sentences):
-   - Overall mood pattern and emotional journey
-   - Key positive moments or achievements
-   - Notable patterns or trends
+1. **Weekly Highlights** (3-4 sentences):
+   - Overall mood pattern and emotional journey across the week
+   - Key positive moments, achievements, or breakthroughs
+   - Notable patterns, trends, or shifts in behavior/emotions
+   - Connection between different aspects (mood, habits, gratitude, etc.)
 
-2. **Key Insights** (3 specific insights):
-   - Insight 1: Pattern related to mood/emotions
-   - Insight 2: Habit correlation or impact
-   - Insight 3: Theme from affirmations/gratitude/priorities
+2. **Key Insights** (4-5 specific insights):
+   - Insight 1: Deep emotional pattern or mood correlation
+   - Insight 2: Habit correlation and its impact on well-being
+   - Insight 3: Theme or pattern from affirmations/gratitude/priorities
+   - Insight 4: Connection between self-care activities and mood/energy
+   - Insight 5: Pattern in meal habits, planning (tomorrow notes), or routines
 
-3. **Recommendations** (2 actionable items):
-   - Recommendation 1: Specific action based on patterns
-   - Recommendation 2: Habit to strengthen or area to focus
+3. **Recommendations** (3 actionable items):
+   - Recommendation 1: Specific action based on strongest pattern identified
+   - Recommendation 2: Habit to strengthen or area to focus based on correlations
+   - Recommendation 3: Area for growth or improvement based on complete data analysis
 
-Format your response clearly with sections labeled "Highlights:", "Key Insights:", and "Recommendations:". Keep insights specific and recommendations actionable. Total response should be 200-250 words.
+Format your response clearly with sections labeled "Highlights:", "Key Insights:", and "Recommendations:". 
+- Be specific and reference actual data from the entries (dates, specific activities, patterns)
+- Connect different aspects of the data (e.g., "On days when you practiced gratitude, your mood was higher")
+- Be empathetic, encouraging, and actionable
+- Total response should be 300-400 words (premium depth)
 ```
 
 ### **Prompt Variables to Replace:**
@@ -266,11 +426,15 @@ Format your response clearly with sections labeled "Highlights:", "Key Insights:
 - `{mood_trend}` - improving/declining/stable/volatile
 - `{sentiment_distribution}` - JSON with positive/neutral/negative counts
 - `{positive_count}`, `{neutral_count}`, `{negative_count}` - Sentiment counts
-- `{daily_insights_summary}` - Formatted daily insights (7 insights)
-- `{diary_excerpts}` - Truncated diary text excerpts (7 entries)
-- `{affirmation_themes}` - Common themes from affirmations
-- `{gratitude_themes}` - Common themes from gratitude
-- `{priority_themes}` - Common priorities mentioned
+- `{daily_insights_full}` - **COMPLETE** daily insights with all details (full text, insight_details, topics)
+- `{diary_full}` - **COMPLETE** diary entries (full text, NO truncation)
+- `{affirmations_full}` - **COMPLETE** affirmations (all items, day by day)
+- `{gratitude_full}` - **COMPLETE** gratitude items (all items, day by day)
+- `{priorities_full}` - **COMPLETE** priorities (all items, day by day)
+- `{self_care_full}` - **COMPLETE** self-care details (specific activities per day)
+- `{meals_full}` - **COMPLETE** meal details (breakfast, lunch, dinner, water per day)
+- `{tomorrow_notes_full}` - **COMPLETE** tomorrow notes (all notes, day by day)
+- `{shower_bath_full}` - **COMPLETE** shower/bath details (per day)
 - `{self_care_summary}` - Self-care completion summary
 - `{cups_avg}` - Average water cups
 - `{consistency_score}` - Consistency percentage
@@ -299,24 +463,54 @@ Format your response clearly with sections labeled "Highlights:", "Key Insights:
 - Change from `.select('water_cups')` to `.select('entry_id, water_cups, breakfast, lunch, dinner')`
 - Update variable name from `mealsData` to maintain consistency
 
+**Step 1.4: Add Tomorrow Notes Fetch**
+- Add fetch for `entry_tomorrow_notes` table
+- Select: `entry_id, tomorrow_notes`
+- Use `.in('entry_id', entryIds)`
+
+**Step 1.5: Add Shower/Bath Fetch**
+- Add fetch for `entry_shower_bath` table
+- Select: `entry_id, took_shower, shower_note`
+- Use `.in('entry_id', entryIds)`
+
 ### **Phase 2: Data Processing (Lines 86-126)**
 
-**Step 2.1: Build Daily Insights Summary**
+**Step 2.1: Build Full Daily Insights (NO TRUNCATION)**
 - Create helper function or inline code
-- Format: "Day X (date, sentiment): insight_text (truncated to 100 chars)"
+- Format: "Day X (date, sentiment): FULL insight_text + ALL insight_details"
+- Include: main insight, what_went_well, progress_area, self_care_balance, emotional_pattern, topics
 - Handle missing insights gracefully
 
-**Step 2.2: Extract Themes from Structured Data**
-- Create `extractThemes()` helper function
-- Extract common words/phrases from affirmations, gratitude, priorities
-- Return top 3-5 themes per category
+**Step 2.2: Build Full Structured Data (ALL ITEMS)**
+- Build complete affirmations list (all items, day by day)
+- Build complete gratitude list (all items, day by day)
+- Build complete priorities list (all items, day by day)
+- NO theme extraction - include ALL items
 
-**Step 2.3: Build Diary Excerpts**
-- Truncate each diary text to 100 words
-- Format: "Day X (date, Mood: X): text..."
-- Handle empty diary text
+**Step 2.3: Build Full Diary Text (NO TRUNCATION)**
+- Include COMPLETE diary text for each entry
+- Format: "Day X (date, Mood: X): FULL TEXT"
+- Handle empty diary text gracefully
 
-**Step 2.4: Enhanced Habit Correlations**
+**Step 2.4: Build Full Self-Care Details**
+- List specific activities per day (exercise, meditation, reading, etc.)
+- Format: "Day X (date): activity1, activity2, activity3"
+- Show which activities were done each day
+
+**Step 2.5: Build Full Meals Details**
+- Include breakfast, lunch, dinner text for each day
+- Include water cups per day
+- Format: "Day X (date): Breakfast: ..., Lunch: ..., Dinner: ..., Water: X cups"
+
+**Step 2.6: Build Tomorrow Notes**
+- Include complete tomorrow_notes text for each day
+- Format: "Day X (date): [full notes text]"
+
+**Step 2.7: Build Shower/Bath Details**
+- Include took_shower boolean and shower_note text
+- Format: "Day X (date): Yes/No [note if available]"
+
+**Step 2.8: Enhanced Habit Correlations**
 - Calculate gratitude days count
 - Calculate affirmations days count
 - Calculate sentiment distribution
@@ -330,55 +524,37 @@ Format your response clearly with sections labeled "Highlights:", "Key Insights:
 
 **Step 3.2: Update Prompt Building**
 - Add replacements for all new variables:
-  - `{daily_insights_summary}`
-  - `{diary_excerpts}`
-  - `{affirmation_themes}`
-  - `{gratitude_themes}`
-  - `{priority_themes}`
+  - `{daily_insights_full}` - Complete daily insights with all details
+  - `{diary_full}` - Complete diary text (no truncation)
+  - `{affirmations_full}` - Complete affirmations (all items)
+  - `{gratitude_full}` - Complete gratitude (all items)
+  - `{priorities_full}` - Complete priorities (all items)
+  - `{self_care_full}` - Complete self-care details (specific activities)
+  - `{meals_full}` - Complete meal details (breakfast, lunch, dinner, water)
+  - `{tomorrow_notes_full}` - Complete tomorrow notes
+  - `{shower_bath_full}` - Complete shower/bath details
   - `{sentiment_distribution}`
   - `{positive_count}`, `{neutral_count}`, `{negative_count}`
 - Update `habit_correlations` with enhanced version
 
 **Step 3.3: Update System Prompt**
-- Enhance system prompt for better context understanding
+- Enhance system prompt for premium analysis depth
+- Emphasize connecting all data points for comprehensive insights
 
 **Step 3.4: Update Max Tokens**
-- Increase `max_tokens` from 400 to 500-600 (for longer, detailed response)
+- Increase `max_tokens` from 400 to 600-800 (for premium-depth response)
 
 ### **Phase 4: Helper Functions (After line 413)**
 
-**Step 4.1: Add `extractThemes()` Function**
-```typescript
-function extractThemes(data: any[], fieldName: string): string[] {
-  const themes: { [key: string]: number } = {}
-  
-  data.forEach(item => {
-    const items = item[fieldName]
-    if (Array.isArray(items)) {
-      items.forEach((text: string) => {
-        if (text && typeof text === 'string') {
-          const words = text.toLowerCase().split(/\s+/)
-            .filter(w => w.length > 3)
-            .filter(w => !['the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'her', 'was', 'one', 'our', 'out', 'day', 'get', 'has', 'him', 'his', 'how', 'its', 'may', 'new', 'now', 'old', 'see', 'two', 'way', 'who', 'boy', 'did', 'its', 'let', 'put', 'say', 'she', 'too', 'use'].includes(w))
-          
-          words.forEach(word => {
-            themes[word] = (themes[word] || 0) + 1
-          })
-        }
-      })
-    }
-  })
-  
-  return Object.entries(themes)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([word]) => word)
-}
-```
+**Step 4.1: Remove `extractThemes()` Function**
+- **NOT NEEDED** - We're using full data, not themes
+- All structured data will be included in full
 
 **Step 4.2: Update `parseWeeklyInsight()` Function**
 - May need minor updates if response format changes
 - Should handle new structure with "Highlights:", "Key Insights:", "Recommendations:" sections
+- Handle 4-5 insights instead of 3
+- Handle 3 recommendations instead of 2
 
 ---
 
@@ -392,10 +568,10 @@ function extractThemes(data: any[], fieldName: string): string[] {
    - ✅ No migrations required
 
 2. **App-Level Code:**
-   - ✅ No changes to Flutter app
+   - ⚠️ **Premium access control required** - Verify user has premium subscription before allowing weekly/monthly analysis
    - ✅ `WeeklyInsight` model already has all fields
    - ✅ Analytics screen already displays all outputs
-   - ✅ No UI changes needed
+   - ⚠️ **UI changes:** Show premium upgrade prompt for non-premium users trying to access weekly/monthly analysis
 
 3. **Other Services:**
    - ✅ No changes to `AIService`
@@ -420,9 +596,9 @@ function extractThemes(data: any[], fieldName: string): string[] {
    - **Risk:** Low - queries are fast, data is small
 
 2. **Token Usage:**
-   - **Impact:** Increased from ~350 to ~1,500 input tokens
-   - **Cost Impact:** From $0.0002 to $0.0005 per analysis (still very low)
-   - **Risk:** Low - cost is negligible
+   - **Impact:** Increased from ~350 to ~8,000-10,000 input tokens (full data)
+   - **Cost Impact:** From $0.0002 to ~$0.002 per analysis (premium feature)
+   - **Risk:** Low - cost justified for premium users, still very affordable
 
 3. **Response Parsing:**
    - **Impact:** May need to update `parseWeeklyInsight()` if AI response format changes
@@ -438,7 +614,7 @@ function extractThemes(data: any[], fieldName: string): string[] {
 
 1. **Graceful Degradation:**
    - If daily insights missing → Continue with aggregated data
-   - If structured data missing → Continue without themes
+   - If structured data missing → Continue without that data (show "None" or empty)
    - If any fetch fails → Log error but continue with available data
 
 2. **Backward Compatibility:**
@@ -453,45 +629,66 @@ function extractThemes(data: any[], fieldName: string): string[] {
 
 ---
 
-## 💰 Cost Analysis
+## 💰 Cost Analysis (Premium Edition)
 
-### **Current Implementation:**
+### **Current Implementation (Before Enhancement):**
 - Input tokens: ~350
 - Output tokens: ~300
 - Cost: **$0.0002 per week**
+- **Note:** This is the current basic implementation that will be replaced with premium-only full analysis
 
-### **Enhanced Implementation:**
-- Input tokens: ~1,500
-- Output tokens: ~400
-- Cost: **$0.0005 per week**
+### **Premium Implementation (FULL DATA - PREMIUM ONLY):**
+- Input tokens: ~8,000-10,000
+- Output tokens: ~600-800
+- Cost: **~$0.002 per week**
+- **Access:** Premium users only
 
-### **Cost Breakdown (7 days of entries):**
+### **Cost Breakdown (7 days of entries - FULL DATA):**
 
-**Input Tokens:**
-- System prompt: 50 tokens
-- Daily insights (7 × 50 words): 350 tokens
-- Diary excerpts (7 × 100 words): 700 tokens
-- Structured data themes: 150 tokens
+**Input Tokens (Complete Data):**
+- System prompt: 80 tokens
+- **Daily insights (7 × full insight + details):** ~2,100 tokens
+  - Full insight_text: ~200 tokens each = 1,400 tokens
+  - insight_details (what_went_well, progress_area, etc.): ~100 tokens each = 700 tokens
+- **Diary entries (7 × full text):** ~4,500 tokens
+  - Average 500 words per entry = ~650 tokens each
+  - 7 entries = ~4,550 tokens
+- **Structured data (full arrays):** ~1,400 tokens
+  - Affirmations (all items): ~400 tokens
+  - Gratitude (all items): ~400 tokens
+  - Priorities (all items): ~400 tokens
+  - Tomorrow notes: ~200 tokens
+- **Self-care details:** ~300 tokens
+  - Specific activities per day: ~40 tokens each
+- **Meal details:** ~500 tokens
+  - Breakfast, lunch, dinner text per day: ~70 tokens each
+- **Shower/bath:** ~100 tokens
 - Aggregated stats: 200 tokens
-- Habit correlations: 50 tokens
-- **Total Input: ~1,500 tokens**
+- Habit correlations: 100 tokens
+- Topics: 100 tokens
+- **Total Input: ~9,180 tokens**
 
-**Output Tokens:**
-- Highlights: ~80 tokens
-- Key Insights (3): ~120 tokens
-- Recommendations (2): ~80 tokens
-- Formatting: ~20 tokens
-- **Total Output: ~400 tokens**
+**Output Tokens (Premium Depth):**
+- Highlights (3-4 sentences): ~120 tokens
+- Key Insights (4-5 insights): ~200 tokens
+- Recommendations (3 items): ~150 tokens
+- Formatting: ~30 tokens
+- **Total Output: ~500 tokens**
 
 **Cost Calculation:**
-- Input: 1,500 × $0.15/1M = **$0.000225**
-- Output: 400 × $0.60/1M = **$0.00024**
-- **Total: $0.000465 ≈ $0.0005 per week**
+- Input: 9,180 × $0.15/1M = **$0.001377**
+- Output: 500 × $0.60/1M = **$0.0003**
+- **Total: $0.001677 ≈ $0.002 per week**
 
-**Monthly Cost:** ~$0.002 per user  
-**Annual Cost:** ~$0.025 per user
+**Monthly Cost:** ~$0.008 per premium user  
+**Annual Cost:** ~$0.10 per premium user
 
-**Conclusion:** Cost increase is minimal and acceptable for significantly better insights.
+**Conclusion:** 
+- **Premium-only feature** - Weekly and monthly analysis are exclusively for premium users
+- **Extremely affordable** ($0.002/week) for the depth of analysis provided
+- **Justified for premium users** who get maximum depth and context
+- **No cost concerns** - premium feature with premium value
+- **GPT-4o-mini supports up to 128k tokens** - we're well within limits (~9k tokens)
 
 ---
 
@@ -503,7 +700,7 @@ function extractThemes(data: any[], fieldName: string): string[] {
    - ✅ All data available
    - ✅ Verify all insights generated
    - ✅ Verify habit correlations calculated
-   - ✅ Verify themes extracted
+   - ✅ Verify all data included (no truncation)
 
 2. **Partial Week (3-4 entries):**
    - ✅ Some data missing
@@ -546,18 +743,24 @@ function extractThemes(data: any[], fieldName: string): string[] {
 - [x] Prompt template designed
 
 ### **Implementation:**
-- [ ] Add daily insights fetch
+- [ ] Add daily insights fetch (full data)
 - [ ] Add affirmations fetch
 - [ ] Add gratitude fetch
 - [ ] Add priorities fetch
-- [ ] Expand meals fetch
-- [ ] Build daily insights summary
-- [ ] Create `extractThemes()` helper
-- [ ] Build diary excerpts
+- [ ] Expand meals fetch (breakfast, lunch, dinner)
+- [ ] Add tomorrow notes fetch
+- [ ] Add shower/bath fetch
+- [ ] Build full daily insights (no truncation)
+- [ ] Build full structured data (all items)
+- [ ] Build full diary text (no truncation)
+- [ ] Build full self-care details (specific activities)
+- [ ] Build full meal details
+- [ ] Build tomorrow notes
+- [ ] Build shower/bath details
 - [ ] Enhance habit correlations
-- [ ] Update prompt template
-- [ ] Update prompt building logic
-- [ ] Update max_tokens
+- [ ] Update prompt template (premium version)
+- [ ] Update prompt building logic (all new variables)
+- [ ] Update max_tokens (600-800)
 - [ ] Add error handling
 - [ ] Test with sample data
 
@@ -574,11 +777,12 @@ function extractThemes(data: any[], fieldName: string): string[] {
 ## 🎯 Expected Outcomes
 
 ### **User Experience:**
-- ✅ More personalized insights (based on actual diary content)
-- ✅ Better pattern recognition (from daily insights)
-- ✅ More relevant recommendations (based on affirmations/gratitude/priorities)
-- ✅ Deeper emotional analysis (sentiment patterns)
-- ✅ Better habit correlations (mood vs gratitude, affirmations, etc.)
+- ✅ **Maximum depth** - Full context from all data sources
+- ✅ **Complete pattern recognition** - AI sees everything, not summaries
+- ✅ **Highly personalized** - Based on complete diary texts, all insights, all structured data
+- ✅ **Comprehensive correlations** - Can connect any aspect (mood, habits, meals, planning, etc.)
+- ✅ **Premium value** - Users get the absolute best analysis possible
+- ✅ **Actionable insights** - Based on complete picture, not partial data
 
 ### **Technical:**
 - ✅ Richer data for AI analysis
@@ -587,10 +791,12 @@ function extractThemes(data: any[], fieldName: string): string[] {
 - ✅ Better user engagement
 
 ### **Business:**
-- ✅ Higher user engagement
-- ✅ Better retention (users see value)
-- ✅ Minimal cost increase ($0.0003 per week)
-- ✅ Competitive advantage (deeper insights)
+- ✅ **Premium feature** - Justifies premium subscription
+- ✅ **Maximum value** - Users get best possible analysis
+- ✅ **Higher engagement** - Deeper insights = more engagement
+- ✅ **Better retention** - Premium users see clear value
+- ✅ **Competitive advantage** - Most comprehensive weekly analysis available
+- ✅ **Cost justified** - $0.002/week is negligible for premium feature value
 
 ---
 
@@ -609,29 +815,224 @@ function extractThemes(data: any[], fieldName: string): string[] {
 ## 📝 Final Conclusion
 
 **Changes Required:**
-- ✅ **1 file:** `supabase/functions/ai-analyze-weekly/index.ts`
-- ✅ **No app changes**
+- ✅ **1 file:** `supabase/functions/ai-analyze-weekly/index.ts` (Edge Function)
+- ⚠️ **App-level:** Premium access control required (verify user has premium subscription before allowing weekly/monthly analysis)
 - ✅ **No database changes**
 - ✅ **No other functionality impact**
 
 **Benefits:**
-- ✅ Significantly better AI insights
+- ✅ **Premium-only feature** - Exclusive value for premium users
+- ✅ Significantly better AI insights (maximum depth)
 - ✅ More engaging user experience
-- ✅ Better pattern recognition
-- ✅ Minimal cost increase
+- ✅ Better pattern recognition (complete data context)
+- ✅ Premium value proposition
 
 **Risk:**
 - ⭐ Very Low (isolated, backward compatible, graceful degradation)
+- ⚠️ **Premium access control** must be implemented at app level
 
 **Status:** Ready for Implementation ✅
+
+**IMPORTANT REMINDER:**
+- Weekly and monthly analysis are **PREMIUM-ONLY** features
+- Non-premium users should NOT have access
+- App must verify premium status before allowing access
+- Edge Function can optionally verify premium status as well (defense in depth)
 
 ---
 
 ## 📌 Notes
 
-- All new data fetches should be wrapped in try-catch
-- Missing data should not break the function
-- Enhanced prompt should maintain clear structure for parsing
-- Cost increase is acceptable for quality improvement
-- No breaking changes to existing functionality
+- **PREMIUM-ONLY FEATURE:** Weekly and monthly analysis are exclusively for premium users
+- **Access Control:** App must verify premium subscription before allowing access
+- **Full Data:** NO truncation - send complete data for best analysis
+- **All new data fetches** should be wrapped in try-catch
+- **Missing data** should not break the function (graceful degradation)
+- **Enhanced prompt** should maintain clear structure for parsing
+- **Token limit:** GPT-4o-mini supports 128k tokens - we're using ~9k (safe margin)
+- **Cost:** $0.002/week is extremely affordable for premium feature
+- **No breaking changes** to existing functionality
+- **Parallel queries:** All data fetches should run in parallel for performance
+- **Error handling:** Log errors but continue with available data
+- **Daily insights:** Remain available to all users (free feature)
+- **Weekly/Monthly:** Premium users only
+
+---
+
+## 📦 Complete Data Fetching Summary
+
+### **All Data Sources (7 Additional Fetches):**
+
+1. **Daily Insights** (`entry_insights`)
+   - Fields: `entry_id, insight_text, sentiment_label, insight_details, topics`
+   - Purpose: Complete AI-generated insights with all details
+
+2. **Affirmations** (`entry_affirmations`)
+   - Fields: `entry_id, affirmations` (JSONB array)
+   - Purpose: All affirmation items per day
+
+3. **Gratitude** (`entry_gratitude`)
+   - Fields: `entry_id, grateful_items` (JSONB array)
+   - Purpose: All gratitude items per day
+
+4. **Priorities** (`entry_priorities`)
+   - Fields: `entry_id, priorities` (JSONB array)
+   - Purpose: All priority items per day
+
+5. **Meals** (`entry_meals`) - **EXPANDED**
+   - Fields: `entry_id, water_cups, breakfast, lunch, dinner`
+   - Purpose: Complete meal details per day
+
+6. **Tomorrow Notes** (`entry_tomorrow_notes`) - **NEW**
+   - Fields: `entry_id, tomorrow_notes`
+   - Purpose: Planning and forward-looking notes
+
+7. **Shower/Bath** (`entry_shower_bath`) - **NEW**
+   - Fields: `entry_id, took_shower, shower_note`
+   - Purpose: Hygiene routine details
+
+### **Existing Data (Already Fetched):**
+- **Entries:** `id, diary_text, mood_score, entry_date, created_at` (FULL TEXT - no truncation)
+- **Self-Care:** All boolean fields (exercise, meditation, reading, hobby, social, nature, music, rest, nutrition, hygiene)
+
+### **Parallel Query Execution:**
+```typescript
+// Execute all fetches in parallel for performance
+const [
+  dailyInsights,
+  affirmationsData,
+  gratitudeData,
+  prioritiesData,
+  mealsData,
+  tomorrowNotesData,
+  showerBathData
+] = await Promise.all([
+  supabase.from('entry_insights').select('...').in('entry_id', entryIds),
+  supabase.from('entry_affirmations').select('...').in('entry_id', entryIds),
+  supabase.from('entry_gratitude').select('...').in('entry_id', entryIds),
+  supabase.from('entry_priorities').select('...').in('entry_id', entryIds),
+  supabase.from('entry_meals').select('...').in('entry_id', entryIds),
+  supabase.from('entry_tomorrow_notes').select('...').in('entry_id', entryIds),
+  supabase.from('entry_shower_bath').select('...').in('entry_id', entryIds)
+])
+```
+
+---
+
+## ✅ Final Implementation Checklist
+
+### **Data Fetching (7 new fetches):**
+- [ ] Fetch daily insights (full data)
+- [ ] Fetch affirmations
+- [ ] Fetch gratitude
+- [ ] Fetch priorities
+- [ ] Expand meals fetch (breakfast, lunch, dinner)
+- [ ] Fetch tomorrow notes
+- [ ] Fetch shower/bath
+- [ ] Execute all fetches in parallel
+
+### **Data Processing (Full Data Building):**
+- [ ] Build full daily insights (no truncation, all details)
+- [ ] Build full affirmations (all items, day by day)
+- [ ] Build full gratitude (all items, day by day)
+- [ ] Build full priorities (all items, day by day)
+- [ ] Build full diary text (no truncation)
+- [ ] Build full self-care details (specific activities)
+- [ ] Build full meal details (breakfast, lunch, dinner, water)
+- [ ] Build tomorrow notes (full text)
+- [ ] Build shower/bath details
+- [ ] Calculate enhanced habit correlations
+
+### **Prompt Enhancement:**
+- [ ] Update system prompt (premium depth)
+- [ ] Update user prompt template (all new variables)
+- [ ] Add all variable replacements:
+  - `{daily_insights_full}`
+  - `{diary_full}`
+  - `{affirmations_full}`
+  - `{gratitude_full}`
+  - `{priorities_full}`
+  - `{self_care_full}`
+  - `{meals_full}`
+  - `{tomorrow_notes_full}`
+  - `{shower_bath_full}`
+- [ ] Update max_tokens to 600-800
+
+### **Error Handling:**
+- [ ] Wrap all new fetches in try-catch
+- [ ] Graceful degradation for missing data
+- [ ] Error logging for all failures
+- [ ] Continue with available data if some fails
+
+### **Testing:**
+- [ ] Test with full week (7 entries, all data)
+- [ ] Test with partial week (3-4 entries)
+- [ ] Test with missing daily insights
+- [ ] Test with missing structured data
+- [ ] Test with empty diary text
+- [ ] Test error scenarios
+- [ ] Verify response parsing
+- [ ] Verify token usage
+- [ ] Verify cost calculation
+
+### **Deployment:**
+- [ ] Deploy edge function
+- [ ] Test with real user data
+- [ ] Monitor error logs
+- [ ] Monitor token usage
+- [ ] Monitor costs
+- [ ] Verify insights quality
+
+---
+
+## 🎯 Premium Feature Specifications
+
+**IMPORTANT:** Weekly and monthly analysis are **PREMIUM-ONLY** features. Non-premium users do NOT have access to these features.
+
+### **Premium Weekly Analysis Features:**
+
+| Feature | Specification |
+|--------|--------------|
+| **Diary Text** | **Full text (no limit, no truncation)** |
+| **Daily Insights** | **Full insight + all details** (what_went_well, progress_area, self_care_balance, emotional_pattern, topics) |
+| **Structured Data** | **All items (complete arrays)** - affirmations, gratitude, priorities |
+| **Self-Care** | **Specific activities per day** (exercise, meditation, reading, hobby, social, nature, music, rest, nutrition, hygiene) |
+| **Meals** | **Breakfast, lunch, dinner, water** (full details per day) |
+| **Tomorrow Notes** | **Full notes included** (planning and forward-looking context) |
+| **Shower/Bath** | **Full details included** (hygiene routine context) |
+| **Input Tokens** | **~9,000 tokens** (comprehensive data) |
+| **Output Depth** | **4-5 insights, 3 recommendations** (premium depth) |
+| **Cost** | **$0.002/week** (extremely affordable) |
+| **Value** | **Maximum depth & context** - best analysis possible |
+
+### **Access Control:**
+- ✅ **Premium users only** - Weekly and monthly analysis
+- ❌ **Non-premium users** - No access to weekly/monthly analysis
+- ✅ **Daily insights** - Available to all users (free feature)
+
+### **Premium Access Control Implementation:**
+
+**App-Level (Required):**
+1. **Before triggering weekly/monthly analysis:**
+   - Verify user has active premium subscription
+   - If not premium → Show upgrade prompt / block access
+   - If premium → Allow access to weekly/monthly analysis
+
+2. **UI/UX:**
+   - Analytics screen: Show premium badge/lock icon for weekly/monthly sections
+   - If non-premium user tries to access → Show upgrade modal
+   - Clearly indicate premium-only features
+
+**Edge Function Level (Optional - Defense in Depth):**
+- Can optionally verify premium status in Edge Function
+- Return error if non-premium user tries to access
+- This provides server-side validation (additional security)
+
+**Database Consideration:**
+- Store premium status in `users` table or subscription service
+- Check premium status before allowing weekly/monthly analysis triggers
+
+---
+
+**Status:** ✅ **Complete Premium Plan Ready for Implementation**
 

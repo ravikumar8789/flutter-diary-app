@@ -43,6 +43,10 @@ BEGIN
             calculate_next_midnight_utc(u.timezone, (current_utc_time AT TIME ZONE u.timezone)::date) AS next_retry_at
         FROM public.users u
         WHERE u.timezone IS NOT NULL
+          -- Basic IANA timezone format validation (allows UTC as special case)
+          AND (u.timezone = 'UTC' OR u.timezone ~ '^[A-Za-z_]+/[A-Za-z_]+$')
+          -- Note: Invalid timezones will cause error in AT TIME ZONE, but error is caught
+          -- Each user processed independently, so one invalid timezone doesn't affect others
     ),
     daily_candidates AS (
         SELECT
@@ -142,7 +146,18 @@ BEGIN
             prev_week.week_start
         FROM user_context uc
         CROSS JOIN LATERAL (
-            SELECT (date_trunc('week', (uc.user_today - INTERVAL '7 days')::timestamp))::date AS week_start
+            -- Calculate previous Sunday (not Monday)
+            -- If today is Sunday, previous week starts 7 days ago (previous Sunday)
+            -- If today is any other day, find the previous Sunday
+            -- Note: DST (Daylight Saving Time) transitions are handled automatically by PostgreSQL
+            -- When DST changes occur:
+            -- - Spring forward (loses 1 hour): PostgreSQL handles correctly
+            -- - Fall back (gains 1 hour, ambiguous): PostgreSQL uses first occurrence
+            -- - make_timestamptz() in calculate_next_midnight_utc() handles DST correctly
+            SELECT (
+                (uc.user_today - INTERVAL '7 days')::date - 
+                (EXTRACT(DOW FROM (uc.user_today - INTERVAL '7 days')::timestamp)::int)::interval
+            )::date AS week_start
         ) AS prev_week
         WHERE uc.user_dow = 0
           AND uc.user_hour = 0
