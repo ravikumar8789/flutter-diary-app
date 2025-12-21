@@ -5,30 +5,15 @@ class GraceSystemService {
   static final SupabaseClient _supabase = Supabase.instance.client;
 
   // Constants
-  static const double PIECES_PER_TASK = 0.5;
-  static const double PIECES_PER_DAY = 2.0;
-  static const double PIECES_PER_GRACE_DAY = 10.0;
+  static const double PIECES_PER_TASK = 0.5; // 0.5 pieces per task
+  static const double PIECES_PER_DAY = 2.0; // 4 tasks × 0.5 pieces = 2 pieces per day
+  static const double PIECES_PER_GRACE_DAY = 10.0; // 10 pieces = 1 grace day
   static const int MAX_GRACE_DAYS = 5; // Cap at 5 grace days
 
   // Get user's grace status from habits_daily table
   static Future<Map<String, dynamic>?> getGraceStatus(String userId) async {
     try {
-      // First, let's check what's actually in the habits_daily table
-      final habitsData = await _supabase
-          .from('habits_daily')
-          .select('*')
-          .eq('user_id', userId)
-          .order('date', ascending: false)
-          .limit(5);
-
-      // Check today's record specifically
       final today = DateTime.now().toIso8601String().split('T')[0];
-      final todayRecord = await _supabase
-          .from('habits_daily')
-          .select('*')
-          .eq('user_id', userId)
-          .eq('date', today)
-          .maybeSingle();
 
       final response = await _supabase
           .rpc(
@@ -124,7 +109,7 @@ class GraceSystemService {
           .eq('date', date.toIso8601String().split('T')[0])
           .single();
 
-      // If trigger didn't work, manually calculate and update
+        // If trigger didn't work, manually calculate and update
       if (verifyResult['grace_pieces_earned'] == 0.0) {
         final manualPieces =
             ((verifyResult['filled_affirmations'] == true ? 0.5 : 0) +

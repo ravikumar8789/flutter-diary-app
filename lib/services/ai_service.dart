@@ -183,6 +183,9 @@ class AIService {
         entriesCount: response['entries_count'] as int? ?? 0,
         wordCountTotal: response['word_count_total'] as int? ?? 0,
         generatedAt: DateTime.parse(response['generated_at'] as String),
+        habitCorrelations: response['habit_correlations'] != null
+            ? Map<String, dynamic>.from(response['habit_correlations'] as Map)
+            : null,
       );
     } catch (e) {
       await ErrorLoggingService.logError(
@@ -439,6 +442,7 @@ class WeeklyInsight {
   final int entriesCount;
   final int wordCountTotal;
   final DateTime generatedAt;
+  final Map<String, dynamic>? habitCorrelations;
 
   WeeklyInsight({
     required this.id,
@@ -456,6 +460,7 @@ class WeeklyInsight {
     this.entriesCount = 0,
     this.wordCountTotal = 0,
     required this.generatedAt,
+    this.habitCorrelations,
   });
 }
 

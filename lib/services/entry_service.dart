@@ -362,13 +362,14 @@ class EntryService {
     final existing = await _localService.getEntryByDate(userId, date);
     if (existing != null) return existing;
 
-    // Create new entry
+    // Create new entry with default mood score of 3
     final newEntry = Entry(
       id: const Uuid().v4(),
       userId: userId,
       entryDate: date,
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
+      moodScore: 3, // Default mood score
       tags: [],
       isSynced: false,
     );

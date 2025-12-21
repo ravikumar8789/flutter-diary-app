@@ -9,6 +9,7 @@ import '../utils/snackbar_utils.dart';
 import '../services/error_logging_service.dart';
 import 'login_screen.dart';
 import 'home_screen.dart';
+import 'help_support_screen.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -121,7 +122,7 @@ class ProfileScreen extends ConsumerWidget {
   ) {
     // Calculate stats from user data
     final stats = userData.stats ?? {};
-    final entriesCount = stats['total_entries'] ?? 0;
+    final entriesCount = stats['entries_count'] ?? 0;
     final currentStreak = stats['current_streak'] ?? 0;
     final daysSinceJoined = DateTime.now()
         .difference(userData.createdAt)
@@ -134,7 +135,7 @@ class ProfileScreen extends ConsumerWidget {
     final preferences = userData.preferences ?? {};
     final theme = preferences['theme'] ?? 'System Default';
     final language = preferences['language'] ?? 'English';
-    final timezone = preferences['timezone'] ?? 'UTC';
+    final timezone = userData.timezone ?? 'UTC';
 
     return SingleChildScrollView(
       padding: EdgeInsets.all(isTablet ? 32 : 16),
@@ -247,12 +248,6 @@ class ProfileScreen extends ConsumerWidget {
             _buildInfoSection(context, 'Account', [
               _buildActionTile(
                 context,
-                Icons.shield_outlined,
-                'Privacy & Security',
-                () {},
-              ),
-              _buildActionTile(
-                context,
                 Icons.download_outlined,
                 'Export Data',
                 () {},
@@ -261,7 +256,14 @@ class ProfileScreen extends ConsumerWidget {
                 context,
                 Icons.help_outline,
                 'Help & Support',
-                () {},
+                () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const HelpSupportScreen(),
+                    ),
+                  );
+                },
               ),
             ]),
             const SizedBox(height: 24),

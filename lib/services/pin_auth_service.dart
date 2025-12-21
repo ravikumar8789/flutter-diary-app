@@ -125,6 +125,11 @@ class PinAuthService {
     try {
       final pinHash = _hashPin(newPin);
       await _secureStorage.write(key: _pinHashKey, value: pinHash);
+      
+      // Clear last unlock time to force PIN entry on next app restart
+      await _initPrefs();
+      await _prefs!.remove(_lastUnlockTimeKey);
+      
       return true;
     } catch (e) {
 

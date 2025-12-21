@@ -131,21 +131,17 @@ class HistoryNotifier extends Notifier<HistoryState> {
   }
 
   /// Load calendar mood data (lightweight - only date + mood)
-  /// Queries last 12 months for calendar view mood indicators
+  /// Fetches ALL mood data from Supabase (no date limit) for calendar view
   Future<void> loadCalendarMoodData() async {
     final userId = _getUserId();
     if (userId == null) return;
 
     try {
-      final now = DateTime.now();
-      // Query last 12 months for calendar mood data
-      final startDate = DateTime(now.year, now.month - 11, 1);
-      final endDate = DateTime(now.year, now.month + 1, 0);
-
+      // Fetch all mood data (no date limit)
       final calendarMoodMap = await _service.getMoodMapForDateRange(
         userId,
-        startDate,
-        endDate,
+        null, // No start date - fetch all
+        null, // No end date - fetch all
       );
 
       // Merge with existing mood map (calendar data takes precedence for dates)

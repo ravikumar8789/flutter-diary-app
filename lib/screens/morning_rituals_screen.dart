@@ -112,6 +112,11 @@ class _MorningRitualsScreenState extends ConsumerState<MorningRitualsScreen>
       final moodScore = entryData?.entry.moodScore;
       if (moodScore != null) {
         _selectedMood = moodScore;
+      } else if (entryData?.entry != null) {
+        // Entry exists but mood is null - save default mood of 3
+        _selectedMood = 3;
+        // Save default mood to database (non-blocking)
+        entryService.saveMoodScore(userId, currentDate, 3);
       }
 
       setState(() {

@@ -7,6 +7,11 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Constants for recursive self-invocation
+const BATCH_SIZE = 20  // Reduced from 50 for safety margin (20% of 400s timeout)
+const MAX_RECURSION_DEPTH = 50  // Safety limit to prevent infinite recursion
+const ACTIVE_PROCESSING_THRESHOLD = 30  // Jobs processing threshold for cron conflict check
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -24,33 +29,111 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
+    // Parse request body for recursive flag
+    const requestBody = await req.json().catch(() => ({}))
+    const isRecursive = requestBody?.recursive === true
+    const batchNumber = requestBody?.batch_number || 0
+
     const now = new Date()
-    console.log(`[PROCESS] Starting queue processing at ${now.toISOString()}`)
+    console.log(`[PROCESS] Starting queue processing at ${now.toISOString()}${isRecursive ? ` (recursive batch ${batchNumber})` : ' (cron-triggered)'}`)
 
-    // Fetch ALL pending jobs that are ready to process (not filtered by date yet)
-    const { data: allPendingJobs, error: queueError } = await supabase
-      .from('analysis_queue')
-      .select('*')
-      .eq('status', 'pending')
-      .lte('next_retry_at', now.toISOString())
-      .limit(50)  // Process up to 50 jobs per run (increased from 10)
-
-    if (queueError) throw queueError
-
-    if (!allPendingJobs || allPendingJobs.length === 0) {
-      console.log(`[PROCESS] No pending jobs ready to process`)
+    // Check recursion depth limit
+    if (batchNumber >= MAX_RECURSION_DEPTH) {
+      console.log(`[PROCESS] Max recursion depth reached (${MAX_RECURSION_DEPTH})`)
       return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: 'No pending jobs ready to process', 
+        JSON.stringify({
+          success: true,
+          message: 'Max recursion depth reached',
+          processed: 0,
+          batch_number: batchNumber
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // For cron-triggered runs: Check if recursive processing is active
+    if (!isRecursive) {
+      // First, reset jobs stuck in processing for > 10 minutes (self-healing)
+      try {
+        const { data: stuckJobs, error: stuckError } = await supabase
+          .from('analysis_queue')
+          .select('id')
+          .eq('status', 'processing')
+          .lt('updated_at', new Date(Date.now() - 10 * 60 * 1000).toISOString())
+        
+        if (stuckError) {
+          console.error(`[PROCESS] Error checking stuck jobs:`, stuckError)
+        } else if (stuckJobs && stuckJobs.length > 0) {
+          console.log(`[PROCESS] Found ${stuckJobs.length} stuck jobs (>10 min), resetting to pending`)
+          const stuckJobIds = stuckJobs.map((j: any) => j.id)
+          try {
+            await supabase
+              .from('analysis_queue')
+              .update({ status: 'pending' })
+              .in('id', stuckJobIds)
+            console.log(`[PROCESS] ✅ Reset ${stuckJobIds.length} stuck jobs to pending`)
+          } catch (resetError) {
+            console.error(`[PROCESS] ❌ Error resetting stuck jobs:`, resetError)
+          }
+        }
+      } catch (resetError) {
+        console.error(`[PROCESS] Error in stuck jobs cleanup:`, resetError)
+      }
+      
+      // Then check active processing (existing logic)
+      const { data: activeProcessing, error: activeError } = await supabase
+        .from('analysis_queue')
+        .select('id')
+        .eq('status', 'processing')
+        .gte('updated_at', new Date(Date.now() - 10 * 60 * 1000).toISOString())
+      
+      if (activeError) {
+        console.error(`[PROCESS] Error checking active processing:`, activeError)
+      } else if (activeProcessing && activeProcessing.length > ACTIVE_PROCESSING_THRESHOLD) {
+        console.log(`[PROCESS] Skipping cron run - ${activeProcessing.length} jobs already processing`)
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message: 'Recursive processing active, skipping cron run',
+            skipped: true,
+            active_jobs: activeProcessing.length
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+    }
+
+    // Use atomic job claiming instead of SELECT + UPDATE (prevents race conditions)
+    const { data: claimedJobs, error: claimError } = await supabase.rpc('claim_pending_jobs', {
+      p_batch_size: BATCH_SIZE
+      // Removed p_max_retry_at - not used anymore, kept parameter for backward compatibility
+    })
+
+    if (claimError) {
+      console.error(`[PROCESS] Error claiming jobs:`, claimError)
+      throw claimError
+    }
+
+    if (!claimedJobs || claimedJobs.length === 0) {
+      console.log(`[PROCESS] No jobs to process`)
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: 'No jobs to process',
           processed: 0
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    // Get unique user IDs and fetch their timezones
-    const userIds = [...new Set(allPendingJobs.map((job: any) => job.user_id))]
+    console.log(`[PROCESS] Claimed ${claimedJobs.length} jobs for processing`)
+
+    // SUPER LOGIC: Database already filtered by process_after (next_retry_at) <= NOW()
+    // All claimed jobs are eligible - no timezone filtering needed!
+    const queueItems = claimedJobs
+
+    // Get unique user IDs and fetch their timezones (only needed for AI analysis functions)
+    const userIds = [...new Set(queueItems.map((job: any) => job.user_id))]
     const { data: users, error: usersError } = await supabase
       .from('users')
       .select('id, timezone')
@@ -59,6 +142,21 @@ serve(async (req) => {
     if (usersError) {
       console.error(`[PROCESS] Error fetching user timezones:`, usersError)
       const duration = Date.now() - startTime
+      
+      // Reset claimed jobs before throwing to prevent them from getting stuck
+      if (queueItems && queueItems.length > 0) {
+        const jobIds = queueItems.map((job: any) => job.id)
+        console.log(`[PROCESS] Resetting ${jobIds.length} claimed jobs due to users fetch error`)
+        try {
+          await supabase
+            .from('analysis_queue')
+            .update({ status: 'pending' })
+            .in('id', jobIds)
+          console.log(`[PROCESS] ✅ Reset ${jobIds.length} jobs to pending due to users error`)
+        } catch (resetError) {
+          console.error(`[PROCESS] ❌ Error resetting jobs on users error:`, resetError)
+        }
+      }
       
       await logAIError(supabase, usersError, {
         userId: undefined,
@@ -75,85 +173,25 @@ serve(async (req) => {
       throw usersError
     }
 
-    // Create a map of user_id -> timezone
+    // Create a map of user_id -> timezone (only needed for AI analysis functions)
     const userTimezoneMap = new Map<string, string>()
     users?.forEach((user: any) => {
       userTimezoneMap.set(user.id, user.timezone || 'UTC')
     })
 
-    // Filter jobs where target_date is "yesterday" in user's timezone
-    const queueItems: any[] = []
-    for (const job of allPendingJobs) {
-      const userTimezone = userTimezoneMap.get(job.user_id) || 'UTC'
-      
-      try {
-        // Calculate yesterday in user's timezone
-        const { data: yesterdayData, error: tzError } = await supabase.rpc('get_date_in_timezone', {
-          p_timezone: userTimezone,
-          p_offset_days: -1  // Yesterday
-        })
-
-        let yesterdayInUserTz: string
-        if (tzError || !yesterdayData) {
-          // Fallback: JavaScript calculation
-          const now = new Date()
-          const tzDate = new Date(now.toLocaleString('en-US', { timeZone: userTimezone }))
-          const yesterday = new Date(tzDate)
-          yesterday.setDate(yesterday.getDate() - 1)
-          yesterdayInUserTz = yesterday.toISOString().split('T')[0]
-        } else {
-          yesterdayInUserTz = new Date(yesterdayData).toISOString().split('T')[0]
-        }
-
-        // Process if target_date is yesterday or older in user's timezone
-        if (job.target_date <= yesterdayInUserTz) {
-          queueItems.push(job)
-        } else {
-          console.log(`[PROCESS] ⏭️ Skipping job ${job.id}: target_date=${job.target_date}, user_yesterday=${yesterdayInUserTz}, timezone=${userTimezone}`)
-        }
-      } catch (error) {
-        console.error(`[PROCESS] Error checking timezone for job ${job.id}:`, error)
-        
-        // Log timezone calculation error
-        try {
-          await logAIError(supabase, error, {
-            userId: job.user_id,
-            entryId: job.entry_id || null,
-            analysisType: job.analysis_type || 'daily',
-            errorCode: 'ERRQUEUE_PROCESS_005',
-            requestBody: { 
-              job_id: job.id,
-              job_type: job.analysis_type,
-              user_timezone: userTimezone,
-              target_date: job.target_date
-            },
-            requestDurationMs: Date.now() - startTime,
-            edgeFunctionName: 'process-ai-queue',
-            failedAtStep: 'timezone_check',
-            errorDetails: { job_id: job.id, user_timezone: userTimezone }
-          })
-        } catch (logError) {
-          console.error('Failed to log timezone error:', logError)
-        }
-        
-        // Skip this job on error
-      }
-    }
-
     if (queueItems.length === 0) {
-      console.log(`[PROCESS] No jobs to process after timezone filtering (checked ${allPendingJobs.length} pending jobs)`)
+      console.log(`[PROCESS] No jobs to process (all eligible jobs already processed)`)
       return new Response(
         JSON.stringify({ 
           success: true, 
-          message: 'No jobs to process after timezone filtering', 
-          processed: 0,
-          checked: allPendingJobs.length
+          message: 'No jobs to process', 
+          processed: 0
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    console.log(`[PROCESS] Found ${queueItems.length} jobs to process (filtered from ${allPendingJobs.length} pending jobs)`)
+    console.log(`[PROCESS] Found ${queueItems.length} eligible jobs to process (database filtered by process_after)`)
 
     let processed = 0
     let failed = 0
@@ -163,11 +201,8 @@ serve(async (req) => {
       try {
         console.log(`[PROCESS] Processing job ${job.id}: type=${job.analysis_type}, user=${job.user_id}, target_date=${job.target_date}, entry_id=${job.entry_id || 'N/A'}`)
         
-        // Update status to processing
-        await supabase
-          .from('analysis_queue')
-          .update({ status: 'processing' })
-          .eq('id', job.id)
+        // Note: Job status already set to 'processing' by claim_pending_jobs()
+        // No need to update again
 
         let result: any
         let functionName = ''
@@ -347,17 +382,14 @@ serve(async (req) => {
           failed++
           results.push({ id: job.id, status: 'failed', type: job.analysis_type, error: errorMessage })
         } else {
-          // Retry with exponential backoff
-          const backoffMinutes = Math.pow(2, newAttempts) // 2, 4, 8 minutes
-          const nextRetry = new Date(Date.now() + backoffMinutes * 60000)
-
+          // Retry - hourly cron will handle timing automatically
           await supabase
             .from('analysis_queue')
             .update({
               status: 'pending',
               attempts: newAttempts,
-              next_retry_at: nextRetry.toISOString(),
               error_message: errorMessage
+              // Removed next_retry_at - hourly cron handles retries
             })
             .eq('id', job.id)
 
@@ -368,13 +400,64 @@ serve(async (req) => {
 
     console.log(`[PROCESS] Summary: Processed=${processed}, Failed=${failed}, Total=${queueItems.length}`)
 
+    // SUPER LOGIC: Check for remaining eligible jobs (database filters by process_after <= NOW())
+    // Only self-invoke if progress was made (prevents infinite recursion)
+    if (processed > 0 || failed > 0) {
+      const { data: remainingJobs, error: remainingError } = await supabase
+        .from('analysis_queue')
+        .select('id')
+        .eq('status', 'pending')
+        .or('next_retry_at.is.null,next_retry_at.lte.' + new Date().toISOString())
+        .limit(1)
+
+      if (remainingError) {
+        console.error(`[PROCESS] Error checking remaining jobs:`, remainingError)
+      }
+
+      if (remainingJobs && remainingJobs.length > 0) {
+        console.log(`[PROCESS] Progress made (processed=${processed}, failed=${failed}), self-invoking next batch (batch ${batchNumber + 1})`)
+        
+        // Fire-and-forget self-invocation (don't await)
+        supabase.functions.invoke('process-ai-queue', {
+          body: {
+            recursive: true,
+            batch_number: batchNumber + 1
+          }
+        }).catch(err => {
+          console.error(`[PROCESS] Self-invoke failed for batch ${batchNumber + 1}:`, err)
+        })
+        
+        return new Response(
+          JSON.stringify({
+            success: true,
+            processed,
+            failed,
+            total: queueItems.length,
+            results,
+            remaining: remainingJobs.length,
+            next_batch_triggered: true,
+            batch_number: batchNumber
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      } else {
+        console.log(`[PROCESS] No remaining eligible jobs, processing complete`)
+      }
+    } else {
+      console.log(`[PROCESS] No progress made (processed=${processed}, failed=${failed}), stopping recursion to prevent infinite loop`)
+    }
+
+    // No remaining jobs, return normal response
     return new Response(
       JSON.stringify({
         success: true,
         processed,
         failed,
         total: queueItems.length,
-        results
+        results,
+        remaining: 0,
+        next_batch_triggered: false,
+        batch_number: batchNumber
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
@@ -383,7 +466,7 @@ serve(async (req) => {
     const duration = Date.now() - startTime
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
 
-    // Log overall function error
+    // Reset any claimed jobs that might be stuck (safety net for unexpected crashes)
     try {
       const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
       const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -391,6 +474,21 @@ serve(async (req) => {
       if (supabaseUrl && supabaseServiceKey) {
         const supabase = createClient(supabaseUrl, supabaseServiceKey)
         
+        // Reset jobs stuck in processing for this function run
+        // Only reset jobs updated in last 5 minutes (likely from this run)
+        const { error: resetError } = await supabase
+          .from('analysis_queue')
+          .update({ status: 'pending' })
+          .eq('status', 'processing')
+          .gte('updated_at', new Date(Date.now() - 5 * 60 * 1000).toISOString())
+        
+        if (resetError) {
+          console.error(`[PROCESS] Error resetting stuck jobs in error handler:`, resetError)
+        } else {
+          console.log(`[PROCESS] Reset stuck jobs in error handler (safety net)`)
+        }
+        
+        // Log overall function error
         // Determine error code
         let errorCode = 'ERRQUEUE_PROCESS_002'
         let failedStep = 'unknown'

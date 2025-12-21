@@ -19,8 +19,6 @@ class DailyInsightsTimeline extends ConsumerStatefulWidget {
 }
 
 class _DailyInsightsTimelineState extends ConsumerState<DailyInsightsTimeline> {
-  String? _selectedSentiment;
-
   Color _getSentimentColor(String? sentiment) {
     switch (sentiment?.toLowerCase()) {
       case 'positive':
@@ -78,59 +76,15 @@ class _DailyInsightsTimelineState extends ConsumerState<DailyInsightsTimeline> {
 
         final insights = snapshot.data ?? [];
 
-        final filteredInsights = _selectedSentiment == null
-            ? insights
-            : insights.where((i) => i.insight.sentimentLabel == _selectedSentiment).toList();
-
-        if (filteredInsights.isEmpty) {
+        if (insights.isEmpty) {
           return _buildEmptyState(context);
         }
 
         return Column(
-          children: [
-            _buildFilterChips(context),
-            const SizedBox(height: 16),
-            Expanded(
-              child: ListView.builder(
-                itemCount: filteredInsights.length,
-                itemBuilder: (context, index) {
-                  return _buildTimelineItem(context, filteredInsights[index]);
-                },
-              ),
-            ),
-          ],
+          children: insights
+              .map((item) => _buildTimelineItem(context, item))
+              .toList(),
         );
-      },
-    );
-  }
-
-  Widget _buildFilterChips(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          _buildFilterChip(context, 'All', null),
-          const SizedBox(width: 8),
-          _buildFilterChip(context, 'Positive', 'positive'),
-          const SizedBox(width: 8),
-          _buildFilterChip(context, 'Neutral', 'neutral'),
-          const SizedBox(width: 8),
-          _buildFilterChip(context, 'Negative', 'negative'),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFilterChip(BuildContext context, String label, String? sentiment) {
-    final isSelected = _selectedSentiment == sentiment;
-    return FilterChip(
-      label: Text(label),
-      selected: isSelected,
-      onSelected: (selected) {
-        setState(() {
-          _selectedSentiment = selected ? sentiment : null;
-        });
       },
     );
   }

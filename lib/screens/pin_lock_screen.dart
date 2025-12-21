@@ -5,6 +5,7 @@ import '../providers/privacy_lock_provider.dart';
 import '../widgets/pin_number_pad.dart';
 import '../services/error_logging_service.dart';
 import 'home_screen.dart';
+import 'pin_recovery_screen.dart';
 
 class PinLockScreen extends ConsumerStatefulWidget {
   const PinLockScreen({super.key});
@@ -81,13 +82,26 @@ class _PinLockScreenState extends ConsumerState<PinLockScreen> {
   }
 
   void _startRecoveryProcess() {
-    // TODO: Navigate to recovery screen
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Recovery feature coming soon!'),
-        duration: Duration(seconds: 2),
-      ),
-    );
+    // Check if security questions are set
+    ref.read(privacyLockProvider.notifier).getSecurityQuestions().then((questions) {
+      if (mounted) {
+        if (questions['question1']?.isEmpty ?? true) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Security questions are not set up. Cannot recover PIN.'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        } else {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => const PinRecoveryScreen(),
+            ),
+          );
+        }
+      }
+    });
   }
 
   void _onNumberPressed(String number) {

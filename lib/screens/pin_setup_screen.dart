@@ -5,6 +5,7 @@ import '../providers/privacy_lock_provider.dart';
 import '../widgets/pin_number_pad.dart';
 import '../services/error_logging_service.dart';
 import 'home_screen.dart';
+import 'security_questions_screen.dart';
 
 class PinSetupScreen extends ConsumerStatefulWidget {
   const PinSetupScreen({super.key});
@@ -350,14 +351,14 @@ class _PinSetupScreenState extends ConsumerState<PinSetupScreen> {
   }
 
   void _showSecurityQuestionsForm() {
-    // TODO: Implement security questions form
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Security questions feature coming soon!'),
-        duration: Duration(seconds: 2),
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => SecurityQuestionsScreen(
+          isFromSetup: true,
+          onComplete: _completeSetup,
+        ),
       ),
     );
-    _completeSetup();
   }
 
   void _completeSetup() async {

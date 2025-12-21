@@ -7,6 +7,7 @@ import 'home_screen.dart';
 import '../providers/history_provider.dart';
 import '../models/history_entry_model.dart';
 import '../models/entry_models.dart';
+import '../services/history_service.dart';
 
 class HistoryScreen extends ConsumerStatefulWidget {
   const HistoryScreen({super.key});
@@ -17,11 +18,7 @@ class HistoryScreen extends ConsumerStatefulWidget {
 
 class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   String _viewMode = 'list';
-  String _filterTag = 'All';
-  String? _selectedMood;
-  String? _selectedSentiment;
-  bool _hasInsightsOnly = false;
-  String? _completionFilter;
+  String? _selectedMood; // Only mood filter now
 
   @override
   void initState() {
@@ -33,51 +30,33 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     });
   }
 
-  // Get filtered entries from provider
+  // Get filtered entries from provider (mood filter only)
   List<HistoryEntry> get _filteredEntries {
     final historyState = ref.read(historyProvider);
     var entries = historyState.entries;
 
-    // Apply filters
-    if (_filterTag != 'All') {
-      entries = entries.where((e) => e.tags.contains(_filterTag)).toList();
-    }
-
+    // Apply mood filter only
     if (_selectedMood != null) {
       entries = entries
           .where((e) => e.entry.moodScore?.toString() == _selectedMood)
           .toList();
     }
 
-    if (_selectedSentiment != null) {
-      entries = entries
-          .where((e) => e.sentiment == _selectedSentiment)
-          .toList();
-    }
-
-    if (_hasInsightsOnly) {
-      entries = entries.where((e) => e.hasInsights).toList();
-    }
-
-    if (_completionFilter == 'complete') {
-      entries = entries.where((e) {
-        final hasAffirmations =
-            e.affirmations?.affirmations.isNotEmpty ?? false;
-        final hasGratitude = e.gratitude?.gratefulItems.isNotEmpty ?? false;
-        final selfCareCount = e.selfCareCount;
-        return hasAffirmations && hasGratitude && selfCareCount >= 7;
-      }).toList();
-    } else if (_completionFilter == 'incomplete') {
-      entries = entries.where((e) {
-        final hasAffirmations =
-            e.affirmations?.affirmations.isNotEmpty ?? false;
-        final hasGratitude = e.gratitude?.gratefulItems.isNotEmpty ?? false;
-        final selfCareCount = e.selfCareCount;
-        return !hasAffirmations || !hasGratitude || selfCareCount < 5;
-      }).toList();
-    }
-
     return entries;
+  }
+
+  // Calculate mood counts from entries
+  Map<int, int> get _moodCounts {
+    final historyState = ref.read(historyProvider);
+    final entries = historyState.entries;
+    
+    final counts = <int, int>{};
+    for (var entry in entries) {
+      final mood = entry.entry.moodScore ?? 3; // Default to 3 if null
+      counts[mood] = (counts[mood] ?? 0) + 1;
+    }
+    
+    return counts;
   }
 
   // Group entries by month
@@ -105,19 +84,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     return unloaded;
   }
 
-  // Fixed tags for filter (as discussed)
-  static const List<String> _fixedTags = [
-    'All',
-    'Work',
-    'Family',
-    'Health',
-    'Goals',
-    'Gratitude',
-    'Reflection',
-    'Self-Care',
-    'Growth',
-    'Challenge',
-  ];
 
   @override
   Widget build(BuildContext context) {
@@ -148,49 +114,13 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                 });
               },
             ),
-            IconButton(
-              icon: const Icon(Icons.filter_list),
-              onPressed: () => _showFilterDialog(),
-            ),
-            IconButton(
-              icon: const Icon(Icons.search),
-              onPressed: () {
-                // TODO: Implement search
-              },
-            ),
           ],
         ),
         drawer: const AppDrawer(currentRoute: 'history'),
         body: Column(
           children: [
-            // Enhanced filter chips with colors
-            Container(
-              padding: EdgeInsets.symmetric(
-                vertical: isTablet ? 16 : 12,
-                horizontal: isTablet ? 20 : 16,
-              ),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Theme.of(context).colorScheme.primary.withOpacity(0.05),
-                    Theme.of(context).colorScheme.secondary.withOpacity(0.05),
-                  ],
-                ),
-              ),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    ..._fixedTags.map(
-                      (tag) => Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: _buildFilterChip(tag, _getTagColor(tag)),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+            // Mood filter chips (only in list mode)
+            if (_viewMode == 'list') _buildMoodChips(isTablet),
 
             // Entries list
             Expanded(
@@ -228,10 +158,140 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     );
   }
 
+  /// Build compact mood filter chips
+  Widget _buildMoodChips(bool isTablet) {
+    final moodCounts = _moodCounts;
+    final totalCount = ref.read(historyProvider).entries.length;
+    
+    // Mood emojis and colors
+    final moodData = [
+      {'emoji': '😢', 'mood': 1, 'color': Colors.red},
+      {'emoji': '😟', 'mood': 2, 'color': Colors.orange},
+      {'emoji': '😐', 'mood': 3, 'color': Colors.amber},
+      {'emoji': '😊', 'mood': 4, 'color': Colors.lightGreen},
+      {'emoji': '😄', 'mood': 5, 'color': Colors.green},
+    ];
+
+    return Container(
+      padding: EdgeInsets.symmetric(
+        vertical: isTablet ? 12 : 10,
+        horizontal: isTablet ? 20 : 16,
+      ),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Theme.of(context).colorScheme.primary.withOpacity(0.05),
+            Theme.of(context).colorScheme.secondary.withOpacity(0.05),
+          ],
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          // All chip
+          Expanded(
+            child: _buildMoodChip(
+              label: 'All',
+              count: totalCount,
+              isSelected: _selectedMood == null,
+              color: Colors.grey,
+              onTap: () {
+                setState(() => _selectedMood = null);
+              },
+            ),
+          ),
+          const SizedBox(width: 6),
+          // Mood chips (1-5)
+          ...moodData.map((mood) {
+            final moodNum = mood['mood'] as int;
+            final count = moodCounts[moodNum] ?? 0;
+            return Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(left: 3),
+                child: _buildMoodChip(
+                  label: mood['emoji'] as String,
+                  count: count,
+                  isSelected: _selectedMood == moodNum.toString(),
+                  color: mood['color'] as Color,
+                  onTap: () {
+                    setState(() {
+                      _selectedMood = count > 0 
+                          ? moodNum.toString() 
+                          : null;
+                    });
+                  },
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  /// Build individual mood chip
+  Widget _buildMoodChip({
+    required String label,
+    required int count,
+    required bool isSelected,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+        decoration: BoxDecoration(
+          color: isSelected 
+              ? color.withOpacity(0.2) 
+              : color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected 
+                ? color.withOpacity(0.6) 
+                : Colors.transparent,
+            width: isSelected ? 1.5 : 0,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(fontSize: 18),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              '($count)',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                color: isSelected 
+                    ? _darkenColorForText(color) 
+                    : Colors.grey.shade600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Color _darkenColorForText(Color color) {
+    // Darken the color for text readability
+    return Color.fromRGBO(
+      (color.red * 0.7).round().clamp(0, 255),
+      (color.green * 0.7).round().clamp(0, 255),
+      (color.blue * 0.7).round().clamp(0, 255),
+      1.0,
+    );
+  }
+
+  // Helper method for tag colors in entry cards
   Color _getTagColor(String tag) {
     final colors = {
       'Work': Colors.blue,
-      'Achievement': Colors.amber,
       'Family': Colors.pink,
       'Gratitude': Colors.purple,
       'Health': Colors.green,
@@ -239,37 +299,9 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       'Goals': Colors.orange,
       'Reflection': Colors.indigo,
       'Growth': Colors.cyan,
-      'Learning': Colors.deepPurple,
       'Challenge': Colors.red,
-      'Resilience': Colors.deepOrange,
-      'Mindfulness': Colors.lightBlue,
-      'Wellness': Colors.lightGreen,
-      'Connection': Colors.pinkAccent,
-      'Friendship': Colors.blueAccent,
-      'Rest': Colors.grey,
     };
     return colors[tag] ?? Colors.grey;
-  }
-
-  Widget _buildFilterChip(String label, Color color) {
-    final isSelected = _filterTag == label;
-    return FilterChip(
-      label: Text(label),
-      selected: isSelected,
-      onSelected: (selected) {
-        setState(() {
-          _filterTag = selected ? label : 'All';
-        });
-      },
-      selectedColor: color.withOpacity(0.3),
-      checkmarkColor: color,
-      backgroundColor: color.withOpacity(0.1),
-      labelStyle: TextStyle(
-        color: isSelected ? color : Colors.grey.shade700,
-        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-    );
   }
 
   Widget _buildListView(bool isTablet, HistoryState historyState) {
@@ -1115,151 +1147,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     );
   }
 
-  void _showFilterDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Filter Entries'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Mood filter
-              const Text('Mood', style: TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                children: [
-                  _buildFilterOption('All', _selectedMood == null, () {
-                    setState(() => _selectedMood = null);
-                    Navigator.pop(context);
-                  }),
-                  for (int i = 1; i <= 5; i++)
-                    _buildFilterOption('$i', _selectedMood == i.toString(), () {
-                      setState(() => _selectedMood = i.toString());
-                      Navigator.pop(context);
-                    }),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // Sentiment filter
-              const Text(
-                'Sentiment',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                children: [
-                  _buildFilterOption('All', _selectedSentiment == null, () {
-                    setState(() => _selectedSentiment = null);
-                    Navigator.pop(context);
-                  }),
-                  _buildFilterOption(
-                    'Positive',
-                    _selectedSentiment == 'positive',
-                    () {
-                      setState(() => _selectedSentiment = 'positive');
-                      Navigator.pop(context);
-                    },
-                  ),
-                  _buildFilterOption(
-                    'Neutral',
-                    _selectedSentiment == 'neutral',
-                    () {
-                      setState(() => _selectedSentiment = 'neutral');
-                      Navigator.pop(context);
-                    },
-                  ),
-                  _buildFilterOption(
-                    'Negative',
-                    _selectedSentiment == 'negative',
-                    () {
-                      setState(() => _selectedSentiment = 'negative');
-                      Navigator.pop(context);
-                    },
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // Has insights filter
-              SwitchListTile(
-                title: const Text('Has AI Insights'),
-                value: _hasInsightsOnly,
-                onChanged: (value) {
-                  setState(() => _hasInsightsOnly = value);
-                  Navigator.pop(context);
-                },
-              ),
-
-              // Completion filter
-              const Text(
-                'Completion',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                children: [
-                  _buildFilterOption('All', _completionFilter == null, () {
-                    setState(() => _completionFilter = null);
-                    Navigator.pop(context);
-                  }),
-                  _buildFilterOption(
-                    'Complete',
-                    _completionFilter == 'complete',
-                    () {
-                      setState(() => _completionFilter = 'complete');
-                      Navigator.pop(context);
-                    },
-                  ),
-                  _buildFilterOption(
-                    'Incomplete',
-                    _completionFilter == 'incomplete',
-                    () {
-                      setState(() => _completionFilter = 'incomplete');
-                      Navigator.pop(context);
-                    },
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              setState(() {
-                _selectedMood = null;
-                _selectedSentiment = null;
-                _hasInsightsOnly = false;
-                _completionFilter = null;
-                _filterTag = 'All';
-              });
-              Navigator.pop(context);
-            },
-            child: const Text('Clear All'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFilterOption(String label, bool selected, VoidCallback onTap) {
-    return FilterChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: (_) => onTap(),
-      selectedColor: Theme.of(context).colorScheme.primary.withOpacity(0.3),
-    );
-  }
 
   void _showEntryDetail(HistoryEntry entry) {
     showModalBottomSheet(
@@ -1333,9 +1220,8 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                         ),
                       ),
 
-                      // AI Insights (Enhanced with all details)
-                      if (entry.hasInsights && entry.insight != null)
-                        _buildEnhancedInsightsSection(entry.insight!),
+                      // AI Insights (Expandable Card)
+                      _buildExpandableInsightsCard(entry),
 
                       // Affirmations
                       _buildAffirmationsSection(entry.affirmations),
@@ -1408,226 +1294,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     );
   }
 
-  Widget _buildEnhancedInsightsSection(HistoryDailyInsight insight) {
-    final insightDetails = insight.insightDetails;
-    final sentimentLabel = insight.sentimentLabel;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 20),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.purple.shade50,
-            Colors.purple.shade100.withOpacity(0.3),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.purple.shade200, width: 1.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header with sentiment badge
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.purple.shade300, Colors.purple.shade500],
-                  ),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.auto_awesome,
-                  color: Colors.white,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Text(
-                  'AI Insights',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ),
-              if (sentimentLabel != null)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _getSentimentColor(sentimentLabel).withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: _getSentimentColor(
-                        sentimentLabel,
-                      ).withOpacity(0.4),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: _getSentimentColor(sentimentLabel),
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        sentimentLabel.toUpperCase(),
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: _getSentimentColor(sentimentLabel),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 20),
-
-          // Main Insight Text
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.6),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              insight.insightText,
-              style: const TextStyle(
-                fontSize: 15,
-                height: 1.6,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-
-          // Structured Details
-          if (insightDetails != null) ...[
-            const SizedBox(height: 20),
-            if (insightDetails.whatWentWell != null) ...[
-              _buildInsightDetailItem(
-                Icons.thumb_up,
-                'What Went Well',
-                insightDetails.whatWentWell!,
-                Colors.green,
-              ),
-              const SizedBox(height: 12),
-            ],
-            if (insightDetails.progressArea != null) ...[
-              _buildInsightDetailItem(
-                Icons.trending_up,
-                'Progress Area',
-                insightDetails.progressArea!,
-                Colors.blue,
-              ),
-              const SizedBox(height: 12),
-            ],
-            if (insightDetails.selfCareBalance != null) ...[
-              _buildInsightDetailItem(
-                Icons.spa,
-                'Self-Care Balance',
-                insightDetails.selfCareBalance!,
-                Colors.teal,
-              ),
-              const SizedBox(height: 12),
-            ],
-            if (insightDetails.emotionalPattern != null)
-              _buildInsightDetailItem(
-                Icons.psychology,
-                'Emotional Pattern',
-                insightDetails.emotionalPattern!,
-                Colors.orange,
-              ),
-          ],
-
-          // Topics
-          if (insight.topics.isNotEmpty) ...[
-            const SizedBox(height: 20),
-            const Text(
-              'Topics',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: insight.topics.map((topic) {
-                return Chip(
-                  label: Text(topic),
-                  backgroundColor: Colors.purple.shade100,
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                );
-              }).toList(),
-            ),
-          ],
-        ],
-      ),
-    );
+  /// Build expandable AI Insights card
+  Widget _buildExpandableInsightsCard(HistoryEntry entry) {
+    return _ExpandableInsightsCard(entryId: entry.entry.id);
   }
 
-  Widget _buildInsightDetailItem(
-    IconData icon,
-    String title,
-    String? content,
-    Color color,
-  ) {
-    if (content == null || content.isEmpty) return const SizedBox.shrink();
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, size: 16, color: color),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: color,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  content,
-                  style: const TextStyle(fontSize: 13, height: 1.4),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildAffirmationsSection(EntryAffirmations? affirmations) {
     if (affirmations == null || affirmations.affirmations.isEmpty) {
@@ -2049,6 +1720,458 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           // Source is not stored in Entry model, skip for now
         ],
       ),
+    );
+  }
+}
+
+/// Expandable AI Insights Card Widget
+class _ExpandableInsightsCard extends StatefulWidget {
+  final String entryId;
+
+  const _ExpandableInsightsCard({required this.entryId});
+
+  @override
+  State<_ExpandableInsightsCard> createState() => _ExpandableInsightsCardState();
+}
+
+class _ExpandableInsightsCardState extends State<_ExpandableInsightsCard>
+    with SingleTickerProviderStateMixin {
+  bool _isExpanded = false;
+  bool _isLoading = false;
+  HistoryDailyInsight? _insight;
+  final HistoryService _historyService = HistoryService();
+  late AnimationController _animationController;
+  late Animation<double> _expandAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _expandAnimation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeInOut,
+    );
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _toggleExpanded() async {
+    if (!_isExpanded) {
+      // Expanding - fetch insights
+      setState(() {
+        _isExpanded = true;
+        _isLoading = true;
+      });
+      _animationController.forward();
+
+      try {
+        final insight = await _historyService.fetchInsightForEntry(widget.entryId);
+        setState(() {
+          _insight = insight;
+          _isLoading = false;
+        });
+      } catch (e) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    } else {
+      // Collapsing
+      setState(() {
+        _isExpanded = false;
+      });
+      _animationController.reverse();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.purple.shade50,
+            Colors.purple.shade100.withOpacity(0.3),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.purple.shade200, width: 1.5),
+      ),
+      child: Column(
+        children: [
+          // Collapsed Header (Always Visible)
+          InkWell(
+            onTap: _toggleExpanded,
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Colors.purple.shade300, Colors.purple.shade500],
+                      ),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.auto_awesome,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'AI Insights',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  AnimatedRotation(
+                    turns: _isExpanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 300),
+                    child: Icon(
+                      Icons.keyboard_arrow_down,
+                      color: Colors.purple.shade700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Expanded Content
+          SizeTransition(
+            sizeFactor: _expandAnimation,
+            child: Container(
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                bottom: _isExpanded ? 20 : 0,
+              ),
+              child: _buildExpandedContent(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExpandedContent() {
+    if (_isLoading) {
+      return _buildLoadingState();
+    }
+
+    if (_insight == null) {
+      return _buildEmptyState();
+    }
+
+    return _buildInsightsContent(_insight!);
+  }
+
+  Widget _buildLoadingState() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 32),
+      child: Column(
+        children: [
+          const CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.purple),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Loading insights...',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey.shade600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.purple.shade50,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.lightbulb_outline,
+              size: 32,
+              color: Colors.purple.shade400,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'No AI Insights Available',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey.shade800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'Complete your daily affirmations and gratitude to unlock personalized AI insights about your day!',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.grey.shade600,
+                height: 1.5,
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.purple.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.purple.shade200),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline, size: 18, color: Colors.purple.shade700),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'AI insights help you understand patterns, track progress, and discover meaningful connections in your journal entries.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.purple.shade800,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInsightsContent(HistoryDailyInsight insight) {
+    final insightDetails = insight.insightDetails;
+    final sentimentLabel = insight.sentimentLabel;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Sentiment Badge
+        if (sentimentLabel != null) ...[
+          Align(
+            alignment: Alignment.centerRight,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: _getSentimentColor(sentimentLabel).withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: _getSentimentColor(sentimentLabel).withOpacity(0.4),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: _getSentimentColor(sentimentLabel),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    sentimentLabel.toUpperCase(),
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: _getSentimentColor(sentimentLabel),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+
+        // Main Insight Text
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.6),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            insight.insightText,
+            style: const TextStyle(
+              fontSize: 15,
+              height: 1.6,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+
+        // Structured Details
+        if (insightDetails != null) ...[
+          const SizedBox(height: 16),
+          if (insightDetails.whatWentWell != null) ...[
+            _buildInsightDetailItem(
+              Icons.thumb_up,
+              'What Went Well',
+              insightDetails.whatWentWell!,
+              Colors.green,
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (insightDetails.progressArea != null) ...[
+            _buildInsightDetailItem(
+              Icons.trending_up,
+              'Progress Area',
+              insightDetails.progressArea!,
+              Colors.blue,
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (insightDetails.selfCareBalance != null) ...[
+            _buildInsightDetailItem(
+              Icons.spa,
+              'Self-Care Balance',
+              insightDetails.selfCareBalance!,
+              Colors.teal,
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (insightDetails.emotionalPattern != null)
+            _buildInsightDetailItem(
+              Icons.psychology,
+              'Emotional Pattern',
+              insightDetails.emotionalPattern!,
+              Colors.orange,
+            ),
+        ],
+
+        // Topics
+        if (insight.topics.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          const Text(
+            'Topics',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: insight.topics.map((topic) {
+              return Chip(
+                label: Text(topic),
+                backgroundColor: Colors.purple.shade100,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+              );
+            }).toList(),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildInsightDetailItem(
+    IconData icon,
+    String title,
+    String content,
+    Color color,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 16, color: color),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: _darkenColor(color),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  content,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey.shade700,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _getSentimentColor(String sentiment) {
+    switch (sentiment.toLowerCase()) {
+      case 'positive':
+        return Colors.green;
+      case 'negative':
+        return Colors.red;
+      default:
+        return Colors.orange;
+    }
+  }
+
+  Color _darkenColor(Color color) {
+    // Darken the color by reducing brightness
+    return Color.fromRGBO(
+      (color.red * 0.7).round().clamp(0, 255),
+      (color.green * 0.7).round().clamp(0, 255),
+      (color.blue * 0.7).round().clamp(0, 255),
+      1.0,
     );
   }
 }

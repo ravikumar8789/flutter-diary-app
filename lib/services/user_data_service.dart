@@ -40,6 +40,7 @@ class UserDataService {
         avatarUrl: profileData.data?['avatar_url'],
         stats: statsData.data,
         preferences: preferencesData.data,
+        timezone: profileData.data?['timezone'] as String?,
         createdAt: DateTime.parse(user.createdAt),
         lastLoginAt: DateTime.now(),
       );
@@ -68,72 +69,178 @@ class UserDataService {
           .from('users')
           .select('*')
           .eq('id', userId)
-          .single();
+          .maybeSingle();
 
-      // Check if timezone is null and update it
-      if (response['timezone'] == null) {
-        // Update timezone in background (don't await)
-        TimezoneService.initializeUserTimezone(userId).catchError((e) {
-          ErrorLoggingService.logLowError(
-            errorCode: 'ERRSYS165',
-            errorMessage: 'Timezone update failed for existing user: ${e.toString()}',
-            stackTrace: StackTrace.current.toString(),
-            errorContext: {
-              'user_id': userId,
-              'operation': 'update_existing_user_timezone',
-            },
-          );
-          return 'UTC';
-        });
+      // Case 1: User exists
+      if (response != null) {
+        // Check if timezone is null and update it
+        if (response['timezone'] == null) {
+          // Update timezone in background (don't await)
+          TimezoneService.initializeUserTimezone(userId).catchError((e) {
+            ErrorLoggingService.logLowError(
+              errorCode: 'ERRSYS165',
+              errorMessage: 'Timezone update failed for existing user: ${e.toString()}',
+              stackTrace: StackTrace.current.toString(),
+              errorContext: {
+                'user_id': userId,
+                'operation': 'update_existing_user_timezone',
+              },
+            );
+            return 'UTC';
+          });
+        }
+
+        return DataResult(success: true, data: response);
       }
 
-      return DataResult(success: true, data: response);
-    } catch (e) {
-      // Log error
-      await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS118',
-        errorMessage: 'User profile fetch failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {'user_id': userId, 'operation': 'fetch_user_profile'},
-      );
-      // If user doesn't exist in users table, create a basic one
+      // Case 2: User doesn't exist (null response) - Create new user
+      final user = _supabase.auth.currentUser!;
+      final displayName =
+          user.userMetadata?['display_name'] ??
+          user.email?.split('@')[0] ??
+          'User';
+
+      // Get device timezone
+      final timezone = await TimezoneService.getDeviceTimezone();
+
+      final newUser = {
+        'id': userId,
+        'email': user.email,
+        'display_name': displayName,
+        'avatar_url': null,
+        'timezone': timezone,
+        'created_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+
       try {
-        final user = _supabase.auth.currentUser!;
-        final displayName =
-            user.userMetadata?['display_name'] ??
-            user.email?.split('@')[0] ??
-            'User';
-
-        // Get device timezone
-        final timezone = await TimezoneService.getDeviceTimezone();
-
-        final newUser = {
-          'id': userId,
-          'email': user.email,
-          'display_name': displayName,
-          'avatar_url': null,
-          'timezone': timezone,
-          'created_at': DateTime.now().toIso8601String(),
-          'updated_at': DateTime.now().toIso8601String(),
-        };
-
         await _supabase.from('users').insert(newUser);
         return DataResult(success: true, data: newUser);
-      } catch (createError) {
-        // Log create user error
-        await ErrorLoggingService.logHighError(
-          errorCode: 'ERRSYS118',
-          errorMessage: 'User creation failed: ${createError.toString()}',
-          stackTrace: StackTrace.current.toString(),
-          errorContext: {'user_id': userId, 'operation': 'create_user'},
-        );
+      } catch (insertError) {
+        // Handle duplicate key error (race condition)
+        if (_isDuplicateKeyError(insertError)) {
+          // User was created between check and insert, retry fetch
+          return await _retryFetchUser(userId);
+        }
+        // Other insert errors - log and return
+        await _logUserCreationError(insertError, userId, 'insert_failed');
         return DataResult(
           success: false,
-          error: 'Failed to create user: $createError',
+          error: 'Failed to create user: $insertError',
           data: null,
         );
       }
+    } catch (e) {
+      // Real error (network, DB, etc.) - don't try to create user
+      await _logUserFetchError(e, userId, 'fetch_failed');
+      return DataResult(
+        success: false,
+        error: 'Failed to fetch user profile: $e',
+        data: null,
+      );
     }
+  }
+
+  /// Check if error is duplicate key error
+  static bool _isDuplicateKeyError(dynamic error) {
+    final errorString = error.toString();
+    return errorString.contains('23505') ||
+        errorString.contains('duplicate key') ||
+        errorString.contains('unique constraint');
+  }
+
+  /// Retry fetch after duplicate key error
+  static Future<DataResult> _retryFetchUser(String userId) async {
+    try {
+      final retryResponse = await _supabase
+          .from('users')
+          .select('*')
+          .eq('id', userId)
+          .maybeSingle();
+
+      if (retryResponse != null) {
+        return DataResult(success: true, data: retryResponse);
+      }
+      // Still null after retry - log as warning
+      await ErrorLoggingService.logMediumError(
+        errorCode: 'ERRSYS119',
+        errorMessage: 'User not found after duplicate key retry',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'user_id': userId,
+          'operation': 'retry_fetch_after_duplicate',
+        },
+      );
+      return DataResult(success: false, error: 'User not found', data: null);
+    } catch (retryError) {
+      await _logUserFetchError(retryError, userId, 'retry_fetch_failed');
+      return DataResult(success: false, error: 'Retry fetch failed', data: null);
+    }
+  }
+
+  /// Log user fetch errors with detailed context
+  static Future<void> _logUserFetchError(
+    dynamic error,
+    String userId,
+    String operation,
+  ) async {
+    final errorString = error.toString();
+    final isNetworkError = errorString.contains('timeout') ||
+        errorString.contains('network') ||
+        errorString.contains('connection');
+    final isDbError = errorString.contains('database') ||
+        errorString.contains('PostgrestException');
+
+    // Use ERRSYS121 for retry fetch failures, ERRSYS118 for initial fetch failures
+    final errorCode = operation == 'retry_fetch_failed' ? 'ERRSYS121' : 'ERRSYS118';
+    final errorMessage = operation == 'retry_fetch_failed'
+        ? 'User retry fetch failed: $errorString'
+        : 'User profile fetch failed: $errorString';
+
+    await ErrorLoggingService.logHighError(
+      errorCode: errorCode,
+      errorMessage: errorMessage,
+      stackTrace: StackTrace.current.toString(),
+      errorContext: {
+        'user_id': userId,
+        'operation': operation,
+        'error_type': isNetworkError
+            ? 'network'
+            : (isDbError ? 'database' : 'unknown'),
+        'error_details': {
+          'error_string': errorString,
+          'error_runtime_type': error.runtimeType.toString(),
+          'timestamp': DateTime.now().toIso8601String(),
+        },
+      },
+    );
+  }
+
+  /// Log user creation errors with detailed context
+  static Future<void> _logUserCreationError(
+    dynamic error,
+    String userId,
+    String operation,
+  ) async {
+    final errorString = error.toString();
+    final isDuplicateKey = _isDuplicateKeyError(error);
+
+    await ErrorLoggingService.logHighError(
+      errorCode: isDuplicateKey ? 'ERRSYS119' : 'ERRSYS120',
+      errorMessage: 'User creation failed: $errorString',
+      stackTrace: StackTrace.current.toString(),
+      errorContext: {
+        'user_id': userId,
+        'operation': operation,
+        'error_type': isDuplicateKey ? 'duplicate_key' : 'insert_error',
+        'error_code': isDuplicateKey ? '23505' : 'unknown',
+        'error_details': {
+          'error_string': errorString,
+          'error_runtime_type': error.runtimeType.toString(),
+          'timestamp': DateTime.now().toIso8601String(),
+        },
+      },
+    );
   }
 
   /// Fetch user statistics (entries, streak, etc.)
@@ -300,8 +407,20 @@ class UserDataService {
         return await _calculateStreak(entries);
       }
 
-      // Get grace system data from habits_daily
+      // Get today's date in app timezone
       final today = DateTime.now().toIso8601String().split('T')[0];
+      
+      // Check if user wrote today (has diary entry today)
+      final todayHabits = await _supabase
+          .from('habits_daily')
+          .select('wrote_entry')
+          .eq('user_id', userId)
+          .eq('date', today)
+          .maybeSingle();
+
+      final wroteToday = todayHabits?['wrote_entry'] == true;
+
+      // Get grace system data
       final graceData = await _supabase
           .rpc(
             'calculate_grace_days_from_habits',
@@ -314,31 +433,68 @@ class UserDataService {
 
       final graceDaysAvailable = graceData['grace_days_available'] ?? 0;
 
-      // Calculate days since last entry
+      // If user wrote today, calculate normal streak
+      if (wroteToday && entries.isNotEmpty) {
+        final streak = await _calculateStreak(entries);
+        await _persistStreak(
+          userId,
+          streak,
+          lastEntryIso: entries.first['created_at'],
+        );
+        return streak;
+      }
+
+      // User didn't write today - check if we should use grace day
       if (entries.isEmpty) {
+        // No entries at all
         if (graceDaysAvailable > 0) {
           // Use grace day to maintain streak
           await _useGraceDayForStreak(userId);
           return await _getCurrentStreak(userId);
         }
+        // No grace days, reset streak
+        await _persistStreak(userId, 0);
         return 0;
       }
 
+      // Has entries but didn't write today
       final lastEntryDate = DateTime.parse(entries.first['created_at']);
-      final daysSinceLastEntry = DateTime.now()
-          .difference(lastEntryDate)
-          .inDays;
+      final lastEntryDateOnly = lastEntryDate.toIso8601String().split('T')[0];
+      final todayDate = DateTime.parse(today);
+      final lastDate = DateTime.parse(lastEntryDateOnly);
+      final daysDifference = todayDate.difference(lastDate).inDays;
 
-      if (daysSinceLastEntry == 0) {
-        // Entry written today, maintain streak
-        return await _getCurrentStreak(userId);
-      } else if (daysSinceLastEntry == 1 && graceDaysAvailable > 0) {
-        // Missed yesterday, use grace day
-        await _useGraceDayForStreak(userId);
-        return await _getCurrentStreak(userId);
+      if (daysDifference == 1) {
+        // Missed exactly 1 day (yesterday)
+        if (graceDaysAvailable > 0) {
+          // Use grace day to maintain streak
+          final currentStreak = await _getCurrentStreak(userId);
+          await _useGraceDayForStreak(userId);
+          return currentStreak; // Maintain current streak
+        } else {
+          // No grace days, reset streak
+          await _persistStreak(userId, 0);
+          return 0;
+        }
+      } else if (daysDifference > 1) {
+        // Missed multiple days
+        if (graceDaysAvailable >= daysDifference - 1) {
+          // Use multiple grace days if available
+          for (int i = 0; i < daysDifference - 1; i++) {
+            await _useGraceDayForStreak(userId);
+          }
+          final currentStreak = await _getCurrentStreak(userId);
+          return currentStreak;
+        } else {
+          // Not enough grace days, reset streak
+          await _persistStreak(userId, 0);
+          return 0;
+        }
       } else {
-        // Multiple days missed or no grace days, break streak
-        return 0;
+        // daysDifference == 0 shouldn't happen if wroteToday is false, but handle it
+        final streak = await _calculateStreak(entries);
+        await _persistStreak(userId, streak, lastEntryIso: entries.first['created_at']);
+        return streak;
       }
     } catch (e) {
       // Log error
@@ -503,6 +659,7 @@ class UserData {
   final String? avatarUrl;
   final Map<String, dynamic>? stats;
   final Map<String, dynamic>? preferences;
+  final String? timezone;
   final DateTime createdAt;
   final DateTime lastLoginAt;
 
@@ -513,6 +670,7 @@ class UserData {
     this.avatarUrl,
     this.stats,
     this.preferences,
+    this.timezone,
     required this.createdAt,
     required this.lastLoginAt,
   });

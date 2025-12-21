@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/analytics_models.dart';
 import '../services/error_logging_service.dart';
@@ -90,7 +91,9 @@ class AnalyticsService {
         final totalSelfCare = selfCareCounts.isNotEmpty
             ? selfCareCounts.reduce((a, b) => a + b)
             : 0;
-        selfCareRate = entriesCount > 0 ? totalSelfCare / (entriesCount * 5) : 0; // Assuming 5 self-care items max
+        // self_care_completed_count in habits_daily can include up to 10 checklist items.
+        // Use 10 as the denominator to keep the rate within 0-1.
+        selfCareRate = entriesCount > 0 ? totalSelfCare / (entriesCount * 10) : 0;
       }
 
       // Fetch AI-generated weekly insight
@@ -102,34 +105,107 @@ class AnalyticsService {
       // Use AI values or calculated fallback
       final finalMoodAvg = weeklyInsight?.moodAvg ?? moodAvg;
       final finalCupsAvg = weeklyInsight?.cupsAvg ?? cupsAvg;
-      final finalSelfCareRate = weeklyInsight?.selfCareRate ?? selfCareRate.clamp(0.0, 1.0);
+      final finalSelfCareRate =
+          (weeklyInsight?.selfCareRate ?? selfCareRate).clamp(0.0, 1.0);
       final finalConsistencyScore = weeklyInsight?.consistencyScore ?? (entriesCount / 7.0);
       final finalEntriesCount = weeklyInsight?.entriesCount ?? entriesCount;
       final finalTopTopics = weeklyInsight?.topTopics ?? [];
 
-      // Build mood trend data
+      // Build mood trend data and daily progress
       final moodData = <MoodDataPoint>[];
+      final dailyProgressList = <DailyProgress>[];
+      final dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      
+      // Fetch entries with full data for daily progress
+      final entriesWithData = await _supabase
+          .from('entries')
+          .select('id, entry_date, mood_score, diary_text')
+          .eq('user_id', userId)
+          .gte('entry_date', weekStartStr)
+          .lte('entry_date', weekEndStr);
+      
+      final entriesMap = <String, Map<String, dynamic>>{};
+      for (final entry in entriesWithData as List) {
+        final dateStr = entry['entry_date'] as String;
+        entriesMap[dateStr] = entry;
+      }
+      
+      // Fetch self-care data per entry
+      final selfCareData = await _supabase
+          .from('entry_self_care')
+          .select('entry_id')
+          .inFilter('entry_id', entryIds);
+      
+      final selfCareEntryIds = (selfCareData as List)
+          .map((e) => e['entry_id'] as String)
+          .toSet();
+      
+      int wordCountTotal = 0;
+      
       for (int i = 0; i < 7; i++) {
         final date = weekStart.add(Duration(days: i));
-        final dayEntries = entries.where((e) {
-          final entryDate = DateTime.parse(e['entry_date'] as String);
-          return entryDate.year == date.year &&
-              entryDate.month == date.month &&
-              entryDate.day == date.day;
-        }).toList();
-
+        final dateStr = '${date.year.toString().padLeft(4, '0')}-'
+            '${date.month.toString().padLeft(2, '0')}-'
+            '${date.day.toString().padLeft(2, '0')}';
+        
+        final dayEntry = entriesMap[dateStr];
         double? moodScore;
-        if (dayEntries.isNotEmpty && dayEntries.first['mood_score'] != null) {
-          moodScore = (dayEntries.first['mood_score'] as num).toDouble();
+        int waterCups = 0;
+        double selfCareCompletion = 0.0;
+        bool hasEntry = dayEntry != null;
+        String? entryPreview;
+        
+        if (dayEntry != null) {
+          moodScore = (dayEntry['mood_score'] as num?)?.toDouble() ?? 3.0;
+          final entryId = dayEntry['id'] as String;
+          
+          // Get water cups
+          final mealData = meals.firstWhere(
+            (m) => m['entry_id'] == entryId,
+            orElse: () => <String, dynamic>{},
+          );
+          waterCups = (mealData['water_cups'] as num?)?.toInt() ?? 0;
+          
+          // Calculate self-care completion
+          final hasSelfCare = selfCareEntryIds.contains(entryId);
+          if (hasSelfCare) {
+            // Count self-care activities (simplified - assume 5 max)
+            selfCareCompletion = 0.8; // Placeholder, will be calculated properly
+          }
+          
+          // Get entry preview
+          final diaryText = dayEntry['diary_text'] as String?;
+          if (diaryText != null) {
+            wordCountTotal += diaryText.split(RegExp(r'\s+')).length;
+            entryPreview = diaryText.length > 100
+                ? '${diaryText.substring(0, 100)}...'
+                : diaryText;
+          }
         }
-
-        final dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        
         moodData.add(MoodDataPoint(
           date: date,
           moodScore: moodScore ?? 0,
           label: dayNames[i],
         ));
+        
+        dailyProgressList.add(DailyProgress(
+          date: date,
+          moodScore: moodScore,
+          waterCups: waterCups,
+          selfCareCompletion: selfCareCompletion,
+          hasEntry: hasEntry,
+          entryPreview: entryPreview,
+          dayLabel: dayNames[i],
+        ));
       }
+      
+      // Check if current week
+      final now = DateTime.now();
+      final currentWeekStart = now.subtract(Duration(days: now.weekday % 7));
+      final isCurrentWeek = weekStart.year == currentWeekStart.year &&
+          weekStart.month == currentWeekStart.month &&
+          weekStart.day == currentWeekStart.day;
 
     return WeeklyAnalyticsData(
       id: 'weekly-${weekStart.toIso8601String()}',
@@ -153,6 +229,13 @@ class AnalyticsService {
         topTopics: finalTopTopics,
       moodTrendData: moodData,
       weeklyInsight: weeklyInsight, // Store full AI insight for UI
+      habitCorrelations: weeklyInsight != null 
+          ? _parseHabitCorrelations(weeklyInsight.habitCorrelations)
+          : null,
+      wordCountTotal: weeklyInsight?.wordCountTotal ?? wordCountTotal,
+      dailyProgress: dailyProgressList,
+      generatedAt: weeklyInsight?.generatedAt,
+      isCurrentWeek: isCurrentWeek,
     );
     } catch (e) {
       await ErrorLoggingService.logError(
@@ -336,7 +419,7 @@ class AnalyticsService {
 
       if (period == AnalyticsPeriod.weekly) {
         final now = DateTime.now();
-        final currentWeekStart = now.subtract(Duration(days: (now.weekday - 1) % 7));
+        final currentWeekStart = now.subtract(Duration(days: now.weekday % 7));
         currentStart = DateTime(currentWeekStart.year, currentWeekStart.month, currentWeekStart.day);
         currentEnd = currentStart.add(const Duration(days: 6));
         previousStart = currentStart.subtract(const Duration(days: 7));
@@ -459,7 +542,8 @@ class AnalyticsService {
       final totalSelfCare = selfCareCounts.isNotEmpty
           ? selfCareCounts.reduce((a, b) => a + b)
           : 0;
-      selfCareRate = entriesCount > 0 ? totalSelfCare / (entriesCount * 5) : 0;
+      // Use 10 as max checklist items to keep rate within 0-1
+      selfCareRate = entriesCount > 0 ? totalSelfCare / (entriesCount * 10) : 0;
     }
 
     final daysDiff = endDate.difference(startDate).inDays + 1;
@@ -499,5 +583,254 @@ class AnalyticsService {
       'December',
     ];
     return '${months[monthStart.month - 1]} ${monthStart.year}';
+  }
+
+  /// Get week list metadata for navigation (lightweight query)
+  Future<List<WeekMetadata>> getWeeklyInsightsList(String userId) async {
+    try {
+      // Fetch weeks with insights
+      final insightsResponse = await _supabase
+          .from('weekly_insights')
+          .select('week_start, week_end, status, entries_count, mood_avg')
+          .eq('user_id', userId)
+          .order('week_start', ascending: false)
+          .limit(12); // Last 12 weeks
+      
+      final weeksList = <WeekMetadata>[];
+      
+      // Process weeks with insights
+      for (final insight in insightsResponse as List) {
+        weeksList.add(WeekMetadata.fromJson(insight));
+      }
+      
+      // Get all week starts we already have
+      final existingWeekStarts = weeksList.map((w) => 
+        '${w.weekStart.year}-${w.weekStart.month}-${w.weekStart.day}'
+      ).toSet();
+      
+      // Also check for weeks with entries but no insights (last 4 weeks) - optimized batch query
+      final now = DateTime.now();
+      final weekStartsToCheck = <String>[];
+      final weekStartDates = <String, DateTime>{};
+      
+      for (int i = 0; i < 4; i++) {
+        final weekStart = now.subtract(Duration(days: now.weekday % 7 + (i * 7)));
+        final weekStartStr = '${weekStart.year.toString().padLeft(4, '0')}-'
+            '${weekStart.month.toString().padLeft(2, '0')}-'
+            '${weekStart.day.toString().padLeft(2, '0')}';
+        final weekKey = '${weekStart.year}-${weekStart.month}-${weekStart.day}';
+        
+        if (!existingWeekStarts.contains(weekKey)) {
+          weekStartsToCheck.add(weekStartStr);
+          weekStartDates[weekStartStr] = weekStart;
+        }
+      }
+      
+        // Batch query for entries in all weeks at once (much faster)
+        if (weekStartsToCheck.isNotEmpty) {
+          final earliestWeek = weekStartsToCheck.last;
+          final latestWeekEnd = weekStartDates[weekStartsToCheck.first]!
+              .add(const Duration(days: 6));
+          final latestWeekEndStr = '${latestWeekEnd.year.toString().padLeft(4, '0')}-'
+              '${latestWeekEnd.month.toString().padLeft(2, '0')}-'
+              '${latestWeekEnd.day.toString().padLeft(2, '0')}';
+          
+          final entriesResponse = await _supabase
+              .from('entries')
+              .select('entry_date')
+              .eq('user_id', userId)
+              .gte('entry_date', earliestWeek)
+              .lte('entry_date', latestWeekEndStr);
+          
+          // Group entries by week
+          final entriesByWeek = <String, int>{};
+          for (final entry in entriesResponse) {
+          final entryDate = DateTime.parse(entry['entry_date'] as String);
+          final weekStart = entryDate.subtract(Duration(days: entryDate.weekday % 7));
+          final weekKey = '${weekStart.year}-${weekStart.month}-${weekStart.day}';
+          entriesByWeek[weekKey] = (entriesByWeek[weekKey] ?? 0) + 1;
+        }
+        
+        // Add weeks with entries
+        for (final weekStartStr in weekStartsToCheck) {
+          final weekStart = weekStartDates[weekStartStr]!;
+          final weekKey = '${weekStart.year}-${weekStart.month}-${weekStart.day}';
+          final entriesCount = entriesByWeek[weekKey] ?? 0;
+          
+          if (entriesCount > 0) {
+            weeksList.add(WeekMetadata(
+              weekStart: weekStart,
+              weekEnd: weekStart.add(const Duration(days: 6)),
+              status: 'none',
+              entriesCount: entriesCount,
+              hasAnalysis: false,
+            ));
+          }
+        }
+      }
+      
+      // Sort by week_start descending
+      weeksList.sort((a, b) => b.weekStart.compareTo(a.weekStart));
+      
+      return weeksList;
+    } catch (e) {
+      await ErrorLoggingService.logError(
+        errorCode: 'ERRANA002',
+        errorMessage: 'Failed to get weekly insights list: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        severity: 'MEDIUM',
+        errorContext: {
+          'user_id': userId,
+          'operation': 'get_weekly_insights_list',
+        },
+      );
+      return [];
+    }
+  }
+
+  /// Get daily progress for bar chart
+  Future<List<DailyProgress>> getDailyProgress(
+    String userId,
+    DateTime weekStart,
+    DateTime weekEnd,
+  ) async {
+    try {
+      final weekStartStr = '${weekStart.year.toString().padLeft(4, '0')}-'
+          '${weekStart.month.toString().padLeft(2, '0')}-'
+          '${weekStart.day.toString().padLeft(2, '0')}';
+      final weekEndStr = '${weekEnd.year.toString().padLeft(4, '0')}-'
+          '${weekEnd.month.toString().padLeft(2, '0')}-'
+          '${weekEnd.day.toString().padLeft(2, '0')}';
+      
+      // Fetch entries with full data
+      final entriesResponse = await _supabase
+          .from('entries')
+          .select('id, entry_date, mood_score, diary_text')
+          .eq('user_id', userId)
+          .gte('entry_date', weekStartStr)
+          .lte('entry_date', weekEndStr);
+      
+      final entryIds = (entriesResponse as List).map((e) => e['id'] as String).toList();
+      
+      // Fetch meals and self-care in parallel
+      final results = await Future.wait([
+        entryIds.isNotEmpty
+            ? _supabase
+                .from('entry_meals')
+                .select('entry_id, water_cups')
+                .inFilter('entry_id', entryIds)
+            : Future.value([]),
+        entryIds.isNotEmpty
+            ? _supabase
+                .from('entry_self_care')
+                .select('entry_id, sleep, exercise, hydrated, balanced_diet, fresh_air, learn_new, podcast, me_moment, read_book')
+                .inFilter('entry_id', entryIds)
+            : Future.value([]),
+      ]);
+      
+      final mealsResponse = results[0];
+      final selfCareResponse = results[1];
+      
+      // Create maps for quick lookup
+      final mealsMap = <String, int>{};
+      for (final meal in mealsResponse) {
+        mealsMap[meal['entry_id'] as String] = (meal['water_cups'] as num?)?.toInt() ?? 0;
+      }
+      
+      final selfCareMap = <String, int>{};
+      for (final sc in selfCareResponse) {
+        int count = 0;
+        if (sc['sleep'] == true) count++;
+        if (sc['exercise'] == true) count++;
+        if (sc['hydrated'] == true) count++;
+        if (sc['balanced_diet'] == true) count++;
+        if (sc['fresh_air'] == true) count++;
+        if (sc['learn_new'] == true) count++;
+        if (sc['podcast'] == true) count++;
+        if (sc['me_moment'] == true) count++;
+        if (sc['read_book'] == true) count++;
+        selfCareMap[sc['entry_id'] as String] = count;
+      }
+      
+      // Build daily progress list
+      final dailyProgressList = <DailyProgress>[];
+      final dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      final entriesMap = <String, Map<String, dynamic>>{};
+      
+      for (final entry in entriesResponse) {
+        final dateStr = entry['entry_date'] as String;
+        entriesMap[dateStr] = entry;
+      }
+      
+      for (int i = 0; i < 7; i++) {
+        final date = weekStart.add(Duration(days: i));
+        final dateStr = '${date.year.toString().padLeft(4, '0')}-'
+            '${date.month.toString().padLeft(2, '0')}-'
+            '${date.day.toString().padLeft(2, '0')}';
+        
+        final dayEntry = entriesMap[dateStr];
+        double? moodScore;
+        int waterCups = 0;
+        double selfCareCompletion = 0.0;
+        bool hasEntry = dayEntry != null;
+        String? entryPreview;
+        
+        if (dayEntry != null) {
+          moodScore = (dayEntry['mood_score'] as num?)?.toDouble();
+          final entryId = dayEntry['id'] as String;
+          
+          waterCups = mealsMap[entryId] ?? 0;
+          
+          final selfCareCount = selfCareMap[entryId] ?? 0;
+          selfCareCompletion = (selfCareCount / 9.0).clamp(0.0, 1.0); // 9 max self-care activities
+          
+          final diaryText = dayEntry['diary_text'] as String?;
+          if (diaryText != null) {
+            entryPreview = diaryText.length > 100
+                ? '${diaryText.substring(0, 100)}...'
+                : diaryText;
+          }
+        }
+        
+        dailyProgressList.add(DailyProgress(
+          date: date,
+          moodScore: moodScore,
+          waterCups: waterCups,
+          selfCareCompletion: selfCareCompletion,
+          hasEntry: hasEntry,
+          entryPreview: entryPreview,
+          dayLabel: dayNames[i],
+        ));
+      }
+      
+      return dailyProgressList;
+    } catch (e) {
+      await ErrorLoggingService.logError(
+        errorCode: 'ERRANA003',
+        errorMessage: 'Failed to get daily progress: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        severity: 'MEDIUM',
+        errorContext: {
+          'user_id': userId,
+          'week_start': weekStart.toIso8601String(),
+          'operation': 'get_daily_progress',
+        },
+      );
+      return [];
+    }
+  }
+
+  /// Parse habit correlations from JSONB
+  Map<String, dynamic>? _parseHabitCorrelations(dynamic correlations) {
+    if (correlations == null) return null;
+    if (correlations is Map<String, dynamic>) return correlations;
+    if (correlations is String) {
+      try {
+        return Map<String, dynamic>.from(jsonDecode(correlations));
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
   }
 }

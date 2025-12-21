@@ -207,8 +207,14 @@ class DataDeletion {
 class SupportTicket {
   final String id;
   final String? userId;
+  final String? ticketNumber;
+  final String? category;
   final String? subject;
   final String? message;
+  final String? email;
+  final String? appVersion;
+  final Map<String, dynamic>? deviceInfo;
+  final String? closureNote;
   final TicketStatus status;
   final DateTime createdAt;
   final DateTime? closedAt;
@@ -216,8 +222,14 @@ class SupportTicket {
   SupportTicket({
     required this.id,
     this.userId,
+    this.ticketNumber,
+    this.category,
     this.subject,
     this.message,
+    this.email,
+    this.appVersion,
+    this.deviceInfo,
+    this.closureNote,
     this.status = TicketStatus.open,
     required this.createdAt,
     this.closedAt,
@@ -227,8 +239,14 @@ class SupportTicket {
     return SupportTicket(
       id: json['id'] as String,
       userId: json['user_id'] as String?,
+      ticketNumber: json['ticket_number'] as String?,
+      category: json['category'] as String?,
       subject: json['subject'] as String?,
       message: json['message'] as String?,
+      email: json['email'] as String?,
+      appVersion: json['app_version'] as String?,
+      deviceInfo: json['device_info'] as Map<String, dynamic>?,
+      closureNote: json['closure_note'] as String?,
       status: TicketStatus.fromString(json['status'] as String?),
       createdAt: DateTime.parse(json['created_at'] as String),
       closedAt: json['closed_at'] != null
@@ -241,8 +259,14 @@ class SupportTicket {
     return {
       'id': id,
       'user_id': userId,
+      'ticket_number': ticketNumber,
+      'category': category,
       'subject': subject,
       'message': message,
+      'email': email,
+      'app_version': appVersion,
+      'device_info': deviceInfo,
+      'closure_note': closureNote,
       'status': status.value,
       'created_at': createdAt.toIso8601String(),
       'closed_at': closedAt?.toIso8601String(),

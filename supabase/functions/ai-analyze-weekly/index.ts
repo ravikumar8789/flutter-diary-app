@@ -133,8 +133,8 @@ serve(async (req) => {
     // Extract topics from all entries
     const topics = extractTopics(entries)
 
-    // Calculate consistency
-    const consistencyScore = (entries.length / 7) * 100
+    // Calculate consistency (as decimal 0.0-1.0, not percentage)
+    const consistencyScore = entries.length / 7
 
     // Word count total
     const wordCountTotal = entries.reduce((sum, e) => sum + (e.diary_text?.split(/\s+/).length || 0), 0)
@@ -160,7 +160,7 @@ serve(async (req) => {
       mood_vs_gratitude: gratitudeDays > 0 ? (avgMood ? parseFloat(avgMood) : null) : null,
       mood_vs_affirmations: affirmationDays > 0 ? (avgMood ? parseFloat(avgMood) : null) : null,
       sentiment_distribution: sentimentCounts,
-      consistency_impact: consistencyScore > 70 ? 'high' : consistencyScore > 50 ? 'medium' : 'low'
+      consistency_impact: consistencyScore > 0.70 ? 'high' : consistencyScore > 0.50 ? 'medium' : 'low'
     }
 
     // 5. Build full data strings (NO TRUNCATION - Premium Edition)
@@ -417,7 +417,7 @@ Format your response clearly with sections labeled "Highlights:", "Key Insights:
       .replace('{shower_bath_full}', showerBathFull)
       .replace('{self_care_summary}', selfCareSummary)
       .replace('{cups_avg}', cupsAvg)
-      .replace('{consistency_score}', consistencyScore.toFixed(2))
+      .replace('{consistency_score}', (consistencyScore * 100).toFixed(2))
       .replace('{weekly_topics}', topics.slice(0, 10).join(', ') || 'None')
       .replace('{habit_correlations}', JSON.stringify(habitCorrelations))
 
@@ -479,7 +479,7 @@ Format your response clearly with sections labeled "Highlights:", "Key Insights:
         key_insights: insights,
         recommendations: recommendations,
         habit_correlations: habitCorrelations,
-        consistency_score: parseFloat(consistencyScore.toFixed(2)),
+        consistency_score: parseFloat(consistencyScore.toFixed(2)), // Decimal 0.0-1.0
         entries_count: entries.length,
         word_count_total: wordCountTotal,
         model_version: 'gpt-4o-mini',
@@ -493,6 +493,23 @@ Format your response clearly with sections labeled "Highlights:", "Key Insights:
 
     if (insightError) {
       console.error('Error saving weekly insight:', insightError)
+      // Log database error to ai_errors_log
+      await logAIError(supabase, new Error(`Database error saving weekly insight: ${insightError.message}`), {
+        userId: user_id,
+        entryId: null,
+        analysisType: 'weekly',
+        errorCode: 'ERRAI_WEEKLY_DB_001',
+        requestBody: { user_id, week_start },
+        requestDurationMs: Date.now() - startTime,
+        edgeFunctionName: 'ai-analyze-weekly',
+        failedAtStep: 'save_insight',
+        errorDetails: { 
+          supabase_error: insightError,
+          consistency_score_value: consistencyScore,
+          entries_count: entries.length
+        }
+      })
+      throw new Error(`Failed to save weekly insight: ${insightError.message}`)
     }
 
     // 12. Log request
@@ -535,7 +552,35 @@ Format your response clearly with sections labeled "Highlights:", "Key Insights:
       const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
       if (supabaseUrl && supabaseServiceKey) {
         const supabase = createClient(supabaseUrl, supabaseServiceKey)
-        const body = await req.json().catch(() => ({}))
+        
+        // Try to get request body, but handle case where req.json() was already called
+        let body: any = {}
+        try {
+          // Clone request if possible, otherwise use stored values
+          if (user_id && week_start) {
+            body = { user_id, week_start }
+          } else {
+            // Try to read from request if not already consumed
+            const reqClone = req.clone()
+            body = await reqClone.json().catch(() => ({}))
+          }
+        } catch {
+          // If we can't read body, use stored values or empty object
+          body = user_id && week_start ? { user_id, week_start } : {}
+        }
+        
+        // Determine failed step from error message
+        const errorMsg = errorMessage.toLowerCase()
+        let failedStep = 'unknown'
+        if (errorMsg.includes('save') || errorMsg.includes('upsert') || errorMsg.includes('insert') || errorMsg.includes('database') || errorMsg.includes('numeric field overflow')) {
+          failedStep = 'save_insight'
+        } else if (errorMsg.includes('openai') || errorMsg.includes('api')) {
+          failedStep = 'call_openai'
+        } else if (errorMsg.includes('fetch') || errorMsg.includes('entries')) {
+          failedStep = 'fetch_data'
+        } else if (errorMsg.includes('parse') || errorMsg.includes('insight')) {
+          failedStep = 'parse_response'
+        }
         
         // Log to comprehensive ai_errors_log table
         await logAIError(supabase, error, {
@@ -546,7 +591,11 @@ Format your response clearly with sections labeled "Highlights:", "Key Insights:
           requestBody: { user_id: user_id || body.user_id, week_start: week_start || body.week_start },
           requestDurationMs: duration,
           edgeFunctionName: 'ai-analyze-weekly',
-          failedAtStep: 'unknown',
+          failedAtStep: failedStep,
+          errorDetails: {
+            error_message: errorMessage,
+            error_type: error instanceof Error ? error.constructor.name : typeof error
+          }
         })
         
         // Also log to ai_requests_log (existing)
@@ -665,42 +714,97 @@ function parseWeeklyInsight(text: string): { insights: string[]; recommendations
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
     
-    // Detect section headers
-    if (line.toLowerCase().includes('highlights:')) {
+    // Detect section headers (more flexible matching)
+    const lowerLine = line.toLowerCase()
+    if (lowerLine.includes('highlights:') || lowerLine.includes('weekly highlights')) {
       currentSection = 'highlights'
       continue
     }
-    if (line.toLowerCase().includes('key insights:') || line.toLowerCase().includes('insights:')) {
+    if (lowerLine.includes('key insights:') || lowerLine.includes('insights:') || lowerLine.includes('key insight')) {
       currentSection = 'insights'
       continue
     }
-    if (line.toLowerCase().includes('recommendations:') || line.toLowerCase().includes('recommend')) {
+    if (lowerLine.includes('recommendations:') || lowerLine.includes('recommend') || lowerLine.includes('actionable')) {
       currentSection = 'recommendations'
       continue
     }
     
-    // Extract numbered or bulleted items
-    const match = line.match(/^[0-9]+\.\s*(.+)|^[-•]\s*(.+)|^Insight\s+[0-9]+:\s*(.+)|^Recommendation\s+[0-9]+:\s*(.+)|^(.+)/)
-    if (match) {
-      const item = match[1] || match[2] || match[3] || match[4] || match[5]
-      if (item && item.length > 10) {
-        if (currentSection === 'recommendations') {
+    // Extract numbered or bulleted items (improved regex)
+    const numberedMatch = line.match(/^[0-9]+\.\s+(.+)$/)
+    const bulletMatch = line.match(/^[-•*]\s+(.+)$/)
+    const insightMatch = line.match(/^Insight\s+[0-9]+:\s*(.+)$/i)
+    const recMatch = line.match(/^Recommendation\s+[0-9]+:\s*(.+)$/i)
+    const boldMatch = line.match(/^\*\*(.+?)\*\*:\s*(.+)$/) // Matches "**Title:** Description"
+    
+    let item: string | null = null
+    if (numberedMatch) {
+      item = numberedMatch[1].trim()
+    } else if (bulletMatch) {
+      item = bulletMatch[1].trim()
+    } else if (insightMatch) {
+      item = insightMatch[1].trim()
+    } else if (recMatch) {
+      item = recMatch[1].trim()
+    } else if (boldMatch && currentSection === 'insights') {
+      // For format like "**Insight 1:** Text" or "**1.** Text"
+      item = boldMatch[2] ? boldMatch[2].trim() : boldMatch[1].trim()
+    } else if (currentSection !== 'highlights' && line.length > 15 && !line.includes(':')) {
+      // If line is long enough and not a header, treat as content
+      item = line
+    }
+    
+    if (item && item.length > 10) {
+      // Clean up item (remove markdown, extra spaces)
+      item = item.replace(/\*\*/g, '').replace(/\*/g, '').trim()
+      
+      if (currentSection === 'recommendations') {
+        if (!recommendations.includes(item)) {
           recommendations.push(item)
-        } else if (currentSection === 'insights') {
+        }
+      } else if (currentSection === 'insights') {
+        if (!insights.includes(item)) {
           insights.push(item)
         }
-        // Skip highlights section items
       }
     }
   }
   
-  // Fallback: if no structured data, try to extract from paragraphs
+  // Enhanced fallback: if no structured data, try to extract from paragraphs
   if (insights.length === 0 && recommendations.length === 0) {
     const paragraphs = text.split(/\n\n+/).filter(p => p.trim().length > 20)
-    // First few paragraphs as insights, last as recommendations
-    insights.push(...paragraphs.slice(0, 4).map(p => p.trim()))
-    if (paragraphs.length > 4) {
-      recommendations.push(...paragraphs.slice(-3).map(p => p.trim()))
+    
+    // Try to identify insights vs recommendations by keywords
+    for (const para of paragraphs) {
+      const lowerPara = para.toLowerCase()
+      if (lowerPara.includes('recommend') || lowerPara.includes('suggest') || lowerPara.includes('action')) {
+        if (recommendations.length < 3) {
+          recommendations.push(para.trim())
+        }
+      } else if (lowerPara.includes('insight') || lowerPara.includes('pattern') || lowerPara.includes('correlation') || lowerPara.includes('trend')) {
+        if (insights.length < 5) {
+          insights.push(para.trim())
+        }
+      } else {
+        // Default: first paragraphs as insights, last as recommendations
+        if (insights.length < 5 && paragraphs.indexOf(para) < paragraphs.length - 2) {
+          insights.push(para.trim())
+        } else if (recommendations.length < 3) {
+          recommendations.push(para.trim())
+        }
+      }
+    }
+  }
+  
+  // Final validation: ensure we have valid insights
+  if (insights.length === 0) {
+    // Last resort: extract any numbered or bulleted items from entire text
+    const allMatches = text.matchAll(/[0-9]+\.\s+([^\n]+)/g)
+    for (const match of allMatches) {
+      const item = match[1].trim().replace(/\*\*/g, '').replace(/\*/g, '')
+      if (item.length > 15 && !item.toLowerCase().includes('recommend')) {
+        insights.push(item)
+        if (insights.length >= 5) break
+      }
     }
   }
   

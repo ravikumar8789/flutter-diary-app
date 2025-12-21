@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/analytics_models.dart';
-import '../screens/new_diary_screen.dart';
 
 /// Full screen view of yesterday's insight
 class YesterdayInsightScreen extends StatelessWidget {
@@ -174,27 +173,6 @@ class YesterdayInsightScreen extends StatelessWidget {
                 ),
               const SizedBox(height: 24),
             ],
-
-            // View original entry button
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  // Navigate to diary screen - user can manually navigate to yesterday's entry
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const NewDiaryScreen(),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.book),
-                label: const Text('View Original Entry'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-              ),
-            ),
           ],
         ),
       ),

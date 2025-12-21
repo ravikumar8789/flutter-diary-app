@@ -272,6 +272,17 @@ class EntryMeals {
       waterCups: json['water_cups'] ?? 0,
     );
   }
+
+  // For Supabase JSON format (same structure, but explicit method for consistency)
+  factory EntryMeals.fromSupabaseJson(Map<String, dynamic> json) {
+    return EntryMeals(
+      entryId: json['entry_id'],
+      breakfast: json['breakfast'],
+      lunch: json['lunch'],
+      dinner: json['dinner'],
+      waterCups: json['water_cups'] ?? 0,
+    );
+  }
 }
 
 // Gratitude Item model
@@ -389,6 +400,23 @@ class EntrySelfCare {
       exercise: json['exercise'] == 1,
     );
   }
+
+  // For Supabase JSON format (boolean values)
+  factory EntrySelfCare.fromSupabaseJson(Map<String, dynamic> json) {
+    return EntrySelfCare(
+      entryId: json['entry_id'],
+      sleep: json['sleep'] == true,
+      getUpEarly: json['get_up_early'] == true,
+      freshAir: json['fresh_air'] == true,
+      learnNew: json['learn_new'] == true,
+      balancedDiet: json['balanced_diet'] == true,
+      podcast: json['podcast'] == true,
+      meMoment: json['me_moment'] == true,
+      hydrated: json['hydrated'] == true,
+      readBook: json['read_book'] == true,
+      exercise: json['exercise'] == true,
+    );
+  }
 }
 
 // Entry Shower Bath model
@@ -409,6 +437,15 @@ class EntryShowerBath {
     return EntryShowerBath(
       entryId: json['entry_id'],
       tookShower: json['took_shower'] == 1,
+      note: json['note'],
+    );
+  }
+
+  // For Supabase JSON format (boolean values)
+  factory EntryShowerBath.fromSupabaseJson(Map<String, dynamic> json) {
+    return EntryShowerBath(
+      entryId: json['entry_id'],
+      tookShower: json['took_shower'] == true,
       note: json['note'],
     );
   }

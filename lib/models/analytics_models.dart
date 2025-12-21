@@ -329,6 +329,71 @@ class MoodDataPoint {
   });
 }
 
+/// Week metadata for navigation chips
+class WeekMetadata {
+  final DateTime weekStart;
+  final DateTime weekEnd;
+  final String status; // 'success', 'pending', 'error', 'none'
+  final int entriesCount;
+  final double? moodAvg;
+  final bool hasAnalysis;
+
+  WeekMetadata({
+    required this.weekStart,
+    required this.weekEnd,
+    required this.status,
+    this.entriesCount = 0,
+    this.moodAvg,
+    this.hasAnalysis = false,
+  });
+
+  factory WeekMetadata.fromJson(Map<String, dynamic> json) {
+    final weekStart = DateTime.parse(json['week_start'] as String);
+    final weekEnd = json['week_end'] != null
+        ? DateTime.parse(json['week_end'] as String)
+        : weekStart.add(const Duration(days: 6));
+    
+    return WeekMetadata(
+      weekStart: weekStart,
+      weekEnd: weekEnd,
+      status: json['status'] as String? ?? 'none',
+      entriesCount: json['entries_count'] as int? ?? 0,
+      moodAvg: (json['mood_avg'] as num?)?.toDouble(),
+      hasAnalysis: (json['status'] as String?) == 'success',
+    );
+  }
+}
+
+/// Daily progress for bar chart
+class DailyProgress {
+  final DateTime date;
+  final double? moodScore; // 1-5
+  final int waterCups; // 0-8
+  final double selfCareCompletion; // 0.0-1.0
+  final bool hasEntry;
+  final String? entryPreview;
+  final String dayLabel; // "Mon", "Tue", etc.
+
+  DailyProgress({
+    required this.date,
+    this.moodScore,
+    this.waterCups = 0,
+    this.selfCareCompletion = 0.0,
+    this.hasEntry = false,
+    this.entryPreview,
+    required this.dayLabel,
+  });
+
+  /// Calculate overall score for bar height (0.0-1.0)
+  double get overallScore {
+    double score = 0.0;
+    if (moodScore != null) score += (moodScore! / 5.0) * 0.4; // 40% weight
+    score += (waterCups / 8.0) * 0.3; // 30% weight
+    score += selfCareCompletion * 0.3; // 30% weight
+    return score.clamp(0.0, 1.0);
+  }
+}
+
 /// Weekly analytics data model
 class WeeklyAnalyticsData {
   final String id;
@@ -346,6 +411,11 @@ class WeeklyAnalyticsData {
   final List<String> topTopics;
   final List<MoodDataPoint> moodTrendData;
   final dynamic weeklyInsight; // WeeklyInsight from ai_service.dart
+  final Map<String, dynamic>? habitCorrelations; // NEW
+  final int wordCountTotal; // NEW
+  final List<DailyProgress> dailyProgress; // NEW
+  final DateTime? generatedAt; // NEW
+  final bool isCurrentWeek; // NEW
 
   WeeklyAnalyticsData({
     required this.id,
@@ -363,6 +433,11 @@ class WeeklyAnalyticsData {
     this.topTopics = const [],
     this.moodTrendData = const [],
     this.weeklyInsight,
+    this.habitCorrelations,
+    this.wordCountTotal = 0,
+    this.dailyProgress = const [],
+    this.generatedAt,
+    this.isCurrentWeek = false,
   });
 }
 

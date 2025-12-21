@@ -340,6 +340,21 @@ class EntryNotifier extends Notifier<EntryState> {
       try {
         await _entryService.saveSelfCare(userId, date, selfCare);
         ref.read(syncStatusProvider.notifier).setSaved();
+
+        // Track self-care completion for grace system AFTER sync
+        final hasSelfCare = selfCare.sleep ||
+            selfCare.getUpEarly ||
+            selfCare.freshAir ||
+            selfCare.learnNew ||
+            selfCare.balancedDiet ||
+            selfCare.podcast ||
+            selfCare.meMoment ||
+            selfCare.hydrated ||
+            selfCare.readBook ||
+            selfCare.exercise;
+        ref
+            .read(graceSystemProvider.notifier)
+            .trackTaskCompletion('self_care', hasSelfCare);
       } catch (e) {
         ref.read(syncStatusProvider.notifier).setError(e.toString());
         state = state.copyWith(error: 'Failed to save self care: $e');

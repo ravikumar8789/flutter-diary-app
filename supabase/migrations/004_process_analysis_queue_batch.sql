@@ -51,6 +51,7 @@ BEGIN
     daily_candidates AS (
         SELECT
             uc.user_id,
+            uc.timezone,
             uc.next_retry_at,
             e.id AS entry_id,
             e.entry_date
@@ -86,7 +87,17 @@ BEGIN
         SELECT
             dc.user_id,
             'daily',
-            dc.entry_date,
+            -- Calculate: (entry_date + 1 day) converted to UTC date
+            -- This represents the UTC date when tomorrow midnight occurs in user's timezone
+            (
+                (make_timestamptz(
+                    EXTRACT(YEAR FROM (dc.entry_date + INTERVAL '1 day'))::int,
+                    EXTRACT(MONTH FROM (dc.entry_date + INTERVAL '1 day'))::int,
+                    EXTRACT(DAY FROM (dc.entry_date + INTERVAL '1 day'))::int,
+                    0, 0, 0,
+                    dc.timezone
+                ) AT TIME ZONE 'UTC')::date
+            ) AS target_date,
             dc.entry_id,
             'pending',
             dc.next_retry_at
@@ -96,6 +107,7 @@ BEGIN
     catchup_entries AS (
         SELECT
             uc.user_id,
+            uc.timezone,
             uc.next_retry_at,
             e.id AS entry_id,
             e.entry_date
@@ -132,7 +144,16 @@ BEGIN
         SELECT
             ce.user_id,
             'daily',
-            ce.entry_date,
+            -- Calculate: (entry_date + 1 day) converted to UTC date (same as daily)
+            (
+                (make_timestamptz(
+                    EXTRACT(YEAR FROM (ce.entry_date + INTERVAL '1 day'))::int,
+                    EXTRACT(MONTH FROM (ce.entry_date + INTERVAL '1 day'))::int,
+                    EXTRACT(DAY FROM (ce.entry_date + INTERVAL '1 day'))::int,
+                    0, 0, 0,
+                    ce.timezone
+                ) AT TIME ZONE 'UTC')::date
+            ) AS target_date,
             ce.entry_id,
             'pending',
             ce.next_retry_at
@@ -156,7 +177,7 @@ BEGIN
             -- - make_timestamptz() in calculate_next_midnight_utc() handles DST correctly
             SELECT (
                 (uc.user_today - INTERVAL '7 days')::date - 
-                (EXTRACT(DOW FROM (uc.user_today - INTERVAL '7 days')::timestamp)::int)::interval
+                (EXTRACT(DOW FROM (uc.user_today - INTERVAL '7 days')::timestamp)::int * INTERVAL '1 day')
             )::date AS week_start
         ) AS prev_week
         WHERE uc.user_dow = 0

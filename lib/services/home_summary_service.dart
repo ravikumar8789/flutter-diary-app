@@ -13,7 +13,7 @@ class HomeSummaryService {
   Future<HomeSummary> fetchAll(String userId) async {
     try {
       final now = DateTime.now();
-      final thisWeekStart = now.subtract(Duration(days: (now.weekday - 1) % 7));
+      final thisWeekStart = now.subtract(Duration(days: now.weekday % 7));
       final prevWeekStart = thisWeekStart.subtract(const Duration(days: 7));
 
       final results = await Future.wait([

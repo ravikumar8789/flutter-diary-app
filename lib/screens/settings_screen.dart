@@ -10,6 +10,8 @@ import '../providers/grace_system_provider.dart';
 import '../widgets/grace_system_info_card.dart';
 import '../providers/auth_provider.dart';
 import '../screens/pin_setup_screen.dart';
+import '../screens/change_pin_screen.dart';
+import '../screens/security_questions_screen.dart';
 import '../screens/terms_screen.dart';
 import '../screens/privacy_policy_screen.dart';
 
@@ -698,32 +700,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   void _showChangePinDialog(WidgetRef ref) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Change PIN'),
-        content: const Text(
-          'To change your PIN, you need to enter your current PIN first.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              // TODO: Navigate to change PIN screen
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Change PIN feature coming soon!'),
-                  duration: Duration(seconds: 2),
-                ),
-              );
-            },
-            child: const Text('Continue'),
-          ),
-        ],
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const ChangePinScreen(),
       ),
     );
   }
@@ -825,11 +804,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           TextButton(
             onPressed: () {
               Navigator.of(context).pop();
-              // TODO: Navigate to security questions screen
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Security questions feature coming soon!'),
-                  duration: Duration(seconds: 2),
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const SecurityQuestionsScreen(
+                    isFromSetup: false,
+                  ),
                 ),
               );
             },

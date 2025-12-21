@@ -6,7 +6,6 @@ import '../providers/entry_provider.dart';
 import '../providers/sync_status_provider.dart';
 import '../providers/paper_style_provider.dart';
 import '../providers/font_size_provider.dart';
-import '../services/error_logging_service.dart';
 import '../utils/snackbar_utils.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/paper_background.dart';
@@ -297,18 +296,7 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen> {
 
   void _clearContent() async {
     if (_diaryController.text.trim().isEmpty) {
-      // Log error to Supabase
-      await ErrorLoggingService.logLowError(
-        errorCode: 'ERRUI001',
-        errorMessage: 'Nothing to clear',
-        errorContext: {
-          'action': 'clear_content',
-          'text_length': _diaryController.text.length,
-          'user_id': supabase.Supabase.instance.client.auth.currentUser?.id,
-        },
-      );
-
-      SnackbarUtils.showError(context, 'Nothing to clear', 'ERRUI001');
+      SnackbarUtils.showInfo(context, 'Nothing to clear');
       return;
     }
 
