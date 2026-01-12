@@ -80,7 +80,7 @@ class EntryService {
 
   // Save diary text with auto-save
   Future<void> saveDiaryText(String userId, DateTime date, String text) async {
-    // 1. Get or create entry
+    // 1. Get or create entry (cached)
     final entry = await _getOrCreateEntry(userId, date);
 
     // 2. Update local database immediately
@@ -90,12 +90,20 @@ class EntryService {
       isSynced: false,
     );
     await _localService.upsertEntry(updatedEntry);
+    
+    // Update cache
+    final dateStr = date.toIso8601String().split('T')[0];
+    final cacheKey = '${userId}_$dateStr';
+    _entryCache[cacheKey] = updatedEntry;
 
     // 3. Sync to cloud (non-blocking)
     if (await _isOnline()) {
       _syncService.syncEntry(updatedEntry).then((success) {
         if (success) {
           _localService.markAsSynced(updatedEntry.id);
+          // Update cache with synced entry
+          final syncedEntry = updatedEntry.copyWith(isSynced: true);
+          _entryCache[cacheKey] = syncedEntry;
           // AI analysis triggered by database completion check
           // No immediate trigger needed
         }
@@ -107,8 +115,9 @@ class EntryService {
   Future<void> saveAffirmations(
     String userId,
     DateTime date,
-    List<AffirmationItem> affirmations,
-  ) async {
+    List<AffirmationItem> affirmations, {
+    bool skipEntrySync = false,
+  }) async {
     final entry = await _getOrCreateEntry(userId, date);
 
     final entryAffirmations = EntryAffirmations(
@@ -118,13 +127,18 @@ class EntryService {
 
     await _localService.upsertAffirmations(entryAffirmations);
 
-    // Sync to cloud - ensure entry exists first
+    // Sync to cloud - ensure entry exists first (unless skipped for batch save)
     if (await _isOnline()) {
-      // FIRST: Ensure entry exists in Supabase
-      final entrySynced = await _syncService.syncEntry(entry);
-      
-      // THEN: Sync affirmations (only if entry sync succeeded)
-      if (entrySynced) {
+      if (!skipEntrySync) {
+        // FIRST: Ensure entry exists in Supabase
+        final entrySynced = await _syncService.syncEntry(entry);
+        
+        // THEN: Sync affirmations (only if entry sync succeeded)
+        if (entrySynced) {
+          _syncService.syncAffirmations(entryAffirmations);
+        }
+      } else {
+        // Entry already synced in batch, just sync affirmations
         _syncService.syncAffirmations(entryAffirmations);
       }
     }
@@ -134,8 +148,9 @@ class EntryService {
   Future<void> savePriorities(
     String userId,
     DateTime date,
-    List<PriorityItem> priorities,
-  ) async {
+    List<PriorityItem> priorities, {
+    bool skipEntrySync = false,
+  }) async {
     final entry = await _getOrCreateEntry(userId, date);
 
     final entryPriorities = EntryPriorities(
@@ -145,13 +160,18 @@ class EntryService {
 
     await _localService.upsertPriorities(entryPriorities);
 
-    // Sync to cloud - ensure entry exists first
+    // Sync to cloud - ensure entry exists first (unless skipped for batch save)
     if (await _isOnline()) {
-      // FIRST: Ensure entry exists in Supabase
-      final entrySynced = await _syncService.syncEntry(entry);
-      
-      // THEN: Sync priorities (only if entry sync succeeded)
-      if (entrySynced) {
+      if (!skipEntrySync) {
+        // FIRST: Ensure entry exists in Supabase
+        final entrySynced = await _syncService.syncEntry(entry);
+        
+        // THEN: Sync priorities (only if entry sync succeeded)
+        if (entrySynced) {
+          _syncService.syncPriorities(entryPriorities);
+        }
+      } else {
+        // Entry already synced in batch, just sync priorities
         _syncService.syncPriorities(entryPriorities);
       }
     }
@@ -164,8 +184,9 @@ class EntryService {
     String? breakfast,
     String? lunch,
     String? dinner,
-    int waterCups,
-  ) async {
+    int waterCups, {
+    bool skipEntrySync = false,
+  }) async {
     final entry = await _getOrCreateEntry(userId, date);
 
     final entryMeals = EntryMeals(
@@ -178,13 +199,18 @@ class EntryService {
 
     await _localService.upsertMeals(entryMeals);
 
-    // Sync to cloud - ensure entry exists first
+    // Sync to cloud - ensure entry exists first (unless skipped for batch save)
     if (await _isOnline()) {
-      // FIRST: Ensure entry exists in Supabase
-      final entrySynced = await _syncService.syncEntry(entry);
-      
-      // THEN: Sync meals (only if entry sync succeeded)
-      if (entrySynced) {
+      if (!skipEntrySync) {
+        // FIRST: Ensure entry exists in Supabase
+        final entrySynced = await _syncService.syncEntry(entry);
+        
+        // THEN: Sync meals (only if entry sync succeeded)
+        if (entrySynced) {
+          _syncService.syncMeals(entryMeals);
+        }
+      } else {
+        // Entry already synced in batch, just sync meals
         _syncService.syncMeals(entryMeals);
       }
     }
@@ -194,8 +220,9 @@ class EntryService {
   Future<void> saveGratitude(
     String userId,
     DateTime date,
-    List<GratitudeItem> gratefulItems,
-  ) async {
+    List<GratitudeItem> gratefulItems, {
+    bool skipEntrySync = false,
+  }) async {
     final entry = await _getOrCreateEntry(userId, date);
 
     final entryGratitude = EntryGratitude(
@@ -205,13 +232,18 @@ class EntryService {
 
     await _localService.upsertGratitude(entryGratitude);
 
-    // Sync to cloud - ensure entry exists first
+    // Sync to cloud - ensure entry exists first (unless skipped for batch save)
     if (await _isOnline()) {
-      // FIRST: Ensure entry exists in Supabase
-      final entrySynced = await _syncService.syncEntry(entry);
-      
-      // THEN: Sync gratitude (only if entry sync succeeded)
-      if (entrySynced) {
+      if (!skipEntrySync) {
+        // FIRST: Ensure entry exists in Supabase
+        final entrySynced = await _syncService.syncEntry(entry);
+        
+        // THEN: Sync gratitude (only if entry sync succeeded)
+        if (entrySynced) {
+          _syncService.syncGratitude(entryGratitude);
+        }
+      } else {
+        // Entry already synced in batch, just sync gratitude
         _syncService.syncGratitude(entryGratitude);
       }
     }
@@ -221,8 +253,9 @@ class EntryService {
   Future<void> saveSelfCare(
     String userId,
     DateTime date,
-    EntrySelfCare selfCare,
-  ) async {
+    EntrySelfCare selfCare, {
+    bool skipEntrySync = false,
+  }) async {
     final entry = await _getOrCreateEntry(userId, date);
 
     final entrySelfCare = EntrySelfCare(
@@ -241,13 +274,18 @@ class EntryService {
 
     await _localService.upsertSelfCare(entrySelfCare);
 
-    // Sync to cloud - ensure entry exists first
+    // Sync to cloud - ensure entry exists first (unless skipped for batch save)
     if (await _isOnline()) {
-      // FIRST: Ensure entry exists in Supabase
-      final entrySynced = await _syncService.syncEntry(entry);
-      
-      // THEN: Sync self-care (only if entry sync succeeded)
-      if (entrySynced) {
+      if (!skipEntrySync) {
+        // FIRST: Ensure entry exists in Supabase
+        final entrySynced = await _syncService.syncEntry(entry);
+        
+        // THEN: Sync self-care (only if entry sync succeeded)
+        if (entrySynced) {
+          _syncService.syncSelfCare(entrySelfCare);
+        }
+      } else {
+        // Entry already synced in batch, just sync self-care
         _syncService.syncSelfCare(entrySelfCare);
       }
     }
@@ -258,8 +296,9 @@ class EntryService {
     String userId,
     DateTime date,
     bool tookShower,
-    String? note,
-  ) async {
+    String? note, {
+    bool skipEntrySync = false,
+  }) async {
     final entry = await _getOrCreateEntry(userId, date);
 
     final entryShowerBath = EntryShowerBath(
@@ -270,13 +309,18 @@ class EntryService {
 
     await _localService.upsertShowerBath(entryShowerBath);
 
-    // Sync to cloud - ensure entry exists first
+    // Sync to cloud - ensure entry exists first (unless skipped for batch save)
     if (await _isOnline()) {
-      // FIRST: Ensure entry exists in Supabase
-      final entrySynced = await _syncService.syncEntry(entry);
-      
-      // THEN: Sync shower/bath (only if entry sync succeeded)
-      if (entrySynced) {
+      if (!skipEntrySync) {
+        // FIRST: Ensure entry exists in Supabase
+        final entrySynced = await _syncService.syncEntry(entry);
+        
+        // THEN: Sync shower/bath (only if entry sync succeeded)
+        if (entrySynced) {
+          _syncService.syncShowerBath(entryShowerBath);
+        }
+      } else {
+        // Entry already synced in batch, just sync shower/bath
         _syncService.syncShowerBath(entryShowerBath);
       }
     }
@@ -286,8 +330,9 @@ class EntryService {
   Future<void> saveTomorrowNotes(
     String userId,
     DateTime date,
-    List<TomorrowNoteItem> tomorrowNotes,
-  ) async {
+    List<TomorrowNoteItem> tomorrowNotes, {
+    bool skipEntrySync = false,
+  }) async {
     final entry = await _getOrCreateEntry(userId, date);
 
     final entryTomorrowNotes = EntryTomorrowNotes(
@@ -297,13 +342,18 @@ class EntryService {
 
     await _localService.upsertTomorrowNotes(entryTomorrowNotes);
 
-    // Sync to cloud - ensure entry exists first
+    // Sync to cloud - ensure entry exists first (unless skipped for batch save)
     if (await _isOnline()) {
-      // FIRST: Ensure entry exists in Supabase
-      final entrySynced = await _syncService.syncEntry(entry);
-      
-      // THEN: Sync tomorrow notes (only if entry sync succeeded)
-      if (entrySynced) {
+      if (!skipEntrySync) {
+        // FIRST: Ensure entry exists in Supabase
+        final entrySynced = await _syncService.syncEntry(entry);
+        
+        // THEN: Sync tomorrow notes (only if entry sync succeeded)
+        if (entrySynced) {
+          _syncService.syncTomorrowNotes(entryTomorrowNotes);
+        }
+      } else {
+        // Entry already synced in batch, just sync tomorrow notes
         _syncService.syncTomorrowNotes(entryTomorrowNotes);
       }
     }
@@ -357,10 +407,26 @@ class EntryService {
     }
   }
 
-  // Get or create entry
+  // Cache for entry creation (prevents repeated queries)
+  final Map<String, Entry> _entryCache = {};
+  
+  // Get or create entry (with caching)
   Future<Entry> _getOrCreateEntry(String userId, DateTime date) async {
+    // Generate cache key
+    final dateStr = date.toIso8601String().split('T')[0];
+    final cacheKey = '${userId}_$dateStr';
+    
+    // Check cache first
+    if (_entryCache.containsKey(cacheKey)) {
+      return _entryCache[cacheKey]!;
+    }
+    
+    // Check local database
     final existing = await _localService.getEntryByDate(userId, date);
-    if (existing != null) return existing;
+    if (existing != null) {
+      _entryCache[cacheKey] = existing;
+      return existing;
+    }
 
     // Create new entry with default mood score of 3
     final newEntry = Entry(
@@ -375,7 +441,23 @@ class EntryService {
     );
 
     await _localService.upsertEntry(newEntry);
+    
+    // Cache the new entry
+    _entryCache[cacheKey] = newEntry;
+    
     return newEntry;
+  }
+  
+  /// Clear entry cache (call when entry is deleted or date changes)
+  void clearEntryCache(String userId, DateTime? date) {
+    if (date != null) {
+      final dateStr = date.toIso8601String().split('T')[0];
+      final cacheKey = '${userId}_$dateStr';
+      _entryCache.remove(cacheKey);
+    } else {
+      // Clear all entries for user
+      _entryCache.removeWhere((key, _) => key.startsWith('${userId}_'));
+    }
   }
 
   // Get entries in date range

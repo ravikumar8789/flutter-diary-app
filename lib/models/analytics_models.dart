@@ -174,6 +174,7 @@ class Streak {
   final int longest;
   final DateTime? lastEntryDate;
   final int freezeCredits;
+  final double gracePiecesTotal;
   final DateTime updatedAt;
 
   Streak({
@@ -182,6 +183,7 @@ class Streak {
     this.longest = 0,
     this.lastEntryDate,
     this.freezeCredits = 0,
+    this.gracePiecesTotal = 0.0,
     required this.updatedAt,
   });
 
@@ -194,6 +196,7 @@ class Streak {
           ? DateTime.parse(json['last_entry_date'] as String)
           : null,
       freezeCredits: json['freeze_credits'] as int? ?? 0,
+      gracePiecesTotal: ((json['grace_pieces_total'] ?? 0.0) as num).toDouble(),
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );
   }
@@ -207,6 +210,7 @@ class Streak {
         'T',
       )[0], // Date only
       'freeze_credits': freezeCredits,
+      'grace_pieces_total': gracePiecesTotal,
       'updated_at': updatedAt.toIso8601String(),
     };
   }
@@ -221,6 +225,7 @@ class HabitsDaily {
   final bool filledAffirmations;
   final bool filledGratitude;
   final int selfCareCompletedCount;
+  final double gracePiecesEarned;
 
   HabitsDaily({
     required this.id,
@@ -230,6 +235,7 @@ class HabitsDaily {
     this.filledAffirmations = false,
     this.filledGratitude = false,
     this.selfCareCompletedCount = 0,
+    this.gracePiecesEarned = 0.0,
   });
 
   factory HabitsDaily.fromJson(Map<String, dynamic> json) {
@@ -241,6 +247,8 @@ class HabitsDaily {
       filledAffirmations: json['filled_affirmations'] as bool? ?? false,
       filledGratitude: json['filled_gratitude'] as bool? ?? false,
       selfCareCompletedCount: json['self_care_completed_count'] as int? ?? 0,
+      gracePiecesEarned: ((json['grace_pieces_earned'] ?? 0.0) as num)
+          .toDouble(),
     );
   }
 
@@ -253,6 +261,7 @@ class HabitsDaily {
       'filled_affirmations': filledAffirmations,
       'filled_gratitude': filledGratitude,
       'self_care_completed_count': selfCareCompletedCount,
+      'grace_pieces_earned': gracePiecesEarned,
     };
   }
 }
@@ -322,11 +331,7 @@ class MoodDataPoint {
   final double moodScore;
   final String? label;
 
-  MoodDataPoint({
-    required this.date,
-    required this.moodScore,
-    this.label,
-  });
+  MoodDataPoint({required this.date, required this.moodScore, this.label});
 }
 
 /// Week metadata for navigation chips
@@ -348,19 +353,62 @@ class WeekMetadata {
   });
 
   factory WeekMetadata.fromJson(Map<String, dynamic> json) {
-    final weekStart = DateTime.parse(json['week_start'] as String);
-    final weekEnd = json['week_end'] != null
-        ? DateTime.parse(json['week_end'] as String)
-        : weekStart.add(const Duration(days: 6));
-    
-    return WeekMetadata(
-      weekStart: weekStart,
-      weekEnd: weekEnd,
-      status: json['status'] as String? ?? 'none',
-      entriesCount: json['entries_count'] as int? ?? 0,
-      moodAvg: (json['mood_avg'] as num?)?.toDouble(),
-      hasAnalysis: (json['status'] as String?) == 'success',
-    );
+    try {
+      final weekStart = DateTime.parse(json['week_start'] as String);
+      final weekEnd = json['week_end'] != null
+          ? DateTime.parse(json['week_end'] as String)
+          : weekStart.add(const Duration(days: 6));
+
+      return WeekMetadata(
+        weekStart: weekStart,
+        weekEnd: weekEnd,
+        status: json['status'] as String? ?? 'none',
+        entriesCount: json['entries_count'] as int? ?? 0,
+        moodAvg: (json['mood_avg'] as num?)?.toDouble(),
+        hasAnalysis: (json['status'] as String?) == 'success',
+      );
+    } catch (e) {
+      // Error logging handled by caller
+      rethrow;
+    }
+  }
+}
+
+/// Month metadata for navigation chips
+class MonthMetadata {
+  final DateTime monthStart;
+  final DateTime monthEnd;
+  final String status; // 'success', 'pending', 'error', 'none'
+  final int entriesCount;
+  final double? moodAvg;
+  final bool hasAnalysis;
+
+  MonthMetadata({
+    required this.monthStart,
+    required this.monthEnd,
+    required this.status,
+    this.entriesCount = 0,
+    this.moodAvg,
+    this.hasAnalysis = false,
+  });
+
+  factory MonthMetadata.fromJson(Map<String, dynamic> json) {
+    try {
+      final monthStart = DateTime.parse(json['month_start'] as String);
+      final monthEnd = DateTime(monthStart.year, monthStart.month + 1, 0);
+
+      return MonthMetadata(
+        monthStart: monthStart,
+        monthEnd: monthEnd,
+        status: json['status'] as String? ?? 'none',
+        entriesCount: json['entries_count'] as int? ?? 0,
+        moodAvg: (json['mood_avg'] as num?)?.toDouble(),
+        hasAnalysis: (json['status'] as String?) == 'success',
+      );
+    } catch (e) {
+      // Error will be logged by caller with ERRMODEL001
+      rethrow;
+    }
   }
 }
 
@@ -517,7 +565,8 @@ class DailyInsightWithDate {
     return DailyInsightWithDate(
       id: json['id'] as String,
       entryId: json['entry_id'] as String,
-      insightText: json['insight_text'] as String? ?? json['summary'] as String? ?? '',
+      insightText:
+          json['insight_text'] as String? ?? json['summary'] as String? ?? '',
       sentimentLabel: json['sentiment_label'] as String?,
       processedAt: DateTime.parse(json['processed_at'] as String),
       entryDate: entryDate,
@@ -559,11 +608,11 @@ class InsightDetails {
     };
   }
 
-  bool get hasData => 
-    whatWentWell != null || 
-    progressArea != null || 
-    selfCareBalance != null || 
-    emotionalPattern != null;
+  bool get hasData =>
+      whatWentWell != null ||
+      progressArea != null ||
+      selfCareBalance != null ||
+      emotionalPattern != null;
 }
 
 /// Daily insight model (basic)
@@ -601,14 +650,23 @@ class DailyInsightWithMood {
 
   factory DailyInsightWithMood.fromJson(Map<String, dynamic> json) {
     final entryDate = DateTime.parse(json['entries']['entry_date'] as String);
-    final dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    final dayNames = [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
+    ];
     final dayLabel = dayNames[entryDate.weekday - 1];
 
     return DailyInsightWithMood(
       insight: DailyInsight(
         id: json['id'] as String,
         entryId: json['entry_id'] as String,
-        insightText: json['insight_text'] as String? ?? json['summary'] as String? ?? '',
+        insightText:
+            json['insight_text'] as String? ?? json['summary'] as String? ?? '',
         sentimentLabel: json['sentiment_label'] as String?,
         processedAt: DateTime.parse(json['processed_at'] as String),
       ),
@@ -731,7 +789,13 @@ class HomescreenInsightSet {
   }
 
   /// Get all insights as a list
-  List<String> get allInsights => [insight1, insight2, insight3, insight4, insight5];
+  List<String> get allInsights => [
+    insight1,
+    insight2,
+    insight3,
+    insight4,
+    insight5,
+  ];
 
   /// Get insight by index (1-5)
   String getInsight(int index) {
@@ -805,7 +869,10 @@ class DailyInsightStatus {
     required this.message,
   });
 
-  factory DailyInsightStatus.available(HomescreenInsightSet insightSet, DateTime entryDate) {
+  factory DailyInsightStatus.available(
+    HomescreenInsightSet insightSet,
+    DateTime entryDate,
+  ) {
     return DailyInsightStatus(
       status: InsightDisplayStatus.available,
       insightSet: insightSet,

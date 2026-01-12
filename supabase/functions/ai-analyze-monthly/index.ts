@@ -21,9 +21,13 @@ serve(async (req) => {
   let requestStatus = 'success'
   let errorMessage: string | null = null
   let tokensUsed = { prompt: 0, completion: 0, total: 0 }
+  let user_id: string | undefined = undefined
+  let month_start: string | undefined = undefined
 
   try {
-    const { user_id, month_start }: RequestBody = await req.json()
+    const bodyData: RequestBody = await req.json()
+    user_id = bodyData.user_id
+    month_start = bodyData.month_start
 
     if (!user_id || !month_start) {
       throw new Error('user_id and month_start are required')
@@ -101,8 +105,29 @@ serve(async (req) => {
 
     const selfCareRates = calculateSelfCareRate(selfCareData || [], entries.length)
 
-    // Extract topics from all entries
-    const topics = extractTopics(entries)
+    // Fetch all entry-related data for comprehensive analysis
+    const { data: affirmationsData } = await supabase
+      .from('entry_affirmations')
+      .select('entry_id, affirmations')
+      .in('entry_id', entryIds)
+
+    const { data: prioritiesData } = await supabase
+      .from('entry_priorities')
+      .select('entry_id, priorities')
+      .in('entry_id', entryIds)
+
+    const { data: gratitudeData } = await supabase
+      .from('entry_gratitude')
+      .select('entry_id, grateful_items')
+      .in('entry_id', entryIds)
+
+    const { data: tomorrowNotesData } = await supabase
+      .from('entry_tomorrow_notes')
+      .select('entry_id, tomorrow_notes')
+      .in('entry_id', entryIds)
+
+    // Extract topics from all entries (limit to 5-7)
+    const topics = extractTopics(entries).slice(0, 7)
 
     // Calculate consistency
     const consistencyScore = (entries.length / totalDaysInMonth) * 100
@@ -110,12 +135,28 @@ serve(async (req) => {
     // Word count total
     const wordCountTotal = entries.reduce((sum, e) => sum + (e.diary_text?.split(/\s+/).length || 0), 0)
 
-    // 4. Build habit analysis
-    const habitAnalysis = {
+    // 4. Build habit analysis (numeric data - AI will provide text points)
+    const habitAnalysisNumeric = {
       mood_vs_entries: avgMood ? parseFloat(avgMood) : null,
       self_care_completion: selfCareRates.completionRate,
       consistency: parseFloat(consistencyScore.toFixed(2))
     }
+
+    // Format mood scores for prompt
+    const moodScoresList = moodScores.length > 0 
+      ? moodScores.map((score, idx) => {
+          const entry = entries[idx]
+          const date = entry ? new Date(entry.entry_date).toLocaleDateString() : 'Unknown'
+          return `${date}: ${score}/5`
+        }).join(', ')
+      : 'No mood data'
+
+    // Format data for prompt
+    const diaryEntriesFull = formatDiaryEntries(entries)
+    const affirmationsFull = formatStructuredData(affirmationsData || [], entries, 'affirmations')
+    const prioritiesFull = formatStructuredData(prioritiesData || [], entries, 'priorities')
+    const gratitudeFull = formatStructuredData(gratitudeData || [], entries, 'gratitude')
+    const tomorrowNotesFull = formatStructuredData(tomorrowNotesData || [], entries, 'tomorrow_notes')
 
     // 5. Get prompt template
     let template = null
@@ -131,36 +172,94 @@ serve(async (req) => {
     } else {
       // Fallback template
       template = {
-        system_prompt: 'You are a reflective AI assistant that helps users understand long-term trends in their wellness journey. Provide monthly summaries that highlight growth, patterns, and areas of focus. Be encouraging and forward-looking.',
-        user_prompt_template: `Monthly Data Summary:
-- Month: {month_name}
-- Entries written: {entries_count}/{total_days}
-- Average mood: {avg_mood}/5
-- Consistency: {consistency_score}%
-- Key themes: {monthly_topics}
-- Mood trend: {mood_trend}
+        system_prompt: `You are an analytical but compassionate AI assistant that analyzes monthly journal data to provide deep, personalized insights. You analyze diary entries, affirmations, gratitude, priorities, and tomorrow notes to identify authentic patterns and achievements.
 
-Please provide:
-1. Overall month reflection (2-3 sentences)
-2. Biggest growth area (1 sentence)
-3. One celebration moment (1 sentence)
-4. Focus for next month (1-2 sentences)
+Focus on:
+1. Emotional patterns and mood trends over the month
+2. Authentic achievements extracted from actual entries (diary, affirmations, priorities, gratitude, tomorrow notes)
+3. Habit correlations and their impact on well-being
+4. Growth areas based on real patterns in the data
+5. Actionable goals for next month based on entry analysis
 
-Keep it inspiring and actionable (under 200 words).`,
+Be specific, reference actual dates and entry content when possible. Make users feel their journey is truly understood.`,
+        user_prompt_template: `MONTHLY ANALYSIS REQUEST
+Month: {month_name}
+Date Range: {month_start} to {month_end}
+Entries Written: {entries_count}/{total_days}
+
+=== MOOD & SENTIMENT ANALYSIS ===
+Average Mood: {avg_mood}/5
+Mood Trend: {mood_trend}
+Mood Scores (Day by Day): {mood_scores_list}
+
+=== COMPLETE DIARY ENTRIES (FULL TEXT WITH DATES) ===
+{diary_entries_full}
+
+=== COMPLETE STRUCTURED DATA ===
+AFFIRMATIONS (All Items with Dates):
+{affirmations_full}
+
+GRATITUDE (All Items with Dates):
+{gratitude_full}
+
+PRIORITIES (All Items with Dates):
+{priorities_full}
+
+TOMORROW NOTES (All Items with Dates):
+{tomorrow_notes_full}
+
+=== SELF-CARE & HABITS ===
+Self-Care Completion Rate: {self_care_completion}%
+Consistency Score: {consistency_score}%
+
+=== STATISTICS ===
+Word Count Total: {word_count_total}
+Top Topics: {top_topics_list}
+
+=== ANALYSIS REQUEST ===
+Based on the COMPLETE data above, provide a comprehensive monthly analysis in JSON format:
+
+{
+  "highlights": "10-12 line detailed paragraph discussing how main things impacted user's mood, next day behavior, emotional patterns, and overall journey. Reference specific dates and entries when relevant.",
+  "growth_areas": ["4-6 specific growth areas based on actual entry patterns", ...],
+  "achievements": ["4-6 achievements extracted from diary entries, affirmations, priorities, gratitude, and tomorrow notes. Reference specific dates/content", ...],
+  "next_month_goals": ["4-6 actionable goals based on entry analysis", ...],
+  "habit_analysis": ["4-6 points about habit patterns and correlations", ...],
+  "key_moments": ["Notable events or moments from entries", ...],
+  "reflection_questions": ["3-4 questions for next month reflection", ...],
+  "strengths": ["3-4 strengths identified from entries", ...]
+}
+
+IMPORTANT:
+- Extract achievements from actual entries (diary, affirmations, priorities, gratitude, tomorrow notes)
+- Reference specific dates and entry content when making points
+- Make insights feel authentic and personalized
+- All points should relate to actual entry data
+- Be empathetic, encouraging, and actionable`,
         temperature: 0.6,
-        max_tokens: 500
+        max_tokens: 1200
       }
     }
 
     // 6. Build final prompt
     const userPrompt = template.user_prompt_template
       .replace('{month_name}', monthName)
+      .replace('{month_start}', month_start)
+      .replace('{month_end}', monthEnd)
       .replace('{entries_count}', entries.length.toString())
       .replace('{total_days}', totalDaysInMonth.toString())
       .replace('{avg_mood}', avgMood || 'N/A')
-      .replace('{consistency_score}', consistencyScore.toFixed(1))
-      .replace('{monthly_topics}', topics.slice(0, 10).join(', ') || 'None')
       .replace('{mood_trend}', moodTrend)
+      .replace('{mood_scores_list}', moodScoresList)
+      .replace('{diary_entries_full}', diaryEntriesFull)
+      .replace('{affirmations_full}', affirmationsFull)
+      .replace('{gratitude_full}', gratitudeFull)
+      .replace('{priorities_full}', prioritiesFull)
+      .replace('{tomorrow_notes_full}', tomorrowNotesFull)
+      .replace('{self_care_completion}', selfCareRates.completionRate.toFixed(1))
+      .replace('{consistency_score}', consistencyScore.toFixed(1))
+      .replace('{word_count_total}', wordCountTotal.toString())
+      .replace('{top_topics_list}', topics.join(', ') || 'None')
 
     // 7. Call OpenAI
     const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -176,7 +275,8 @@ Keep it inspiring and actionable (under 200 words).`,
           { role: 'user', content: userPrompt }
         ],
         temperature: template.temperature || 0.6,
-        max_tokens: template.max_tokens || 500
+        max_tokens: template.max_tokens || 1200,
+        response_format: { type: "json_object" }
       })
     })
 
@@ -197,8 +297,45 @@ Keep it inspiring and actionable (under 200 words).`,
       throw new Error('Empty response from OpenAI')
     }
 
-    // 8. Parse insight into structured format
-    const { highlights, growthAreas, achievements, goals } = parseMonthlyInsight(insightText)
+    // 8. Parse JSON response
+    let highlights = ''
+    let growthAreas: string[] = []
+    let achievements: string[] = []
+    let goals: string[] = []
+    let habitAnalysisPoints: string[] = []
+    let keyMoments: string[] = []
+    let reflectionQuestions: string[] = []
+    let strengths: string[] = []
+
+    try {
+      const parsed = JSON.parse(insightText)
+      highlights = parsed.highlights || ''
+      growthAreas = Array.isArray(parsed.growth_areas) ? parsed.growth_areas : []
+      achievements = Array.isArray(parsed.achievements) ? parsed.achievements : []
+      goals = Array.isArray(parsed.next_month_goals) ? parsed.next_month_goals : []
+      habitAnalysisPoints = Array.isArray(parsed.habit_analysis) ? parsed.habit_analysis : []
+      keyMoments = Array.isArray(parsed.key_moments) ? parsed.key_moments : []
+      reflectionQuestions = Array.isArray(parsed.reflection_questions) ? parsed.reflection_questions : []
+      strengths = Array.isArray(parsed.strengths) ? parsed.strengths : []
+      
+      // Validate required fields
+      if (!highlights || growthAreas.length === 0) {
+        throw new Error('Invalid JSON structure from AI')
+      }
+    } catch (parseError) {
+      // Fallback: Try old parsing method if JSON fails
+      console.warn('JSON parsing failed, falling back to text parsing:', parseError)
+      const parsed = parseMonthlyInsight(insightText)
+      highlights = parsed.highlights || insightText
+      growthAreas = parsed.growthAreas
+      achievements = parsed.achievements
+      goals = parsed.goals
+      // Set defaults for new fields
+      habitAnalysisPoints = []
+      keyMoments = []
+      reflectionQuestions = []
+      strengths = []
+    }
 
     // 9. Calculate cost
     const costUsd = (tokensUsed.prompt / 1000000) * 0.15 + (tokensUsed.completion / 1000000) * 0.60
@@ -212,14 +349,20 @@ Keep it inspiring and actionable (under 200 words).`,
         mood_avg: avgMood ? parseFloat(avgMood) : null,
         entries_count: entries.length,
         word_count_total: wordCountTotal,
-        top_topics: topics.slice(0, 10),
+        top_topics: topics.slice(0, 7), // 5-7 topics
         monthly_highlights: highlights,
-        growth_areas: growthAreas,
-        achievements: achievements,
-        next_month_goals: goals,
+        growth_areas: growthAreas.slice(0, 6), // 4-6 points
+        achievements: achievements.slice(0, 6), // 4-6 points
+        next_month_goals: goals.slice(0, 6), // 4-6 points
         consistency_score: parseFloat(consistencyScore.toFixed(2)),
-        habit_analysis: habitAnalysis,
+        habit_analysis: {
+          ...habitAnalysisNumeric,
+          analysis_points: habitAnalysisPoints.slice(0, 6) // 4-6 points
+        },
         mood_trend_monthly: moodTrend,
+        key_moments: keyMoments,
+        reflection_questions: reflectionQuestions,
+        strengths: strengths,
         model_version: 'gpt-4o-mini',
         cost_tokens_prompt: tokensUsed.prompt,
         cost_tokens_completion: tokensUsed.completion,
@@ -283,23 +426,55 @@ Keep it inspiring and actionable (under 200 words).`,
       const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
       if (supabaseUrl && supabaseServiceKey) {
         const supabase = createClient(supabaseUrl, supabaseServiceKey)
-        const body = await req.json().catch(() => ({}))
+        
+        // Try to get request body, but handle case where req.json() was already called
+        let body: any = {}
+        try {
+          // Clone request if possible, otherwise use stored values
+          if (user_id && month_start) {
+            body = { user_id, month_start }
+          } else {
+            // Try to read from request if not already consumed
+            const reqClone = req.clone()
+            body = await reqClone.json().catch(() => ({}))
+          }
+        } catch {
+          // If we can't read body, use stored values or empty object
+          body = user_id && month_start ? { user_id, month_start } : {}
+        }
+        
+        // Determine failed step from error message
+        const errorMsg = errorMessage.toLowerCase()
+        let failedStep = 'unknown'
+        if (errorMsg.includes('save') || errorMsg.includes('upsert') || errorMsg.includes('insert') || errorMsg.includes('database') || errorMsg.includes('numeric field overflow')) {
+          failedStep = 'save_insight'
+        } else if (errorMsg.includes('openai') || errorMsg.includes('api')) {
+          failedStep = 'call_openai'
+        } else if (errorMsg.includes('fetch') || errorMsg.includes('entries')) {
+          failedStep = 'fetch_data'
+        } else if (errorMsg.includes('parse') || errorMsg.includes('json') || errorMsg.includes('insight')) {
+          failedStep = 'parse_response'
+        }
         
         await logAIError(supabase, error, {
-          userId: (body as RequestBody)?.user_id || 'unknown',
+          userId: user_id || body.user_id || 'unknown',
           entryId: null,
           analysisType: 'monthly',
           errorCode: 'ERRAI_MONTHLY_001',
-          requestBody: body,
+          requestBody: { user_id: user_id || body.user_id, month_start: month_start || body.month_start },
           requestDurationMs: duration,
           edgeFunctionName: 'ai-analyze-monthly',
-          failedAtStep: 'unknown',
+          failedAtStep: failedStep,
+          errorDetails: {
+            error_message: errorMessage,
+            error_type: error instanceof Error ? error.constructor.name : typeof error
+          }
         })
         
         await supabase
           .from('ai_requests_log')
           .insert({
-            user_id: (body as RequestBody)?.user_id || 'unknown',
+            user_id: user_id || body.user_id || 'unknown',
             entry_id: null,
             analysis_type: 'monthly',
             prompt_tokens: 0,
@@ -378,8 +553,31 @@ function extractTopics(entries: any[]): string[] {
   
   return Object.entries(words)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
+    .slice(0, 7) // 5-7 topics
     .map(([word]) => word)
+}
+
+// Helper: Format diary entries with dates
+function formatDiaryEntries(entries: any[]): string {
+  if (!entries || entries.length === 0) return 'No diary entries available.'
+  
+  return entries.map(e => {
+    const date = new Date(e.entry_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    return `[${date}] ${e.diary_text || 'No text'} (Mood: ${e.mood_score || 'N/A'}/5)`
+  }).join('\n\n')
+}
+
+// Helper: Format structured data (affirmations, priorities, gratitude, tomorrow notes)
+function formatStructuredData(data: any[], entries: any[], type: string): string {
+  if (!data || data.length === 0) return `No ${type} data available.`
+  
+  return data.map(item => {
+    const entry = entries.find((e: any) => e.id === item.entry_id)
+    const date = entry ? new Date(entry.entry_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Unknown date'
+    const items = item.affirmations || item.priorities || item.grateful_items || item.tomorrow_notes || []
+    const itemsList = Array.isArray(items) ? items.join(', ') : JSON.stringify(items)
+    return `[${date}]: ${itemsList}`
+  }).join('\n')
 }
 
 // Helper: Parse monthly insight text into structured format

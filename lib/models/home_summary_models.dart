@@ -44,6 +44,7 @@ class WeeklySnapshotSummary {
   final List<dynamic>? topTopics;
   final String? highlights;
   final num? moodDelta; // vs previous week if available
+  final num? consistency; // entries count / days elapsed
   const WeeklySnapshotSummary({
     this.moodAvg,
     this.cupsAvg,
@@ -51,6 +52,7 @@ class WeeklySnapshotSummary {
     this.topTopics,
     this.highlights,
     this.moodDelta,
+    this.consistency,
   });
 }
 

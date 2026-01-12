@@ -4,7 +4,7 @@ import '../error_logging_service.dart';
 
 class DatabaseManager {
   static Database? _database;
-  static const int _version = 1;
+  static const int _version = 2;
   static const String _databaseName = 'diary_app.db';
 
   Future<Database> get database async {
@@ -52,9 +52,27 @@ class DatabaseManager {
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     // Handle database upgrades here
-    // For now, we'll recreate tables if needed
-    if (oldVersion < newVersion) {
-      await _createTables(db);
+    try {
+      if (oldVersion < 2) {
+        // Migration from version 1 to 2: Add streaks and habits_daily tables
+        await _createStreaksAndHabitsTables(db);
+      }
+      // For future migrations, add more conditions here
+      if (oldVersion < newVersion && oldVersion >= 2) {
+        // Recreate all tables if needed for other migrations
+        await _createTables(db);
+      }
+    } catch (e) {
+      await ErrorLoggingService.logCriticalError(
+        errorCode: 'ERRSYS003',
+        errorMessage: 'Database upgrade failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'old_version': oldVersion,
+          'new_version': newVersion,
+        },
+      );
+      rethrow;
     }
   }
 
@@ -164,6 +182,38 @@ class DatabaseManager {
       )
     ''');
 
+    // Streaks table (local cache)
+    await db.execute('''
+      CREATE TABLE streaks (
+        user_id TEXT PRIMARY KEY,
+        current INTEGER DEFAULT 0,
+        longest INTEGER DEFAULT 0,
+        last_entry_date TEXT,
+        freeze_credits INTEGER DEFAULT 0,
+        grace_pieces_total REAL DEFAULT 0.0,
+        updated_at TEXT NOT NULL,
+        is_synced INTEGER DEFAULT 0,
+        last_sync_at TEXT
+      )
+    ''');
+
+    // Habits daily table (local cache)
+    await db.execute('''
+      CREATE TABLE habits_daily (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        date TEXT NOT NULL,
+        wrote_entry INTEGER DEFAULT 0,
+        filled_affirmations INTEGER DEFAULT 0,
+        filled_gratitude INTEGER DEFAULT 0,
+        self_care_completed_count INTEGER DEFAULT 0,
+        grace_pieces_earned REAL DEFAULT 0.0,
+        is_synced INTEGER DEFAULT 0,
+        last_sync_at TEXT,
+        UNIQUE(user_id, date)
+      )
+    ''');
+
     // Create indexes for performance
     await db.execute(
       'CREATE INDEX idx_entries_user_date ON entries(user_id, entry_date)',
@@ -174,6 +224,72 @@ class DatabaseManager {
     await db.execute(
       'CREATE INDEX idx_sync_queue_entry ON sync_queue(entry_id, created_at)',
     );
+    await db.execute(
+      'CREATE INDEX idx_streaks_user ON streaks(user_id)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_habits_user_date ON habits_daily(user_id, date)',
+    );
+  }
+
+  // Helper method to create streaks and habits tables (for migration)
+  Future<void> _createStreaksAndHabitsTables(Database db) async {
+    // Check if tables already exist before creating
+    final streaksExists = await _tableExists(db, 'streaks');
+    final habitsExists = await _tableExists(db, 'habits_daily');
+
+    if (!streaksExists) {
+      await db.execute('''
+        CREATE TABLE streaks (
+          user_id TEXT PRIMARY KEY,
+          current INTEGER DEFAULT 0,
+          longest INTEGER DEFAULT 0,
+          last_entry_date TEXT,
+          freeze_credits INTEGER DEFAULT 0,
+          grace_pieces_total REAL DEFAULT 0.0,
+          updated_at TEXT NOT NULL,
+          is_synced INTEGER DEFAULT 0,
+          last_sync_at TEXT
+        )
+      ''');
+      await db.execute(
+        'CREATE INDEX idx_streaks_user ON streaks(user_id)',
+      );
+    }
+
+    if (!habitsExists) {
+      await db.execute('''
+        CREATE TABLE habits_daily (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          date TEXT NOT NULL,
+          wrote_entry INTEGER DEFAULT 0,
+          filled_affirmations INTEGER DEFAULT 0,
+          filled_gratitude INTEGER DEFAULT 0,
+          self_care_completed_count INTEGER DEFAULT 0,
+          grace_pieces_earned REAL DEFAULT 0.0,
+          is_synced INTEGER DEFAULT 0,
+          last_sync_at TEXT,
+          UNIQUE(user_id, date)
+        )
+      ''');
+      await db.execute(
+        'CREATE INDEX idx_habits_user_date ON habits_daily(user_id, date)',
+      );
+    }
+  }
+
+  // Helper method to check if table exists
+  Future<bool> _tableExists(Database db, String tableName) async {
+    try {
+      final result = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+        [tableName],
+      );
+      return result.isNotEmpty;
+    } catch (e) {
+      return false;
+    }
   }
 
   // Helper method to close database
@@ -196,6 +312,8 @@ class DatabaseManager {
     await db.delete('entry_priorities');
     await db.delete('entry_affirmations');
     await db.delete('entries');
+    await db.delete('habits_daily');
+    await db.delete('streaks');
   }
 
   // Clean up old entries (7-day retention policy)
@@ -262,7 +380,7 @@ class DatabaseManager {
       }
 
       // Delete main entries
-      final deletedCount = await db.delete(
+      await db.delete(
         'entries',
         where: 'entry_date < ?',
         whereArgs: [cutoffDateStr],

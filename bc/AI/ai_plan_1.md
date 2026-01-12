@@ -935,3 +935,30 @@ This comprehensive implementation plan provides everything needed to build a **r
 
 --- 
 *Implementation Guide Version: 1.0 | Last Updated: [Current Date] | For Development Team Use*
+
+
+
+
+
+
+
+added in last for ai insight card
+
+
+- Use a fallback ladder so the card is always meaningful, even before today’s inputs:
+  - If today’s `entry_insights.summary` exists: show it.
+  - Else yesterday’s `entry_insights.summary`.
+  - Else this week’s `weekly_insights.highlights`.
+  - Else habit cue from `habits_daily` (e.g., “You’re 1 task from 2.0 pieces today”).
+  - Else streak-based nudge (“You’re 2 days from your longest streak”).
+  - Else a gentle “start” tip (“Take 60s to note one gratitude”).
+
+- What to display (keep it human and short):
+  - “Yesterday you wrote about X; your tone leaned positive. Keep that flow today.”
+  - “This week you’re most consistent mid‑week; a 1‑minute note now maintains momentum.”
+  - “1 task left for 2.0 pieces. A quick gratitude locks today’s progress.”
+  - “2 days to match your longest streak. Small steps, big consistency.”
+
+- Implementation (simple):
+  - Add `aiInsight` in `HomeSummaryService.fetchAll()` using the above ladder.
+  - In the card, show `aiInsight`; if null, show a static kind nudge.

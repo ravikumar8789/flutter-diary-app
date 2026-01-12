@@ -107,7 +107,7 @@ class _HabitCorrelationsCardState extends State<HabitCorrelationsCard> {
                       icon: Icons.spa,
                       label: 'Self-Care Completion',
                       value: correlations['self_care_completion'],
-                      format: (v) => v is num ? '${(v * 100).toStringAsFixed(0)}%' : v.toString(),
+                      format: (v) => v is num ? '${v.toInt()}%' : v.toString(),
                     ),
 
                   // Mood vs Gratitude

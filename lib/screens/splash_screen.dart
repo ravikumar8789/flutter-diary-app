@@ -5,6 +5,10 @@ import '../services/user_data_service.dart';
 import '../services/entry_service.dart';
 import '../services/sync/sync_worker.dart';
 import '../providers/user_data_provider.dart';
+import '../providers/data_providers.dart';
+import '../services/data_sync_flag_service.dart';
+import '../services/data_prefetch_service.dart';
+import '../services/error_logging_service.dart';
 import '../screens/home_screen.dart';
 import '../screens/login_screen.dart';
 
@@ -105,7 +109,46 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       // Use the global provider to load user data
       await ref.read(userDataProvider.notifier).loadUserData();
 
-      // Step 4: Clean up old entries (7-day retention policy)
+      // Step 4: Check if data fetch is needed (after logout or fresh install)
+      final needsFetch = await DataSyncFlagService.needsDataFetch();
+      
+      if (needsFetch) {
+        if (mounted && !_isDisposed) {
+          setState(() {
+            _loadingMessage = 'Syncing your journal...';
+          });
+        }
+        await Future.delayed(const Duration(milliseconds: 200));
+        
+        if (_isDisposed) return;
+        
+        // Prefetch 7 days data
+        try {
+          final dataFetchService = ref.read(dataFetchServiceProvider);
+          await DataPrefetchService.prefetch7DaysData(
+            user.id,
+            dataFetchService,
+          );
+          
+          // Set flag to false after successful fetch
+          await DataSyncFlagService.clearNeedsDataFetch();
+        } catch (e) {
+          // Log error but continue - data will be fetched on-demand
+          await ErrorLoggingService.logError(
+            errorCode: 'ERRSYS170',
+            errorMessage: 'Prefetch failed in splash screen: ${e.toString()}',
+            stackTrace: StackTrace.current.toString(),
+            severity: 'MEDIUM',
+            errorContext: {
+              'user_id': user.id,
+              'operation': 'splash_prefetch',
+            },
+          );
+          // Keep flag as true so it retries next time
+        }
+      }
+
+      // Step 5: Clean up old entries (7-day retention policy)
       if (mounted && !_isDisposed) {
         setState(() {
           _loadingMessage = 'Cleaning up old data...';
@@ -119,7 +162,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       final entryService = await _getEntryService();
       await entryService.cleanupOldEntries(retentionDays: 7);
 
-      // Step 5: Smart sync check (only if there's pending data)
+      // Step 6: Smart sync check (only if there's pending data)
       if (mounted && !_isDisposed) {
         setState(() {
           _loadingMessage = 'Checking for pending syncs...';
@@ -230,23 +273,25 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final colorScheme = theme.colorScheme;
 
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
+          // InnerGlow Style: Soft gradient background
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: isDark
                 ? [
-                    const Color(0xFF1E3A5F), // Soft dark blue
-                    const Color(0xFF2D4A6B), // Muted blue-gray
-                    const Color(0xFF3A5A7A), // Gentle blue
+                    colorScheme.surface,
+                    colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                    colorScheme.surfaceContainer,
                   ]
                 : [
-                    const Color(0xFFE8F4FD), // Very light blue
-                    const Color(0xFFF0F8FF), // Alice blue
-                    const Color(0xFFF8FBFF), // Almost white with blue tint
+                    colorScheme.surface,
+                    colorScheme.primaryContainer.withOpacity(0.1),
+                    colorScheme.surfaceContainerLowest,
                   ],
           ),
         ),
@@ -256,7 +301,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
               // Subtle background pattern
               Positioned.fill(
                 child: CustomPaint(
-                  painter: _BackgroundPatternPainter(isDark: isDark),
+                  painter: _BackgroundPatternPainter(primaryColor: colorScheme.primary),
                 ),
               ),
 
@@ -289,41 +334,15 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                                           decoration: BoxDecoration(
                                             shape: BoxShape.circle,
                                             gradient: LinearGradient(
-                                              colors: isDark
-                                                  ? [
-                                                      const Color(
-                                                        0xFF7BB3F0,
-                                                      ), // Soft blue
-                                                      const Color(
-                                                        0xFF5A9FD4,
-                                                      ), // Gentle blue
-                                                      const Color(
-                                                        0xFF4A8BC2,
-                                                      ), // Muted blue
-                                                    ]
-                                                  : [
-                                                      const Color(
-                                                        0xFFB8D4F0,
-                                                      ), // Very light blue
-                                                      const Color(
-                                                        0xFF9BC5E8,
-                                                      ), // Light blue
-                                                      const Color(
-                                                        0xFF7BB3F0,
-                                                      ), // Soft blue
-                                                    ],
+                                              colors: [
+                                                colorScheme.primary,
+                                                colorScheme.primaryContainer,
+                                                colorScheme.secondary,
+                                              ],
                                             ),
                                             boxShadow: [
                                               BoxShadow(
-                                                color:
-                                                    (isDark
-                                                            ? const Color(
-                                                                0xFF7BB3F0,
-                                                              )
-                                                            : const Color(
-                                                                0xFFB8D4F0,
-                                                              ))
-                                                        .withOpacity(0.4),
+                                                color: colorScheme.primary.withOpacity(0.3),
                                                 blurRadius: 30,
                                                 spreadRadius: 8,
                                               ),
@@ -332,9 +351,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                                           child: Icon(
                                             Icons.menu_book_rounded,
                                             size: 70,
-                                            color: isDark
-                                                ? const Color(0xFF2D4A6B)
-                                                : const Color(0xFF4A8BC2),
+                                            color: colorScheme.onPrimary,
                                           ),
                                         ),
                                       );
@@ -346,23 +363,18 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                                   // App Name with gentle gradient
                                   ShaderMask(
                                     shaderCallback: (bounds) => LinearGradient(
-                                      colors: isDark
-                                          ? [
-                                              const Color(0xFF7BB3F0),
-                                              const Color(0xFF5A9FD4),
-                                            ]
-                                          : [
-                                              const Color(0xFF4A8BC2),
-                                              const Color(0xFF2D4A6B),
-                                            ],
+                                      colors: [
+                                        colorScheme.primary,
+                                        colorScheme.secondary,
+                                      ],
                                     ).createShader(bounds),
                                     child: Text(
                                       'Simple Journal',
                                       style: TextStyle(
                                         fontSize: 36,
-                                        fontWeight: FontWeight.w300,
+                                        fontWeight: FontWeight.w600,
                                         color: Colors.white,
-                                        letterSpacing: 2.0,
+                                        letterSpacing: 1.5,
                                         height: 1.2,
                                       ),
                                     ),
@@ -375,15 +387,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                                     'Your thoughts, beautifully captured',
                                     style: TextStyle(
                                       fontSize: 16,
-                                      fontWeight: FontWeight.w300,
-                                      color: isDark
-                                          ? const Color(
-                                              0xFF7BB3F0,
-                                            ).withOpacity(0.8)
-                                          : const Color(
-                                              0xFF4A8BC2,
-                                            ).withOpacity(0.7),
-                                      letterSpacing: 1.0,
+                                      fontWeight: FontWeight.w400,
+                                      color: colorScheme.onSurfaceVariant,
+                                      letterSpacing: 0.5,
                                       height: 1.4,
                                     ),
                                     textAlign: TextAlign.center,
@@ -413,11 +419,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                               child: CircularProgressIndicator(
                                 strokeWidth: 2.5,
                                 valueColor: AlwaysStoppedAnimation<Color>(
-                                  isDark
-                                      ? const Color(0xFF7BB3F0).withOpacity(0.8)
-                                      : const Color(
-                                          0xFF4A8BC2,
-                                        ).withOpacity(0.6),
+                                  colorScheme.primary,
                                 ),
                               ),
                             ),
@@ -426,10 +428,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                               _loadingMessage,
                               style: TextStyle(
                                 fontSize: 14,
-                                color: isDark
-                                    ? const Color(0xFF7BB3F0).withOpacity(0.6)
-                                    : const Color(0xFF4A8BC2).withOpacity(0.5),
-                                fontWeight: FontWeight.w300,
+                                color: colorScheme.onSurfaceVariant,
+                                fontWeight: FontWeight.w400,
                                 letterSpacing: 0.5,
                               ),
                               textAlign: TextAlign.center,
@@ -462,15 +462,14 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 }
 
 class _BackgroundPatternPainter extends CustomPainter {
-  final bool isDark;
+  final Color primaryColor;
 
-  _BackgroundPatternPainter({required this.isDark});
+  _BackgroundPatternPainter({required this.primaryColor});
 
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = (isDark ? const Color(0xFF7BB3F0) : const Color(0xFFB8D4F0))
-          .withOpacity(0.03)
+      ..color = primaryColor.withOpacity(0.03)
       ..style = PaintingStyle.fill;
 
     // Draw subtle circles

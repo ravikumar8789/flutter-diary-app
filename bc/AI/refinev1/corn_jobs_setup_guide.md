@@ -75,6 +75,7 @@ Before setting up cron jobs, you need:
 2. Click on your project
 3. Go to **Settings** → **API**
 4. Find **Project URL** - it looks like: `https://abcdefghijklmnop.supabase.co`
+https://foqoterfgxoiwoxvuxqi.supabase.co
 5. Your **Project Reference** is the part before `.supabase.co`: `abcdefghijklmnop`
 
 **Or get it from SQL:**
@@ -90,6 +91,7 @@ SELECT current_database();
 2. Click on your project
 3. Go to **Settings** → **API**
 4. Find **service_role** key (under **Project API keys**)
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZvcW90ZXJmZ3hvaXdveHZ1eHFpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1OTIxNjM0OSwiZXhwIjoyMDc0NzkyMzQ5fQ.4lKFBtI7E5N4PLzBApZuC2tTjSKyLR2S37rt1L6uBCQ
 5. **⚠️ IMPORTANT**: This is a secret key - keep it safe!
 
 **⚠️ SECURITY NOTE**: Never commit service role keys to git or share them publicly.

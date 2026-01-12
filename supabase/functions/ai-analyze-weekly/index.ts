@@ -303,7 +303,7 @@ Water: ${item.water_cups || 0} cups`
     } else {
       // Fallback template (Premium Edition - Full Data)
       template = {
-        system_prompt: 'You are an analytical but compassionate AI assistant that identifies patterns in personal journal data. You analyze weekly journal entries, daily insights, affirmations, gratitude, and priorities to provide deep, personalized insights. Focus on:\n\n1. Emotional patterns and mood trends\n2. Habit correlations and their impact on well-being\n3. Recurring themes in affirmations, gratitude, and priorities\n4. Actionable recommendations based on patterns\n5. Celebrating progress and identifying growth areas\n\nBe empathetic, specific, and actionable. Use the daily insights and structured data to provide context-rich analysis.',
+        system_prompt: 'You are an analytical but compassionate AI assistant that identifies patterns in personal journal data. You analyze weekly journal entries, daily insights, affirmations, gratitude, and priorities to provide deep, personalized insights. Focus on:\n\n1. Emotional patterns and mood trends\n2. Habit correlations and their impact on well-being\n3. Recurring themes in affirmations, gratitude, and priorities\n4. Actionable recommendations based on patterns\n5. Celebrating progress and identifying growth areas\n\nBe empathetic, specific, and actionable. Use the daily insights and structured data to provide context-rich analysis.\n\nIMPORTANT: Always return your response as a valid JSON object. Do not include any markdown formatting, headers, or explanatory text outside the JSON object.',
         user_prompt_template: `WEEKLY ANALYSIS REQUEST (PREMIUM)
 Date Range: {week_start} to {week_end}
 Entries Written: {entries_count}/7 days
@@ -358,33 +358,40 @@ Entries Count: {entries_count}/7
 {weekly_topics}
 
 === ANALYSIS REQUEST ===
-Based on the above COMPREHENSIVE and COMPLETE data, provide a deep, personalized weekly analysis:
+Based on the above COMPREHENSIVE and COMPLETE data, provide a deep, personalized weekly analysis.
 
-1. **Weekly Highlights** (3-4 sentences):
-   - Overall mood pattern and emotional journey across the week
-   - Key positive moments, achievements, or breakthroughs
-   - Notable patterns, trends, or shifts in behavior/emotions
-   - Connection between different aspects (mood, habits, gratitude, etc.)
+Extract and discuss important points from:
+- Affirmations: What themes or patterns emerge?
+- Diary text: What emotional patterns, concerns, or celebrations appear?
+- Tomorrow notes: What planning patterns or future focus areas exist?
 
-2. **Key Insights** (4-5 specific insights):
-   - Insight 1: Deep emotional pattern or mood correlation
-   - Insight 2: Habit correlation and its impact on well-being
-   - Insight 3: Theme or pattern from affirmations/gratitude/priorities
-   - Insight 4: Connection between self-care activities and mood/energy
-   - Insight 5: Pattern in meal habits, planning (tomorrow notes), or routines
+Return your response as a valid JSON object with this exact structure:
+{
+  "highlights": "5-7 sentences covering: overall theme (1 sentence), mood journey across the week (1-2 sentences), key positive moments/achievements/breakthroughs (1-2 sentences), notable patterns/trends/shifts in behavior/emotions (1-2 sentences), and connections between different aspects like mood, habits, gratitude (1 sentence). Make it flow as one cohesive paragraph.",
+  "key_insights": [
+    "Deep emotional pattern or mood correlation - reference specific dates/entries when possible",
+    "Habit correlation and its impact on well-being - reference specific dates/entries when possible",
+    "Theme or pattern from affirmations/gratitude/priorities - reference specific dates/entries when possible",
+    "Connection between self-care activities and mood/energy - reference specific dates/entries when possible",
+    "Pattern in meal habits, planning (tomorrow notes), or routines - reference specific dates/entries when possible"
+  ],
+  "recommendations": [
+    "Specific action based on strongest pattern identified - be specific and actionable, not generic",
+    "Habit to strengthen or area to focus based on correlations - be specific and actionable, not generic",
+    "Area for growth or improvement based on complete data analysis - be specific and actionable, not generic"
+  ]
+}
 
-3. **Recommendations** (3 actionable items):
-   - Recommendation 1: Specific action based on strongest pattern identified
-   - Recommendation 2: Habit to strengthen or area to focus based on correlations
-   - Recommendation 3: Area for growth or improvement based on complete data analysis
-
-Format your response clearly with sections labeled "Highlights:", "Key Insights:", and "Recommendations:". 
-- Be specific and reference actual data from the entries (dates, specific activities, patterns)
-- Connect different aspects of the data (e.g., "On days when you practiced gratitude, your mood was higher")
-- Be empathetic, encouraging, and actionable
-- Total response should be 300-400 words (premium depth)`,
+CRITICAL REQUIREMENTS:
+- Return ONLY valid JSON. No markdown, no headers, no explanatory text.
+- For each insight, reference specific dates or entries when possible (e.g., "On Day 3 (Dec 23), when you...")
+- Make recommendations specific and actionable, not generic advice.
+- Highlights should be 5-7 sentences, flowing as one cohesive paragraph.
+- Be specific and reference actual data from the entries (dates, specific activities, patterns).
+- Connect different aspects of the data (e.g., "On days when you practiced gratitude, your mood was higher").
+- Be empathetic, encouraging, and actionable.`,
         temperature: 0.5,
-        max_tokens: 800
+        max_tokens: 1000
       }
     }
 
@@ -435,7 +442,8 @@ Format your response clearly with sections labeled "Highlights:", "Key Insights:
           { role: 'user', content: userPrompt }
         ],
         temperature: template.temperature || 0.5,
-        max_tokens: template.max_tokens || 800
+        max_tokens: template.max_tokens || 1000,
+        response_format: { type: "json_object" }
       })
     })
 
@@ -456,8 +464,29 @@ Format your response clearly with sections labeled "Highlights:", "Key Insights:
       throw new Error('Empty response from OpenAI')
     }
 
-    // 9. Parse insight into structured format
-    const { insights, recommendations } = parseWeeklyInsight(insightText)
+    // 9. Parse JSON response
+    let highlights = ''
+    let insights: string[] = []
+    let recommendations: string[] = []
+
+    try {
+      const parsed = JSON.parse(insightText)
+      highlights = parsed.highlights || ''
+      insights = Array.isArray(parsed.key_insights) ? parsed.key_insights : []
+      recommendations = Array.isArray(parsed.recommendations) ? parsed.recommendations : []
+      
+      // Validate we got the data
+      if (!highlights || insights.length === 0 || recommendations.length === 0) {
+        throw new Error('Invalid JSON structure from AI')
+      }
+    } catch (parseError) {
+      // Fallback: Try old parsing method if JSON fails
+      console.warn('JSON parsing failed, falling back to text parsing:', parseError)
+      const parsed = parseWeeklyInsight(insightText)
+      highlights = parsed.highlights || insightText
+      insights = parsed.insights
+      recommendations = parsed.recommendations
+    }
 
     // 10. Calculate cost
     const costUsd = (tokensUsed.prompt / 1000000) * 0.15 + (tokensUsed.completion / 1000000) * 0.60
@@ -473,7 +502,7 @@ Format your response clearly with sections labeled "Highlights:", "Key Insights:
         cups_avg: parseFloat(cupsAvg),
         self_care_rate: selfCareRates.completionRate,
         top_topics: topics.slice(0, 10),
-        highlights: insightText,
+        highlights: highlights || insightText, // Use extracted highlights, fallback to full text if parsing fails
         ai_generated: true,
         mood_trend: moodTrend,
         key_insights: insights,
@@ -702,15 +731,23 @@ function extractTopics(entries: any[]): string[] {
     .map(([word]) => word)
 }
 
-// Helper: Parse weekly insight text into structured format (Premium Edition - 4-5 insights, 3 recommendations)
-function parseWeeklyInsight(text: string): { insights: string[]; recommendations: string[] } {
+/**
+ * @deprecated This function is kept only for fallback compatibility.
+ * New implementations should use JSON format with response_format: { type: "json_object" }
+ * 
+ * Helper: Parse weekly insight text into structured format (Premium Edition - 4-5 insights, 3 recommendations)
+ */
+function parseWeeklyInsight(text: string): { highlights: string; insights: string[]; recommendations: string[] } {
   const insights: string[] = []
   const recommendations: string[] = []
+  let highlightsText = ''
   
   // Look for section headers
   const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0)
   
   let currentSection = 'highlights'
+  let highlightsLines: string[] = []
+  
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
     
@@ -721,12 +758,22 @@ function parseWeeklyInsight(text: string): { insights: string[]; recommendations
       continue
     }
     if (lowerLine.includes('key insights:') || lowerLine.includes('insights:') || lowerLine.includes('key insight')) {
+      // End of highlights section, join what we collected
+      if (highlightsLines.length > 0) {
+        highlightsText = highlightsLines.join(' ').trim()
+      }
       currentSection = 'insights'
       continue
     }
     if (lowerLine.includes('recommendations:') || lowerLine.includes('recommend') || lowerLine.includes('actionable')) {
       currentSection = 'recommendations'
       continue
+    }
+    
+    // Collect highlights text (before Key Insights section)
+    if (currentSection === 'highlights' && !lowerLine.match(/^[0-9]+\./) && !lowerLine.match(/^[-•*]/)) {
+      // Only collect non-numbered/bulleted lines for highlights (paragraph text)
+      highlightsLines.push(line)
     }
     
     // Extract numbered or bulleted items (improved regex)
@@ -808,7 +855,24 @@ function parseWeeklyInsight(text: string): { insights: string[]; recommendations
     }
   }
   
+  // If highlights not extracted yet, try to get text before "Key Insights"
+  if (!highlightsText) {
+    const keyInsightsIndex = text.toLowerCase().indexOf('key insights')
+    if (keyInsightsIndex > 0) {
+      highlightsText = text.substring(0, keyInsightsIndex)
+        .replace(/highlights?:/gi, '')
+        .trim()
+    } else {
+      // Fallback: use first paragraph if no clear section found
+      const firstParagraph = text.split(/\n\n+/)[0]?.trim()
+      if (firstParagraph && firstParagraph.length > 20) {
+        highlightsText = firstParagraph
+      }
+    }
+  }
+  
   return {
+    highlights: highlightsText || '', // Extract only highlights section (without Key Insights)
     insights: insights.slice(0, 5), // Premium: up to 5 insights
     recommendations: recommendations.slice(0, 3) // Premium: up to 3 recommendations
   }

@@ -414,7 +414,7 @@ DELETE FROM public.analysis_queue
 WHERE created_at > NOW() - INTERVAL '1 hour';
 
 DELETE FROM public.monthly_insights 
-WHERE created_at > NOW() - INTERVAL '1 hour';
+WHERE generated_at > NOW() - INTERVAL '1 hour';
 ```
 
 ---

@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../models/history_entry_model.dart';
 import '../services/history_service.dart';
 import '../services/error_logging_service.dart';
+import 'data_providers.dart';
 
 class HistoryState {
   final List<HistoryEntry> entries;
@@ -46,10 +47,15 @@ class HistoryState {
 }
 
 class HistoryNotifier extends Notifier<HistoryState> {
-  final HistoryService _service = HistoryService();
-
+  late final HistoryService _service;
+  
   @override
-  HistoryState build() => HistoryState();
+  HistoryState build() {
+    final dataFetchService = ref.read(dataFetchServiceProvider);
+    _service = HistoryService(dataFetchService: dataFetchService);
+    return HistoryState();
+  }
+
 
   /// Load current month on init
   /// Loads 2 months initially (current + previous) with full data

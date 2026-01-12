@@ -1,17 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' as supabase;
-import 'morning_rituals_screen.dart';
-import 'wellness_tracker_screen.dart';
-import 'gratitude_reflection_screen.dart';
+import 'package:intl/intl.dart';
 import 'new_diary_screen.dart';
-import '../widgets/app_drawer.dart';
+import '../widgets/bottom_navigation_bar.dart';
 import '../providers/user_data_provider.dart';
 import '../providers/grace_system_provider.dart';
 import '../widgets/grace_system_info_card.dart';
-import '../providers/home_summary_provider.dart';
+import '../providers/data_providers.dart'; // Use new cached providers (homeSummaryProvider)
+import '../providers/home_summary_provider.dart'; // For aiInsightProvider, recentInsightsProvider, yesterdayInsightProvider
 import '../models/home_summary_models.dart';
 import '../widgets/yesterday_insight_card.dart';
+import '../providers/recent_entries_provider.dart';
+import '../models/history_entry_model.dart';
+import '../services/streak_motivation_service.dart';
 
 // Import aiInsightProvider from home_summary_provider
 
@@ -116,8 +118,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // Show loading state while user data is being fetched
     if (isLoading && userData == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('My Diary')),
-        drawer: const AppDrawer(currentRoute: 'home'),
+        appBar: null,
         body: const Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -137,198 +138,55 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         return true;
       },
       child: Scaffold(
-        appBar: AppBar(
-          title: const Text('My Diary'),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.notifications_outlined),
-              onPressed: () {},
-            ),
-          ],
-        ),
-        drawer: const AppDrawer(currentRoute: 'home'),
+        appBar: null, // No app bar for InnerGlow design
+        // drawer removed - using bottom navigation
         body: SafeArea(
-          child: SingleChildScrollView(
-            padding: EdgeInsets.all(isTablet ? 32 : 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Welcome section
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 4,
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.waving_hand,
-                          color: Colors.amber[700],
-                          size: 28,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Welcome back, ${userData?.displayName ?? user?.userMetadata?['display_name'] ?? user?.email?.split('@')[0] ?? 'User'}',
-                                style: Theme.of(context).textTheme.titleLarge
-                                    ?.copyWith(fontWeight: FontWeight.w600),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                'Ready to journal today?',
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.onSurfaceVariant,
-                                    ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
+          bottom: false,
+          child: Column(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isTablet ? 32 : 20,
+                    vertical: 20,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Date and Greeting Header (InnerGlow Style)
+                      _buildDateAndGreeting(context, userData, user),
+                      const SizedBox(height: 24),
+                      
+                      // Streak Cards (InnerGlow Style)
+                      _buildStreakSection(context, userStats, user),
+                      const SizedBox(height: 24),
+                      
+                      // Start Today's Entry Button (InnerGlow Style)
+                      _buildStartEntryButton(context),
+                      const SizedBox(height: 24),
+                      
+                      // Yesterday's Insight Card
+                      _buildAiInsightCard(context),
+                      const SizedBox(height: 24),
+                      
+                      // This Week Metrics (InnerGlow Style)
+                      _buildThisWeekSection(context),
+                      const SizedBox(height: 24),
+                      
+                      // Recent Entries Section (InnerGlow Style)
+                      _buildRecentEntriesSection(context),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 10),
-
-                // Quick stats (two cards)
-                Text(
-                  'Quick Stats',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 8),
-                Consumer(
-                  builder: (context, ref, _) {
-                    final summaryAsync = ref.watch(homeSummaryProvider);
-                    return summaryAsync.when(
-                      loading: () => _buildSummarySkeleton(isTablet, count: 2),
-                      error: (e, st) => _buildSummaryError(context),
-                      data: (summary) {
-                        final crossAxisCount = isTablet ? 2 : 2;
-                        return GridView.count(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          crossAxisCount: crossAxisCount,
-                          crossAxisSpacing: 8,
-                          mainAxisSpacing: 8,
-                          childAspectRatio: isTablet ? 1.8 : 1.4,
-                          children: [
-                            _buildStreakCard(
-                              context,
-                              (summary.streak?.current ??
-                                      userStats?['current_streak'] ??
-                                      0)
-                                  as int,
-                            ),
-                            Consumer(
-                              builder: (context, ref, _) {
-                                final grace = ref.watch(graceSystemProvider);
-                                // Derive tasks from piecesToday (0.5 per task)
-                                int tasks = ((grace.piecesToday / 0.5).round())
-                                    .clamp(0, 4);
-                                bool wrote = tasks >= 1;
-                                bool aff = tasks >= 2;
-                                bool grat = tasks >= 3;
-                                int selfCareCount = tasks >= 4 ? 1 : 0;
-
-                                final todaySummary = TodayProgressSummary(
-                                  wroteEntry: wrote,
-                                  filledAffirmations: aff,
-                                  filledGratitude: grat,
-                                  selfCareCompletedCount: selfCareCount,
-                                  gracePiecesEarned: grace.piecesToday,
-                                  waterCups: summary.today?.waterCups ?? 0,
-                                );
-                                return _buildTodayProgressCard(
-                                  context,
-                                  todaySummary,
-                                );
-                              },
-                            ),
-                          ],
-                        );
-                      },
-                    );
-                  },
-                ),
-                const SizedBox(height: 18),
-
-                // AI Insight full-width card
-                _buildAiInsightCard(context),
-                const SizedBox(height: 18),
-
-                // Journal Categories
-                Text(
-                  'Today\'s Journal',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 16),
-
-                _buildCategoryCard(
-                  context,
-                  '🌅 Morning Rituals',
-                  'Affirmations & priorities',
-                  const Color(0xFFFFF8E7),
-                  const Color(0xFFFFA726),
-                  () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const MorningRitualsScreen(),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                _buildCategoryCard(
-                  context,
-                  '💪 Wellness Tracker',
-                  'Track health & habits',
-                  const Color(0xFFE8F5E9),
-                  const Color(0xFF66BB6A),
-                  () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const WellnessTrackerScreen(),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                _buildCategoryCard(
-                  context,
-                  '✨ Gratitude & Reflection',
-                  'Appreciate & plan ahead',
-                  const Color(0xFFF3E5F5),
-                  const Color(0xFFAB47BC),
-                  () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const GratitudeReflectionScreen(),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                _buildCategoryCard(
-                  context,
-                  '📝 Daily Diary',
-                  'Write your thoughts freely',
-                  const Color(0xFFE3F2FD),
-                  const Color(0xFF42A5F5),
-                  () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const NewDiaryScreen(),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+              ),
+              // Bottom Navigation Bar
+              AppBottomNavigationBar(
+                currentIndex: 0,
+                onTap: (index) {
+                  AppBottomNavigationBar.navigateToScreen(context, index);
+                },
+              ),
+            ],
           ),
         ),
       ),
@@ -614,113 +472,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   // Removed WeeklySnapshot card (replaced by AI Insight full-width card)
 
   // Removed Grace card (merged into Today Progress/AI insight layout)
-  /*Widget _buildGraceCard(BuildContext context, HomeSummary summary) {
-    final freeze = summary.streak?.freezeCredits ?? 0;
-    final totalPieces = summary.streak?.gracePiecesTotal ?? 0.0;
-    final towardNext = (totalPieces % 10);
-    final todayPieces = summary.today?.gracePiecesEarned ?? 0.0;
-
-    final progress = (towardNext / 10).clamp(0.0, 1.0);
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.shield, color: Colors.blue[600], size: 22),
-                const SizedBox(width: 6),
-                Text(
-                  'Grace Status',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceVariant,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text('Grace $freeze',
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant)),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceVariant,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text('Today ${todayPieces.toStringAsFixed(1)}/2.0',
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              height: 6,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(3),
-                child: LinearProgressIndicator(
-                  value: progress,
-                  backgroundColor:
-                      Theme.of(context).colorScheme.surfaceVariant,
-                  color: Colors.blue[600],
-                ),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '${towardNext.toStringAsFixed(1)}/10 to next grace day',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Earn 0.5 per completed task',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color:
-                        Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const MorningRitualsScreen(),
-                  ),
-                );
-              },
-              child: const Text('Complete tasks'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }*/
 
   // Chip helper removed (no longer needed)
 
@@ -741,29 +492,178 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  Widget _buildCategoryCard(
+  // InnerGlow Design Builder Methods
+  
+  Widget _buildDateAndGreeting(
     BuildContext context,
-    String title,
-    String subtitle,
-    Color bgColor,
-    Color accentColor,
-    VoidCallback onTap,
+    userData,
+    user,
   ) {
+    final now = DateTime.now();
+    final dateFormat = DateFormat('EEEE, MMMM d').format(now);
+    final name = userData?.displayName ?? 
+                 user?.userMetadata?['display_name'] ?? 
+                 user?.email?.split('@')[0] ?? 
+                 'User';
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          dateFormat,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Hello, $name 👋',
+          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildStreakSection(
+    BuildContext context,
+    userStats,
+    user,
+  ) {
+    final currentStreak = userStats?['current_streak'] ?? 0;
+    final bestStreak = userStats?['longest_streak'] ?? currentStreak;
+    
+    return Consumer(
+      builder: (context, ref, _) {
+        final summaryAsync = ref.watch(homeSummaryProvider);
+        final currentStreakValue = summaryAsync.value?.streak?.current ?? currentStreak;
+        final bestStreakValue = summaryAsync.value?.streak?.longest ?? bestStreak;
+        
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Single card containing both streaks
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Row(
+                  children: [
+                    // Current Streak (left side)
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.local_fire_department,
+                            color: Theme.of(context).colorScheme.primary,
+                            size: 28,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Current Streak',
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '$currentStreakValue days',
+                                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Divider
+                    Container(
+                      width: 1,
+                      height: 40,
+                      color: Theme.of(context).colorScheme.surfaceVariant,
+                    ),
+                    const SizedBox(width: 20),
+                    // Best Streak (right side)
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.emoji_events,
+                            color: Theme.of(context).colorScheme.primary,
+                            size: 28,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Best',
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '$bestStreakValue days',
+                                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // Motivational message OUTSIDE the card
+            const SizedBox(height: 12),
+            Text(
+              StreakMotivationService.getMotivationalMessage(currentStreakValue),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+  
+  Widget _buildStartEntryButton(BuildContext context) {
     return Card(
-      clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: onTap,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const NewDiaryScreen()),
+          );
+        },
+        borderRadius: BorderRadius.circular(12),
         child: Container(
-          decoration: BoxDecoration(color: bgColor),
-          padding: const EdgeInsets.all(18),
+          padding: const EdgeInsets.all(20),
           child: Row(
             children: [
               Container(
-                width: 4,
-                height: 50,
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: accentColor,
-                  borderRadius: BorderRadius.circular(2),
+                  color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.edit_note,
+                  color: Theme.of(context).colorScheme.primary,
+                  size: 28,
                 ),
               ),
               const SizedBox(width: 16),
@@ -772,14 +672,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      title,
+                      'Start Today\'s Entry',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      subtitle,
+                      'How are you feeling today?',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
@@ -787,11 +687,280 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ],
                 ),
               ),
-              Icon(Icons.arrow_forward_ios, color: accentColor, size: 18),
+              Icon(
+                Icons.arrow_forward_ios,
+                size: 16,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ],
           ),
         ),
       ),
     );
+  }
+  
+  Widget _buildThisWeekSection(BuildContext context) {
+    return Consumer(
+      builder: (context, ref, _) {
+        final summaryAsync = ref.watch(homeSummaryProvider);
+        
+        return summaryAsync.when(
+          loading: () => const SizedBox(height: 200),
+          error: (_, __) => const SizedBox.shrink(),
+          data: (summary) {
+            final weekly = summary.weekly;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'This Week',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final cardWidth = (constraints.maxWidth - 12) / 2;
+                    return Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        SizedBox(
+                          width: cardWidth,
+                          child: _buildWeekMetricCard(
+                            context, 
+                            weekly?.moodAvg?.toStringAsFixed(1) ?? '0.0', 
+                            'Avg Mood', 
+                            'out of 5', 
+                            Icons.mood,
+                          ),
+                        ),
+                        SizedBox(
+                          width: cardWidth,
+                          child: _buildWeekMetricCard(
+                            context, 
+                            weekly?.cupsAvg?.toStringAsFixed(1) ?? '0.0', 
+                            'Water', 
+                            'Avg cups/day', 
+                            Icons.water_drop,
+                          ),
+                        ),
+                        SizedBox(
+                          width: cardWidth,
+                          child: _buildWeekMetricCard(
+                            context, 
+                            '${((weekly?.selfCareRate ?? 0) * 100).toStringAsFixed(0)}%', 
+                            'Self-Care', 
+                            'Avg completion', 
+                            Icons.favorite,
+                          ),
+                        ),
+                        SizedBox(
+                          width: cardWidth,
+                          child: _buildWeekMetricCard(
+                            context, 
+                            '${((weekly?.consistency ?? 0) * 100).toStringAsFixed(0)}%', 
+                            'Consistency', 
+                            'this week', 
+                            Icons.check_circle,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+  
+  Widget _buildWeekMetricCard(BuildContext context, String value, String label, String subtitle, IconData icon) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: Theme.of(context).colorScheme.primary, size: 20),
+            const SizedBox(height: 6),
+            Text(
+              value,
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w500,
+                fontSize: 12,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            Text(
+              subtitle,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 10,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildRecentEntriesSection(BuildContext context) {
+    return Consumer(
+      builder: (context, ref, _) {
+        final recentEntriesAsync = ref.watch(recentEntriesProvider);
+        
+        return recentEntriesAsync.when(
+          loading: () => const SizedBox(height: 200),
+          error: (_, __) => const SizedBox.shrink(),
+          data: (entries) {
+            if (entries.isEmpty) {
+              return const SizedBox.shrink();
+            }
+            
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Recent Entries',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        AppBottomNavigationBar.navigateToScreen(context, 1);
+                      },
+                      child: const Text('See all'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: entries.length > 3 ? 3 : entries.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 12),
+                  itemBuilder: (context, index) {
+                    return _buildEntryCard(context, entries[index]);
+                  },
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+  
+  Widget _buildEntryCard(BuildContext context, HistoryEntry entry) {
+    final dateFormat = DateFormat('EEEE, MMMM d').format(entry.entry.entryDate);
+    final moodEmoji = _getMoodEmoji(entry.entry.moodScore ?? 3);
+    final preview = entry.preview.length > 100 
+        ? '${entry.preview.substring(0, 100)}...' 
+        : entry.preview;
+    final selfCareScore = entry.selfCareCount;
+    
+    return Card(
+      child: InkWell(
+        onTap: () {
+          // Navigate to entry details or history
+          AppBottomNavigationBar.navigateToScreen(context, 1);
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(moodEmoji, style: const TextStyle(fontSize: 24)),
+                  const SizedBox(width: 12),
+                  Text(
+                    dateFormat,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                preview,
+                style: Theme.of(context).textTheme.bodyMedium,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  if (selfCareScore > 0)
+                    Text(
+                      '$selfCareScore/10 self-care',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  if (entry.hasInsights) ...[
+                    if (selfCareScore > 0) const SizedBox(width: 8),
+                    Icon(
+                      Icons.auto_awesome,
+                      size: 16,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'AI Insight',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+  
+  String _getMoodEmoji(int mood) {
+    switch (mood) {
+      case 1:
+        return '😢';
+      case 2:
+        return '😔';
+      case 3:
+        return '😐';
+      case 4:
+        return '😊';
+      case 5:
+        return '😄';
+      default:
+        return '😐';
+    }
   }
 }

@@ -9,7 +9,7 @@
 ## **📋 EXECUTIVE SUMMARY**
 
 **Problem:** Duplicate key error (23505) when trying to create user that already exists in database.  
-**Root Cause:** Using `.single()` instead of `.maybeSingle()` causes code to incorrectly assume user doesn't exist when SELECT fails for network/timeout reasons.  
+**Root Cause:** Using `.                    ()` instead of `.maybeSingle()` causes code to incorrectly assume user doesn't exist when SELECT fails for network/timeout reasons.  
 **Impact:** Creates false error logs, doesn't break app functionality but indicates logic flaw.  
 **Solution:** Switch to `.maybeSingle()` pattern and add proper error handling with enhanced logging.
 

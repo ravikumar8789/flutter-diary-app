@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/user_data_service.dart';
 import '../services/error_logging_service.dart';
+import 'data_providers.dart';
 
 /// Global user data provider
 final userDataProvider = NotifierProvider<UserDataNotifier, UserDataState>(
@@ -46,7 +47,10 @@ class UserDataNotifier extends Notifier<UserDataState> {
     state = state.copyWith(isLoading: true, error: null);
 
     try {
-      final result = await UserDataService.fetchUserData();
+      final dataFetchService = ref.read(dataFetchServiceProvider);
+      final result = await UserDataService.fetchUserData(
+        dataFetchService: dataFetchService,
+      );
 
       if (result.success && result.userData != null) {
         state = state.copyWith(

@@ -4,9 +4,14 @@ import '../models/entry_models.dart';
 import '../models/history_entry_model.dart';
 import '../models/analytics_models.dart';
 import 'error_logging_service.dart';
+import 'data_fetch_service.dart';
 
 class HistoryService {
   final SupabaseClient _supabase = Supabase.instance.client;
+  final DataFetchService? _dataFetchService;
+  
+  HistoryService({DataFetchService? dataFetchService})
+      : _dataFetchService = dataFetchService;
 
   /// Fetch entries for a month with all related data using JOIN query
   Future<List<HistoryEntry>> getEntriesForMonth(
@@ -21,21 +26,34 @@ class HistoryService {
       final endDateStr = DateFormat('yyyy-MM-dd').format(monthEnd);
 
       // 2. Fetch entries with all related data using JOIN query (single call)
-      final response = await _supabase
-          .from('entries')
-          .select('''
-            *,
-            entry_self_care(*),
-            entry_meals(*),
-            entry_affirmations(*),
-            entry_gratitude(*),
-            entry_priorities(*),
-            entry_tomorrow_notes(*)
-          ''')
-          .eq('user_id', userId)
-          .gte('entry_date', startDateStr)
-          .lte('entry_date', endDateStr)
-          .order('entry_date', ascending: false);
+      List<Map<String, dynamic>> response;
+      
+      if (_dataFetchService != null) {
+        // Use cached fetchEntriesWithJoins
+        response = await _dataFetchService.fetchEntriesWithJoins(
+          userId: userId,
+          startDate: monthStart,
+          endDate: monthEnd,
+        );
+      } else {
+        // Fallback to direct query
+        final queryResponse = await _supabase
+            .from('entries')
+            .select('''
+              *,
+              entry_self_care(*),
+              entry_meals(*),
+              entry_affirmations(*),
+              entry_gratitude(*),
+              entry_priorities(*),
+              entry_tomorrow_notes(*)
+            ''')
+            .eq('user_id', userId)
+            .gte('entry_date', startDateStr)
+            .lte('entry_date', endDateStr)
+            .order('entry_date', ascending: false);
+        response = List<Map<String, dynamic>>.from(queryResponse);
+      }
 
       if (response.isEmpty) return [];
 
@@ -116,20 +134,33 @@ class HistoryService {
       final dateStr = DateFormat('yyyy-MM-dd').format(date);
 
       // 1. Fetch entry with all related data using JOIN query (single call)
-      final response = await _supabase
-          .from('entries')
-          .select('''
-            *,
-            entry_self_care(*),
-            entry_meals(*),
-            entry_affirmations(*),
-            entry_gratitude(*),
-            entry_priorities(*),
-            entry_tomorrow_notes(*)
-          ''')
-          .eq('user_id', userId)
-          .eq('entry_date', dateStr)
-          .maybeSingle();
+      Map<String, dynamic>? response;
+      
+      if (_dataFetchService != null) {
+        // Use cached fetchEntryByDate - but we need JOIN data, so use fetchEntriesWithJoins for single date
+        final entries = await _dataFetchService.fetchEntriesWithJoins(
+          userId: userId,
+          startDate: date,
+          endDate: date,
+        );
+        response = entries.isNotEmpty ? entries.first : null;
+      } else {
+        // Fallback to direct query
+        response = await _supabase
+            .from('entries')
+            .select('''
+              *,
+              entry_self_care(*),
+              entry_meals(*),
+              entry_affirmations(*),
+              entry_gratitude(*),
+              entry_priorities(*),
+              entry_tomorrow_notes(*)
+            ''')
+            .eq('user_id', userId)
+            .eq('entry_date', dateStr)
+            .maybeSingle();
+      }
 
       if (response == null) return null;
 
@@ -194,8 +225,13 @@ class HistoryService {
 
 
   /// Fetch insight for a specific entry (public method for on-demand fetching)
+  /// 
+  /// Note: Insights are fetched on-demand, so caching is less critical.
+  /// Using direct query for simplicity (insights change infrequently).
   Future<HistoryDailyInsight?> fetchInsightForEntry(String entryId) async {
     try {
+      // For insights, we use direct query since they're fetched on-demand
+      // and caching is handled at a higher level if needed
       final response = await _supabase
           .from('entry_insights')
           .select('''
@@ -261,22 +297,39 @@ class HistoryService {
     DateTime? endDate,
   ) async {
     try {
-      var query = _supabase
-          .from('entries')
-          .select('entry_date, mood_score')
-          .eq('user_id', userId);
+      List<Map<String, dynamic>> response;
+      
+      if (_dataFetchService != null) {
+        // Use cached fetchEntriesWithSelect
+        final now = DateTime.now();
+        final actualStartDate = startDate ?? DateTime(now.year - 10, 1, 1); // 10 years ago if not provided
+        final actualEndDate = endDate ?? now;
+        
+        response = await _dataFetchService.fetchEntriesWithSelect(
+          userId: userId,
+          startDate: actualStartDate,
+          endDate: actualEndDate,
+          select: 'entry_date, mood_score',
+        );
+      } else {
+        // Fallback to direct query
+        var query = _supabase
+            .from('entries')
+            .select('entry_date, mood_score')
+            .eq('user_id', userId);
 
-      // Apply date filters if provided (for calendar view, fetch all if not provided)
-      if (startDate != null) {
-        final startDateStr = DateFormat('yyyy-MM-dd').format(startDate);
-        query = query.gte('entry_date', startDateStr);
-      }
-      if (endDate != null) {
-        final endDateStr = DateFormat('yyyy-MM-dd').format(endDate);
-        query = query.lte('entry_date', endDateStr);
-      }
+        // Apply date filters if provided (for calendar view, fetch all if not provided)
+        if (startDate != null) {
+          final startDateStr = DateFormat('yyyy-MM-dd').format(startDate);
+          query = query.gte('entry_date', startDateStr);
+        }
+        if (endDate != null) {
+          final endDateStr = DateFormat('yyyy-MM-dd').format(endDate);
+          query = query.lte('entry_date', endDateStr);
+        }
 
-      final response = await query;
+        response = List<Map<String, dynamic>>.from(await query);
+      }
 
       final moodMap = <String, int>{};
       for (var row in response) {
@@ -307,11 +360,27 @@ class HistoryService {
   Future<List<String>> getMonthsWithEntries(String userId) async {
     try {
       // Fetch all entry dates from Supabase
-      final response = await _supabase
-          .from('entries')
-          .select('entry_date')
-          .eq('user_id', userId)
-          .order('entry_date', ascending: true);
+      List<Map<String, dynamic>> response;
+      
+      if (_dataFetchService != null) {
+        // Use cached fetchEntriesWithSelect
+        final now = DateTime.now();
+        final startDate = DateTime(now.year - 10, 1, 1); // 10 years ago
+        response = await _dataFetchService.fetchEntriesWithSelect(
+          userId: userId,
+          startDate: startDate,
+          endDate: now,
+          select: 'entry_date',
+        );
+      } else {
+        // Fallback to direct query
+        final queryResponse = await _supabase
+            .from('entries')
+            .select('entry_date')
+            .eq('user_id', userId)
+            .order('entry_date', ascending: true);
+        response = List<Map<String, dynamic>>.from(queryResponse);
+      }
 
       // Extract unique months
       final months = <String>{};

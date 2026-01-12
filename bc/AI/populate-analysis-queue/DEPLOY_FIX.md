@@ -10,7 +10,7 @@
 ### Option 1: Supabase SQL Editor (Easiest)
 
 1. **Open Supabase Dashboard**
-   - Go to: https://supabase.com/dashboard
+   - Go to: https://supabase.com/dashboard 
    - Select your project
 
 2. **Open SQL Editor**

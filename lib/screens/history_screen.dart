@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
-import '../widgets/app_drawer.dart';
-import 'home_screen.dart';
+import '../widgets/bottom_navigation_bar.dart';
 import '../providers/history_provider.dart';
 import '../models/history_entry_model.dart';
 import '../models/entry_models.dart';
 import '../services/history_service.dart';
+import '../providers/data_providers.dart';
 
 class HistoryScreen extends ConsumerStatefulWidget {
   const HistoryScreen({super.key});
@@ -91,23 +91,27 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     final size = MediaQuery.of(context).size;
     final isTablet = size.width > 600;
 
-    return WillPopScope(
-      onWillPop: () async {
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => const HomeScreen()),
-          (route) => false,
-        );
-        return false;
-      },
-      child: Scaffold(
+    return Scaffold(
         appBar: AppBar(
-          title: const Text('History'),
+        title: Row(
+          children: [
+            Icon(Icons.history, size: 20, color: Theme.of(context).colorScheme.onSurface),
+            const SizedBox(width: 8),
+            Text(
+              'History',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
           actions: [
+          // View mode toggle (List/Calendar)
             IconButton(
               icon: Icon(
                 _viewMode == 'list' ? Icons.calendar_month : Icons.list,
               ),
+            tooltip: _viewMode == 'list' ? 'Switch to Calendar' : 'Switch to List',
               onPressed: () {
                 setState(() {
                   _viewMode = _viewMode == 'list' ? 'calendar' : 'list';
@@ -116,9 +120,13 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             ),
           ],
         ),
-        drawer: const AppDrawer(currentRoute: 'history'),
-        body: Column(
+      body: SafeArea(
+        bottom: false,
+        child: Column(
           children: [
+            // Header with entry count (InnerGlow Style)
+            if (_viewMode == 'list') _buildHeader(context, historyState),
+            
             // Mood filter chips (only in list mode)
             if (_viewMode == 'list') _buildMoodChips(isTablet),
 
@@ -154,6 +162,50 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             ),
           ],
         ),
+      ),
+      bottomNavigationBar: AppBottomNavigationBar(
+        currentIndex: 1,
+        onTap: (index) {
+          AppBottomNavigationBar.navigateToScreen(context, index);
+        },
+      ),
+    );
+  }
+
+  /// Build header with entry count (InnerGlow Style)
+  Widget _buildHeader(BuildContext context, HistoryState historyState) {
+    final totalCount = historyState.entries.length;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(
+            color: Theme.of(context).colorScheme.outline.withOpacity(0.1),
+          ),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            '$totalCount ${totalCount == 1 ? 'entry' : 'entries'}',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (_selectedMood != null)
+            TextButton.icon(
+              onPressed: () {
+                setState(() => _selectedMood = null);
+              },
+              icon: const Icon(Icons.clear, size: 16),
+              label: const Text('Clear filter'),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -286,22 +338,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       (color.blue * 0.7).round().clamp(0, 255),
       1.0,
     );
-  }
-
-  // Helper method for tag colors in entry cards
-  Color _getTagColor(String tag) {
-    final colors = {
-      'Work': Colors.blue,
-      'Family': Colors.pink,
-      'Gratitude': Colors.purple,
-      'Health': Colors.green,
-      'Self-Care': Colors.teal,
-      'Goals': Colors.orange,
-      'Reflection': Colors.indigo,
-      'Growth': Colors.cyan,
-      'Challenge': Colors.red,
-    };
-    return colors[tag] ?? Colors.grey;
   }
 
   Widget _buildListView(bool isTablet, HistoryState historyState) {
@@ -472,7 +508,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     final selfCareCount = entry.selfCareCount;
     final mealsCount = entry.mealsCount;
     final waterCups = entry.meals?.waterCups ?? 0;
-    final tags = entry.tags;
 
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.0, end: 1.0),
@@ -596,38 +631,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-
-                  // Tags
-                  if (tags.isNotEmpty)
-                    Wrap(
-                      spacing: 5,
-                      runSpacing: 5,
-                      children: tags.map((tag) {
-                        return Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: _getTagColor(tag).withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: _getTagColor(tag).withOpacity(0.3),
-                              width: 1,
-                            ),
-                          ),
-                          child: Text(
-                            tag,
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: _getTagColor(tag),
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
                 ],
               ),
             ),
@@ -663,13 +666,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   }
 
   Widget _buildMoodIcon(int mood) {
-    final icons = [
-      Icons.sentiment_very_dissatisfied,
-      Icons.sentiment_dissatisfied,
-      Icons.sentiment_neutral,
-      Icons.sentiment_satisfied,
-      Icons.sentiment_very_satisfied,
-    ];
+    final emojis = ['😢', '😔', '😐', '😊', '😄'];
     final colors = [
       Colors.red,
       Colors.orange,
@@ -681,20 +678,23 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [colors[mood - 1], colors[mood - 1].withOpacity(0.7)],
-        ),
+        color: colors[mood - 1].withOpacity(0.1),
         shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
+        border: Border.all(
             color: colors[mood - 1].withOpacity(0.3),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
+          width: 2,
           ),
-        ],
       ),
-      child: Icon(icons[mood - 1], color: Colors.white, size: 20),
+      child: Text(
+        emojis[mood - 1],
+        style: const TextStyle(fontSize: 24),
+      ),
     );
+  }
+  
+  String _getMoodEmoji(int mood) {
+    final emojis = ['😢', '😔', '😐', '😊', '😄'];
+    return emojis[mood - 1];
   }
 
   Color _getSentimentColor(String sentiment) {
@@ -1725,27 +1725,30 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 }
 
 /// Expandable AI Insights Card Widget
-class _ExpandableInsightsCard extends StatefulWidget {
+class _ExpandableInsightsCard extends ConsumerStatefulWidget {
   final String entryId;
 
   const _ExpandableInsightsCard({required this.entryId});
 
   @override
-  State<_ExpandableInsightsCard> createState() => _ExpandableInsightsCardState();
+  ConsumerState<_ExpandableInsightsCard> createState() => _ExpandableInsightsCardState();
 }
 
-class _ExpandableInsightsCardState extends State<_ExpandableInsightsCard>
+class _ExpandableInsightsCardState extends ConsumerState<_ExpandableInsightsCard>
     with SingleTickerProviderStateMixin {
   bool _isExpanded = false;
   bool _isLoading = false;
   HistoryDailyInsight? _insight;
-  final HistoryService _historyService = HistoryService();
+  late HistoryService _historyService;
   late AnimationController _animationController;
   late Animation<double> _expandAnimation;
 
   @override
   void initState() {
     super.initState();
+    // Initialize HistoryService with DataFetchService
+    final dataFetchService = ref.read(dataFetchServiceProvider);
+    _historyService = HistoryService(dataFetchService: dataFetchService);
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),

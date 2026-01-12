@@ -462,3 +462,4 @@ CREATE TABLE public.weekly_insights (
   CONSTRAINT weekly_insights_pkey PRIMARY KEY (id),
   CONSTRAINT weekly_insights_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
+

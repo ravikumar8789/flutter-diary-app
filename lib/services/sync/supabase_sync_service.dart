@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import '../../models/entry_models.dart';
 import '../error_logging_service.dart';
+import '../database/database_manager.dart';
 
 class SupabaseSyncService {
   final SupabaseClient _supabase = Supabase.instance.client;
@@ -380,6 +381,181 @@ class SupabaseSyncService {
         },
       );
       return null;
+    }
+  }
+
+  // Sync streak to Supabase
+  Future<bool> syncStreak(String userId, Map<String, dynamic> streakData) async {
+    try {
+      await _supabase.from('streaks').upsert({
+        'user_id': userId,
+        'current': streakData['current'],
+        'longest': streakData['longest'],
+        'last_entry_date': streakData['last_entry_date'],
+        'freeze_credits': streakData['freeze_credits'],
+        'grace_pieces_total': streakData['grace_pieces_total'],
+        'updated_at': DateTime.now().toIso8601String(),
+      });
+
+      // Mark as synced in local SQLite
+      final db = await DatabaseManager().database;
+      await db.update(
+        'streaks',
+        {
+          'is_synced': 1,
+          'last_sync_at': DateTime.now().toIso8601String(),
+        },
+        where: 'user_id = ?',
+        whereArgs: [userId],
+      );
+
+      return true;
+    } catch (e) {
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS117',
+        errorMessage: 'Streak sync failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'user_id': userId,
+          'operation': 'sync_streak',
+        },
+      );
+      return false;
+    }
+  }
+
+  // Sync habits daily to Supabase
+  Future<bool> syncHabitsDaily(
+    String userId,
+    String date,
+    Map<String, dynamic> habitsData,
+  ) async {
+    try {
+      await _supabase.from('habits_daily').upsert({
+        'id': habitsData['id'],
+        'user_id': userId,
+        'date': date,
+        'wrote_entry': habitsData['wrote_entry'],
+        'filled_affirmations': habitsData['filled_affirmations'],
+        'filled_gratitude': habitsData['filled_gratitude'],
+        'self_care_completed_count': habitsData['self_care_completed_count'],
+        'grace_pieces_earned': habitsData['grace_pieces_earned'],
+      });
+
+      // Mark as synced in local SQLite
+      final db = await DatabaseManager().database;
+      await db.update(
+        'habits_daily',
+        {
+          'is_synced': 1,
+          'last_sync_at': DateTime.now().toIso8601String(),
+        },
+        where: 'user_id = ? AND date = ?',
+        whereArgs: [userId, date],
+      );
+
+      return true;
+    } catch (e) {
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS118',
+        errorMessage: 'Habits daily sync failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'user_id': userId,
+          'date': date,
+          'operation': 'sync_habits_daily',
+        },
+      );
+      return false;
+    }
+  }
+
+  // Sync all pending streak changes
+  Future<void> syncAllStreaks(String userId) async {
+    try {
+      final db = await DatabaseManager().database;
+      final unsyncedStreaks = await db.query(
+        'streaks',
+        where: 'user_id = ? AND is_synced = 0',
+        whereArgs: [userId],
+      );
+
+      if (unsyncedStreaks.isEmpty) return;
+
+      for (final streak in unsyncedStreaks) {
+        final success = await syncStreak(userId, {
+          'current': streak['current'],
+          'longest': streak['longest'],
+          'last_entry_date': streak['last_entry_date'],
+          'freeze_credits': streak['freeze_credits'],
+          'grace_pieces_total': streak['grace_pieces_total'],
+        });
+
+        if (!success) {
+          // Log error but continue with other records
+          await ErrorLoggingService.logHighError(
+            errorCode: 'ERRSYS119',
+            errorMessage: 'Failed to sync streak for user: $userId',
+            errorContext: {'user_id': userId, 'operation': 'sync_all_streaks'},
+          );
+        }
+      }
+    } catch (e) {
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS120',
+        errorMessage: 'Sync all streaks failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {'user_id': userId, 'operation': 'sync_all_streaks'},
+      );
+    }
+  }
+
+  // Sync all pending habits changes
+  Future<void> syncAllHabits(String userId) async {
+    try {
+      final db = await DatabaseManager().database;
+      final unsyncedHabits = await db.query(
+        'habits_daily',
+        where: 'user_id = ? AND is_synced = 0',
+        whereArgs: [userId],
+      );
+
+      if (unsyncedHabits.isEmpty) return;
+
+      for (final habit in unsyncedHabits) {
+        final success = await syncHabitsDaily(
+          userId,
+          habit['date'] as String,
+          {
+            'id': habit['id'],
+            'wrote_entry': habit['wrote_entry'] == 1,
+            'filled_affirmations': habit['filled_affirmations'] == 1,
+            'filled_gratitude': habit['filled_gratitude'] == 1,
+            'self_care_completed_count': habit['self_care_completed_count'],
+            'grace_pieces_earned': habit['grace_pieces_earned'],
+          },
+        );
+
+        if (!success) {
+          // Log error but continue with other records
+          await ErrorLoggingService.logHighError(
+            errorCode: 'ERRSYS121',
+            errorMessage: 'Failed to sync habits for user: $userId, date: ${habit['date']}',
+            errorContext: {
+              'user_id': userId,
+              'date': habit['date'],
+              'operation': 'sync_all_habits',
+            },
+          );
+        }
+      }
+    } catch (e) {
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS122',
+        errorMessage: 'Sync all habits failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {'user_id': userId, 'operation': 'sync_all_habits'},
+      );
     }
   }
 

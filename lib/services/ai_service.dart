@@ -1,12 +1,18 @@
+import 'dart:convert';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/error_logging_service.dart';
 import '../models/analytics_models.dart';
+import 'data_fetch_service.dart';
 
 class AIService {
   final SupabaseClient _supabase;
+  final DataFetchService? _dataFetchService;
 
-  AIService({SupabaseClient? client})
-      : _supabase = client ?? Supabase.instance.client;
+  AIService({
+    SupabaseClient? client,
+    DataFetchService? dataFetchService,
+  })  : _supabase = client ?? Supabase.instance.client,
+        _dataFetchService = dataFetchService;
 
   /// Fetch yesterday's insight for user
   /// Returns insight for yesterday's entry (in user's timezone or UTC)
@@ -173,6 +179,7 @@ class AIService {
         weekStart: weekStart,
         moodAvg: (response['mood_avg'] as num?)?.toDouble(),
         cupsAvg: (response['cups_avg'] as num?)?.toDouble(),
+        // self_care_rate is stored as percentage (0-100) in database, keep as percentage
         selfCareRate: (response['self_care_rate'] as num?)?.toDouble(),
         topTopics: (response['top_topics'] as List<dynamic>?)?.cast<String>() ?? [],
         highlights: response['highlights'] as String? ?? '',
@@ -392,6 +399,23 @@ class AIService {
 
       if (response == null) return null;
 
+      // Parse habit_analysis
+      Map<String, dynamic>? habitAnalysisMap;
+      final habitAnalysisRaw = response['habit_analysis'];
+      if (habitAnalysisRaw != null) {
+        if (habitAnalysisRaw is Map) {
+          habitAnalysisMap = Map<String, dynamic>.from(habitAnalysisRaw);
+        } else if (habitAnalysisRaw is String) {
+          try {
+            habitAnalysisMap = Map<String, dynamic>.from(
+              jsonDecode(habitAnalysisRaw) as Map
+            );
+          } catch (e) {
+            habitAnalysisMap = null;
+          }
+        }
+      }
+
       return MonthlyInsight(
         id: response['id'] as String,
         userId: userId,
@@ -406,6 +430,10 @@ class AIService {
         nextMonthGoals: (response['next_month_goals'] as List<dynamic>?)?.cast<String>() ?? [],
         consistencyScore: (response['consistency_score'] as num?)?.toDouble(),
         moodTrendMonthly: response['mood_trend_monthly'] as String?,
+        habitAnalysis: habitAnalysisMap,
+        keyMoments: (response['key_moments'] as List<dynamic>?)?.cast<String>() ?? [],
+        reflectionQuestions: (response['reflection_questions'] as List<dynamic>?)?.cast<String>() ?? [],
+        strengths: (response['strengths'] as List<dynamic>?)?.cast<String>() ?? [],
         generatedAt: DateTime.parse(response['generated_at'] as String),
       );
     } catch (e) {
@@ -473,12 +501,16 @@ class MonthlyInsight {
   final int entriesCount;
   final int wordCountTotal;
   final List<String> topTopics;
-  final String monthlyHighlights;
-  final List<String> growthAreas;
-  final List<String> achievements;
-  final List<String> nextMonthGoals;
+  final String monthlyHighlights; // Now 10-12 lines
+  final List<String> growthAreas; // 4-6 points
+  final List<String> achievements; // 4-6 points
+  final List<String> nextMonthGoals; // 4-6 points
   final double? consistencyScore;
   final String? moodTrendMonthly;
+  final Map<String, dynamic>? habitAnalysis; // Contains numeric + analysis_points
+  final List<String> keyMoments; // NEW
+  final List<String> reflectionQuestions; // NEW
+  final List<String> strengths; // NEW
   final DateTime generatedAt;
 
   MonthlyInsight({
@@ -495,6 +527,10 @@ class MonthlyInsight {
     required this.nextMonthGoals,
     this.consistencyScore,
     this.moodTrendMonthly,
+    this.habitAnalysis,
+    this.keyMoments = const [],
+    this.reflectionQuestions = const [],
+    this.strengths = const [],
     required this.generatedAt,
   });
 }

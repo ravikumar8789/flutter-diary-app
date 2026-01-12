@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/notification_service.dart';
-import '../widgets/app_drawer.dart';
 
 class NotificationTestScreen extends ConsumerStatefulWidget {
   const NotificationTestScreen({super.key});
@@ -231,7 +230,6 @@ Bedtime: ${DateTime(now.year, now.month, now.day, 23, 18).toString()}
         backgroundColor: Colors.blue[600],
         foregroundColor: Colors.white,
       ),
-      drawer: const AppDrawer(currentRoute: 'notification_test'),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(

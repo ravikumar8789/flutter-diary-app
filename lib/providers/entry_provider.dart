@@ -3,8 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/entry_service.dart';
 import '../models/entry_models.dart';
 import '../services/error_logging_service.dart';
+import '../services/user_data_service.dart';
+import '../services/sync/supabase_sync_service.dart';
 import 'sync_status_provider.dart';
 import 'grace_system_provider.dart';
+import 'data_providers.dart';
 
 class EntryState {
   final Entry? entry;
@@ -91,6 +94,21 @@ class EntryState {
 class EntryNotifier extends Notifier<EntryState> {
   Timer? _debounceTimer;
   final EntryService _entryService = EntryService();
+  
+  // Track pending changes for batch save
+  String? _pendingDiaryText;
+  List<AffirmationItem>? _pendingAffirmations;
+  List<PriorityItem>? _pendingPriorities;
+  EntryMealsData? _pendingMeals;
+  List<GratitudeItem>? _pendingGratitude;
+  EntrySelfCare? _pendingSelfCare;
+  EntryShowerBathData? _pendingShowerBath;
+  List<TomorrowNoteItem>? _pendingTomorrowNotes;
+  int? _pendingMoodScore;
+  List<String>? _pendingTags;
+  
+  String? _currentUserId;
+  DateTime? _currentDate;
 
   @override
   EntryState build() => EntryState();
@@ -126,50 +144,24 @@ class EntryNotifier extends Notifier<EntryState> {
     }
   }
 
-  // Update diary text with debounced auto-save
+  // Update diary text with unified batch debounce
   void updateDiaryText(String userId, DateTime date, String text) {
     // Update UI immediately (optimistic update)
     state = state.copyWith(entry: state.entry?.copyWith(diaryText: text));
 
-    // Cancel previous timer
-    _debounceTimer?.cancel();
+    // Store pending change
+    _pendingDiaryText = text;
+    _currentUserId = userId;
+    _currentDate = date;
 
     // Set sync status to syncing
     ref.read(syncStatusProvider.notifier).setSyncing();
 
-    // Start new debounce timer (600ms)
-    _debounceTimer = Timer(const Duration(milliseconds: 600), () async {
-      try {
-        await _entryService.saveDiaryText(userId, date, text);
-        ref.read(syncStatusProvider.notifier).setSaved();
-
-        // Track diary completion for grace system AFTER sync
-        ref
-            .read(graceSystemProvider.notifier)
-            .trackTaskCompletion('diary', text.trim().isNotEmpty);
-      } catch (e) {
-        // Log error to Supabase
-        await ErrorLoggingService.logHighError(
-          errorCode: 'ERRDATA041',
-          errorMessage: 'Diary text save failed: ${e.toString()}',
-          stackTrace: StackTrace.current.toString(),
-          errorContext: {
-            'text_length': text.length,
-            'user_id': userId,
-            'entry_date': date.toIso8601String(),
-            'save_method': 'auto_save',
-          },
-        );
-
-        ref.read(syncStatusProvider.notifier).setError('ERRDATA041: $e');
-        state = state.copyWith(
-          error: 'Failed to save diary text (ERRDATA041): $e',
-        );
-      }
-    });
+    // Schedule unified batch save
+    _scheduleBatchSave();
   }
 
-  // Update affirmations with debounced auto-save
+  // Update affirmations with unified batch debounce
   void updateAffirmations(
     String userId,
     DateTime date,
@@ -183,26 +175,18 @@ class EntryNotifier extends Notifier<EntryState> {
       ),
     );
 
-    _debounceTimer?.cancel();
+    // Store pending change
+    _pendingAffirmations = affirmations;
+    _currentUserId = userId;
+    _currentDate = date;
+
     ref.read(syncStatusProvider.notifier).setSyncing();
 
-    _debounceTimer = Timer(const Duration(milliseconds: 600), () async {
-      try {
-        await _entryService.saveAffirmations(userId, date, affirmations);
-        ref.read(syncStatusProvider.notifier).setSaved();
-
-        // Track affirmations completion for grace system AFTER sync
-        ref
-            .read(graceSystemProvider.notifier)
-            .trackTaskCompletion('affirmations', affirmations.isNotEmpty);
-      } catch (e) {
-        ref.read(syncStatusProvider.notifier).setError(e.toString());
-        state = state.copyWith(error: 'Failed to save affirmations: $e');
-      }
-    });
+    // Schedule unified batch save
+    _scheduleBatchSave();
   }
 
-  // Update priorities with debounced auto-save
+  // Update priorities with unified batch debounce
   void updatePriorities(
     String userId,
     DateTime date,
@@ -216,21 +200,18 @@ class EntryNotifier extends Notifier<EntryState> {
       ),
     );
 
-    _debounceTimer?.cancel();
+    // Store pending change
+    _pendingPriorities = priorities;
+    _currentUserId = userId;
+    _currentDate = date;
+
     ref.read(syncStatusProvider.notifier).setSyncing();
 
-    _debounceTimer = Timer(const Duration(milliseconds: 600), () async {
-      try {
-        await _entryService.savePriorities(userId, date, priorities);
-        ref.read(syncStatusProvider.notifier).setSaved();
-      } catch (e) {
-        ref.read(syncStatusProvider.notifier).setError(e.toString());
-        state = state.copyWith(error: 'Failed to save priorities: $e');
-      }
-    });
+    // Schedule unified batch save
+    _scheduleBatchSave();
   }
 
-  // Update meals with debounced auto-save
+  // Update meals with unified batch debounce
   void updateMeals(
     String userId,
     DateTime date,
@@ -250,38 +231,23 @@ class EntryNotifier extends Notifier<EntryState> {
       ),
     );
 
-    _debounceTimer?.cancel();
+    // Store pending change
+    _pendingMeals = EntryMealsData(
+      breakfast: breakfast,
+      lunch: lunch,
+      dinner: dinner,
+      waterCups: waterCups,
+    );
+    _currentUserId = userId;
+    _currentDate = date;
+
     ref.read(syncStatusProvider.notifier).setSyncing();
 
-    _debounceTimer = Timer(const Duration(milliseconds: 600), () async {
-      try {
-        await _entryService.saveMeals(
-          userId,
-          date,
-          breakfast,
-          lunch,
-          dinner,
-          waterCups,
-        );
-        ref.read(syncStatusProvider.notifier).setSaved();
-
-        // Track self-care completion for grace system AFTER sync
-        final hasWellnessData =
-            breakfast?.isNotEmpty == true ||
-            lunch?.isNotEmpty == true ||
-            dinner?.isNotEmpty == true ||
-            waterCups > 0;
-        ref
-            .read(graceSystemProvider.notifier)
-            .trackTaskCompletion('self_care', hasWellnessData);
-      } catch (e) {
-        ref.read(syncStatusProvider.notifier).setError(e.toString());
-        state = state.copyWith(error: 'Failed to save meals: $e');
-      }
-    });
+    // Schedule unified batch save
+    _scheduleBatchSave();
   }
 
-  // Update gratitude with debounced auto-save
+  // Update gratitude with unified batch debounce
   void updateGratitude(
     String userId,
     DateTime date,
@@ -295,26 +261,18 @@ class EntryNotifier extends Notifier<EntryState> {
       ),
     );
 
-    _debounceTimer?.cancel();
+    // Store pending change
+    _pendingGratitude = gratefulItems;
+    _currentUserId = userId;
+    _currentDate = date;
+
     ref.read(syncStatusProvider.notifier).setSyncing();
 
-    _debounceTimer = Timer(const Duration(milliseconds: 600), () async {
-      try {
-        await _entryService.saveGratitude(userId, date, gratefulItems);
-        ref.read(syncStatusProvider.notifier).setSaved();
-
-        // Track gratitude completion for grace system AFTER sync
-        ref
-            .read(graceSystemProvider.notifier)
-            .trackTaskCompletion('gratitude', gratefulItems.isNotEmpty);
-      } catch (e) {
-        ref.read(syncStatusProvider.notifier).setError(e.toString());
-        state = state.copyWith(error: 'Failed to save gratitude: $e');
-      }
-    });
+    // Schedule unified batch save
+    _scheduleBatchSave();
   }
 
-  // Update self care with debounced auto-save
+  // Update self care with unified batch debounce
   void updateSelfCare(String userId, DateTime date, EntrySelfCare selfCare) {
     // Optimistic update
     state = state.copyWith(
@@ -333,36 +291,18 @@ class EntryNotifier extends Notifier<EntryState> {
       ),
     );
 
-    _debounceTimer?.cancel();
+    // Store pending change
+    _pendingSelfCare = selfCare;
+    _currentUserId = userId;
+    _currentDate = date;
+
     ref.read(syncStatusProvider.notifier).setSyncing();
 
-    _debounceTimer = Timer(const Duration(milliseconds: 600), () async {
-      try {
-        await _entryService.saveSelfCare(userId, date, selfCare);
-        ref.read(syncStatusProvider.notifier).setSaved();
-
-        // Track self-care completion for grace system AFTER sync
-        final hasSelfCare = selfCare.sleep ||
-            selfCare.getUpEarly ||
-            selfCare.freshAir ||
-            selfCare.learnNew ||
-            selfCare.balancedDiet ||
-            selfCare.podcast ||
-            selfCare.meMoment ||
-            selfCare.hydrated ||
-            selfCare.readBook ||
-            selfCare.exercise;
-        ref
-            .read(graceSystemProvider.notifier)
-            .trackTaskCompletion('self_care', hasSelfCare);
-      } catch (e) {
-        ref.read(syncStatusProvider.notifier).setError(e.toString());
-        state = state.copyWith(error: 'Failed to save self care: $e');
-      }
-    });
+    // Schedule unified batch save
+    _scheduleBatchSave();
   }
 
-  // Update shower bath with debounced auto-save
+  // Update shower bath with unified batch debounce
   void updateShowerBath(
     String userId,
     DateTime date,
@@ -378,21 +318,18 @@ class EntryNotifier extends Notifier<EntryState> {
       ),
     );
 
-    _debounceTimer?.cancel();
+    // Store pending change
+    _pendingShowerBath = EntryShowerBathData(tookShower: tookShower, note: note);
+    _currentUserId = userId;
+    _currentDate = date;
+
     ref.read(syncStatusProvider.notifier).setSyncing();
 
-    _debounceTimer = Timer(const Duration(milliseconds: 600), () async {
-      try {
-        await _entryService.saveShowerBath(userId, date, tookShower, note);
-        ref.read(syncStatusProvider.notifier).setSaved();
-      } catch (e) {
-        ref.read(syncStatusProvider.notifier).setError(e.toString());
-        state = state.copyWith(error: 'Failed to save shower bath: $e');
-      }
-    });
+    // Schedule unified batch save
+    _scheduleBatchSave();
   }
 
-  // Update tomorrow notes with debounced auto-save
+  // Update tomorrow notes with unified batch debounce
   void updateTomorrowNotes(
     String userId,
     DateTime date,
@@ -406,56 +343,47 @@ class EntryNotifier extends Notifier<EntryState> {
       ),
     );
 
-    _debounceTimer?.cancel();
+    // Store pending change
+    _pendingTomorrowNotes = tomorrowNotes;
+    _currentUserId = userId;
+    _currentDate = date;
+
     ref.read(syncStatusProvider.notifier).setSyncing();
 
-    _debounceTimer = Timer(const Duration(milliseconds: 600), () async {
-      try {
-        await _entryService.saveTomorrowNotes(userId, date, tomorrowNotes);
-        ref.read(syncStatusProvider.notifier).setSaved();
-      } catch (e) {
-        ref.read(syncStatusProvider.notifier).setError(e.toString());
-        state = state.copyWith(error: 'Failed to save tomorrow notes: $e');
-      }
-    });
+    // Schedule unified batch save
+    _scheduleBatchSave();
   }
 
-  // Update mood score with debounced auto-save
+  // Update mood score with unified batch debounce
   void updateMoodScore(String userId, DateTime date, int moodScore) {
     // Optimistic update
     state = state.copyWith(entry: state.entry?.copyWith(moodScore: moodScore));
 
-    _debounceTimer?.cancel();
+    // Store pending change
+    _pendingMoodScore = moodScore;
+    _currentUserId = userId;
+    _currentDate = date;
+
     ref.read(syncStatusProvider.notifier).setSyncing();
 
-    _debounceTimer = Timer(const Duration(milliseconds: 600), () async {
-      try {
-        await _entryService.saveMoodScore(userId, date, moodScore);
-        ref.read(syncStatusProvider.notifier).setSaved();
-      } catch (e) {
-        ref.read(syncStatusProvider.notifier).setError(e.toString());
-        state = state.copyWith(error: 'Failed to save mood score: $e');
-      }
-    });
+    // Schedule unified batch save
+    _scheduleBatchSave();
   }
 
-  // Update tags with debounced auto-save
+  // Update tags with unified batch debounce
   void updateTags(String userId, DateTime date, List<String> tags) {
     // Optimistic update
     state = state.copyWith(entry: state.entry?.copyWith(tags: tags));
 
-    _debounceTimer?.cancel();
+    // Store pending change
+    _pendingTags = tags;
+    _currentUserId = userId;
+    _currentDate = date;
+
     ref.read(syncStatusProvider.notifier).setSyncing();
 
-    _debounceTimer = Timer(const Duration(milliseconds: 600), () async {
-      try {
-        await _entryService.saveTags(userId, date, tags);
-        ref.read(syncStatusProvider.notifier).setSaved();
-      } catch (e) {
-        ref.read(syncStatusProvider.notifier).setError(e.toString());
-        state = state.copyWith(error: 'Failed to save tags: $e');
-      }
-    });
+    // Schedule unified batch save
+    _scheduleBatchSave();
   }
 
   // Clear error
@@ -466,8 +394,281 @@ class EntryNotifier extends Notifier<EntryState> {
   // Clear all data (for logout)
   void clearData() {
     _debounceTimer?.cancel();
+    _clearPendingChanges();
     state = EntryState();
   }
+  
+  /// Schedule unified batch save (debounced)
+  /// 
+  /// Collects all pending changes and saves them in one operation.
+  /// This prevents multiple simultaneous saves when user changes multiple fields.
+  void _scheduleBatchSave() {
+    // Cancel previous timer
+    _debounceTimer?.cancel();
+    
+    // Start new debounce timer (2000ms - optimized like Microsoft Office approach)
+    // This reduces Supabase calls while still feeling instant to users
+    _debounceTimer = Timer(const Duration(milliseconds: 2000), () {
+      _executeBatchSave();
+    });
+  }
+  
+  /// Execute batch save for all pending changes
+  Future<void> _executeBatchSave() async {
+    if (_currentUserId == null || _currentDate == null) {
+      return;
+    }
+    
+    final userId = _currentUserId!;
+    final date = _currentDate!;
+    
+    try {
+      // STEP 1: Get entry once and sync it once (if any field needs entry sync)
+      bool needsEntrySync = _pendingAffirmations != null ||
+          _pendingPriorities != null ||
+          _pendingMeals != null ||
+          _pendingGratitude != null ||
+          _pendingSelfCare != null ||
+          _pendingShowerBath != null ||
+          _pendingTomorrowNotes != null;
+      
+      if (needsEntrySync) {
+        // Get entry by calling saveDiaryText with empty text (it will get/create entry)
+        // Then sync entry once before all field saves
+        // We'll use a temporary save to get the entry, then sync it
+        final tempEntry = await _entryService.loadEntryForDate(userId, date);
+        if (tempEntry != null) {
+          final syncService = SupabaseSyncService();
+          await syncService.syncEntry(tempEntry.entry);
+        } else {
+          // Entry doesn't exist, create it first via saveDiaryText with empty text
+          await _entryService.saveDiaryText(userId, date, '');
+          final createdEntry = await _entryService.loadEntryForDate(userId, date);
+          if (createdEntry != null) {
+            final syncService = SupabaseSyncService();
+            await syncService.syncEntry(createdEntry.entry);
+          }
+        }
+      }
+      
+      // STEP 2: Save all pending changes in parallel (skip entry sync for field-only saves)
+      final saveOperations = <Future>[];
+      
+      if (_pendingDiaryText != null) {
+        // Diary text updates entry itself, so it handles entry sync
+        saveOperations.add(_entryService.saveDiaryText(userId, date, _pendingDiaryText!));
+      }
+      
+      if (_pendingAffirmations != null) {
+        saveOperations.add(_entryService.saveAffirmations(
+          userId,
+          date,
+          _pendingAffirmations!,
+          skipEntrySync: true, // Entry already synced
+        ));
+      }
+      
+      if (_pendingPriorities != null) {
+        saveOperations.add(_entryService.savePriorities(
+          userId,
+          date,
+          _pendingPriorities!,
+          skipEntrySync: true, // Entry already synced
+        ));
+      }
+      
+      if (_pendingMeals != null) {
+        saveOperations.add(_entryService.saveMeals(
+          userId,
+          date,
+          _pendingMeals!.breakfast,
+          _pendingMeals!.lunch,
+          _pendingMeals!.dinner,
+          _pendingMeals!.waterCups,
+          skipEntrySync: true, // Entry already synced
+        ));
+      }
+      
+      if (_pendingGratitude != null) {
+        saveOperations.add(_entryService.saveGratitude(
+          userId,
+          date,
+          _pendingGratitude!,
+          skipEntrySync: true, // Entry already synced
+        ));
+      }
+      
+      if (_pendingSelfCare != null) {
+        saveOperations.add(_entryService.saveSelfCare(
+          userId,
+          date,
+          _pendingSelfCare!,
+          skipEntrySync: true, // Entry already synced
+        ));
+      }
+      
+      if (_pendingShowerBath != null) {
+        saveOperations.add(_entryService.saveShowerBath(
+          userId,
+          date,
+          _pendingShowerBath!.tookShower,
+          _pendingShowerBath!.note,
+          skipEntrySync: true, // Entry already synced
+        ));
+      }
+      
+      if (_pendingTomorrowNotes != null) {
+        saveOperations.add(_entryService.saveTomorrowNotes(
+          userId,
+          date,
+          _pendingTomorrowNotes!,
+          skipEntrySync: true, // Entry already synced
+        ));
+      }
+      
+      if (_pendingMoodScore != null) {
+        // Mood score updates entry itself, so it handles entry sync
+        saveOperations.add(_entryService.saveMoodScore(userId, date, _pendingMoodScore!));
+      }
+      
+      if (_pendingTags != null) {
+        // Tags update entry itself, so it handles entry sync
+        saveOperations.add(_entryService.saveTags(userId, date, _pendingTags!));
+      }
+      
+      // Execute all saves in parallel
+      if (saveOperations.isNotEmpty) {
+        await Future.wait(saveOperations);
+        
+        // Invalidate cache once after all saves
+        final fetchService = ref.read(dataFetchServiceProvider);
+        fetchService.invalidateEntriesCache(userId, date);
+        fetchService.invalidateMonthlyCache(userId, date);
+        
+        // Track grace system tasks (batch these too)
+        await _batchTrackGraceTasks(userId, date);
+        
+        // Recalculate streak once (only if diary text changed)
+        if (_pendingDiaryText != null && _pendingDiaryText!.trim().isNotEmpty) {
+          final dataFetchService = ref.read(dataFetchServiceProvider);
+          UserDataService.recalculateStreak(
+            userId,
+            dataFetchService: dataFetchService,
+          );
+          dataFetchService.invalidateStreaksCache(userId);
+        }
+        
+        ref.read(syncStatusProvider.notifier).setSaved();
+      }
+      
+      // Clear pending changes
+      _clearPendingChanges();
+    } catch (e) {
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRDATA260',
+        errorMessage: 'Batch save failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'user_id': userId,
+          'entry_date': date.toIso8601String(),
+          'operation': 'batch_save',
+        },
+      );
+      
+      ref.read(syncStatusProvider.notifier).setError('ERRDATA260: $e');
+      state = state.copyWith(error: 'Failed to save: $e');
+    }
+  }
+  
+  /// Batch track grace system tasks (only once)
+  Future<void> _batchTrackGraceTasks(String userId, DateTime date) async {
+    try {
+      final graceNotifier = ref.read(graceSystemProvider.notifier);
+      
+      // Track all tasks that changed
+      if (_pendingDiaryText != null) {
+        await graceNotifier.trackTaskCompletion('diary', _pendingDiaryText!.trim().isNotEmpty);
+      }
+      
+      if (_pendingAffirmations != null) {
+        await graceNotifier.trackTaskCompletion('affirmations', _pendingAffirmations!.isNotEmpty);
+      }
+      
+      if (_pendingGratitude != null) {
+        await graceNotifier.trackTaskCompletion('gratitude', _pendingGratitude!.isNotEmpty);
+      }
+      
+      if (_pendingMeals != null) {
+        final hasWellnessData =
+            _pendingMeals!.breakfast?.isNotEmpty == true ||
+            _pendingMeals!.lunch?.isNotEmpty == true ||
+            _pendingMeals!.dinner?.isNotEmpty == true ||
+            _pendingMeals!.waterCups > 0;
+        await graceNotifier.trackTaskCompletion('self_care', hasWellnessData);
+      }
+      
+      if (_pendingSelfCare != null) {
+        final hasSelfCare = _pendingSelfCare!.sleep ||
+            _pendingSelfCare!.getUpEarly ||
+            _pendingSelfCare!.freshAir ||
+            _pendingSelfCare!.learnNew ||
+            _pendingSelfCare!.balancedDiet ||
+            _pendingSelfCare!.podcast ||
+            _pendingSelfCare!.meMoment ||
+            _pendingSelfCare!.hydrated ||
+            _pendingSelfCare!.readBook ||
+            _pendingSelfCare!.exercise;
+        await graceNotifier.trackTaskCompletion('self_care', hasSelfCare);
+      }
+    } catch (e) {
+      // Log but don't fail batch save
+      ErrorLoggingService.logLowError(
+        errorCode: 'ERRDATA261',
+        errorMessage: 'Batch grace tracking failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {'operation': 'batch_grace_tracking'},
+      );
+    }
+  }
+  
+  /// Clear all pending changes
+  void _clearPendingChanges() {
+    _pendingDiaryText = null;
+    _pendingAffirmations = null;
+    _pendingPriorities = null;
+    _pendingMeals = null;
+    _pendingGratitude = null;
+    _pendingSelfCare = null;
+    _pendingShowerBath = null;
+    _pendingTomorrowNotes = null;
+    _pendingMoodScore = null;
+    _pendingTags = null;
+  }
+}
+
+/// Helper classes for pending data
+class EntryMealsData {
+  final String? breakfast;
+  final String? lunch;
+  final String? dinner;
+  final int waterCups;
+  
+  EntryMealsData({
+    this.breakfast,
+    this.lunch,
+    this.dinner,
+    required this.waterCups,
+  });
+}
+
+class EntryShowerBathData {
+  final bool tookShower;
+  final String? note;
+  
+  EntryShowerBathData({
+    required this.tookShower,
+    this.note,
+  });
 }
 
 final entryProvider = NotifierProvider<EntryNotifier, EntryState>(

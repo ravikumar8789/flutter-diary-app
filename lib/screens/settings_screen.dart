@@ -1,20 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../widgets/app_drawer.dart';
 import '../services/notification_service.dart';
 import '../providers/theme_provider.dart';
 import '../providers/paper_style_provider.dart';
 import '../providers/font_size_provider.dart';
-import '../providers/privacy_lock_provider.dart';
 import '../providers/grace_system_provider.dart';
 import '../widgets/grace_system_info_card.dart';
 import '../providers/auth_provider.dart';
-import '../screens/pin_setup_screen.dart';
-import '../screens/change_pin_screen.dart';
-import '../screens/security_questions_screen.dart';
 import '../screens/terms_screen.dart';
 import '../screens/privacy_policy_screen.dart';
 
+/// Settings Screen - Refactored to streamline settings organization
+/// Removed Privacy & Security section (moved to Profile), Help & Support (duplicate), and Font Size/Paper Style (unused).
+/// Added Delete Account button at bottom for critical account actions.
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
@@ -91,10 +89,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final isTablet = size.width > 600;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
-      drawer: const AppDrawer(currentRoute: 'settings'),
+      appBar: AppBar(
+        title: Row(
+          children: [
+            Icon(
+              Icons.settings,
+              size: 20,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Settings',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+      ),
       body: SingleChildScrollView(
-        padding: EdgeInsets.all(isTablet ? 32 : 16),
+        padding: EdgeInsets.all(isTablet ? 32 : 20),
         child: ConstrainedBox(
           constraints: BoxConstraints(
             maxWidth: isTablet ? 800 : double.infinity,
@@ -190,169 +204,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         );
                       },
                     ),
-                    Consumer(
-                      builder: (context, ref, child) {
-                        final fontSizeNotifier = ref.watch(
-                          fontSizeProvider.notifier,
-                        );
-
-                        return ListTile(
-                          title: const Text('Font Size'),
-                          subtitle: Text(
-                            fontSizeNotifier.currentFontSizeDisplayName,
-                          ),
-                          leading: const Icon(Icons.text_fields),
-                          trailing: const Icon(
-                            Icons.arrow_forward_ios,
-                            size: 16,
-                          ),
-                          onTap: () {
-                            _showFontSizeDialog(ref);
-                          },
-                        );
-                      },
-                    ),
-                    Consumer(
-                      builder: (context, ref, child) {
-                        final paperStyleNotifier = ref.watch(
-                          paperStyleProvider.notifier,
-                        );
-
-                        return ListTile(
-                          title: const Text('Paper Style'),
-                          subtitle: Text(
-                            paperStyleNotifier.currentPaperStyleDisplayName,
-                          ),
-                          leading: const Icon(Icons.note_outlined),
-                          trailing: const Icon(
-                            Icons.arrow_forward_ios,
-                            size: 16,
-                          ),
-                          onTap: () {
-                            _showPaperStyleDialog(ref);
-                          },
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Privacy & Security
-              _buildSectionTitle(context, 'Privacy & Security'),
-              Card(
-                child: Column(
-                  children: [
-                    Consumer(
-                      builder: (context, ref, child) {
-                        final privacyLockData = ref.watch(privacyLockProvider);
-
-                        return SwitchListTile(
-                          title: const Text('Privacy Lock'),
-                          subtitle: Text(
-                            privacyLockData.isEnabled
-                                ? 'Secure your diary with 4-digit PIN'
-                                : 'Require authentication to open app',
-                          ),
-                          value: privacyLockData.isEnabled,
-                          onChanged: (value) async {
-                            if (value) {
-                              // Navigate to PIN setup first (don't enable lock yet)
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (context) => const PinSetupScreen(),
-                                ),
-                              );
-                            } else {
-                              // Disable privacy lock
-                              final success = await ref
-                                  .read(privacyLockProvider.notifier)
-                                  .disablePrivacyLock();
-
-                              if (!success && mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Failed to disable privacy lock',
-                                    ),
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
-                              }
-                            }
-                          },
-                        );
-                      },
-                    ),
-                    Consumer(
-                      builder: (context, ref, child) {
-                        final privacyLockData = ref.watch(privacyLockProvider);
-
-                        if (!privacyLockData.isEnabled) {
-                          return const SizedBox.shrink();
-                        }
-
-                        return ListTile(
-                          title: const Text('Change PIN'),
-                          subtitle: const Text('Update your 4-digit PIN'),
-                          leading: const Icon(Icons.lock_outline),
-                          trailing: const Icon(
-                            Icons.arrow_forward_ios,
-                            size: 16,
-                          ),
-                          onTap: () {
-                            _showChangePinDialog(ref);
-                          },
-                        );
-                      },
-                    ),
-                    Consumer(
-                      builder: (context, ref, child) {
-                        final privacyLockData = ref.watch(privacyLockProvider);
-
-                        if (!privacyLockData.isEnabled) {
-                          return const SizedBox.shrink();
-                        }
-
-                        return ListTile(
-                          title: const Text('Auto-Lock Timeout'),
-                          subtitle: Text(
-                            '${privacyLockData.autoLockTimeout} minutes',
-                          ),
-                          leading: const Icon(Icons.timer_outlined),
-                          trailing: const Icon(
-                            Icons.arrow_forward_ios,
-                            size: 16,
-                          ),
-                          onTap: () {
-                            _showAutoLockDialog(ref);
-                          },
-                        );
-                      },
-                    ),
-                    Consumer(
-                      builder: (context, ref, child) {
-                        final privacyLockData = ref.watch(privacyLockProvider);
-
-                        if (!privacyLockData.isEnabled) {
-                          return const SizedBox.shrink();
-                        }
-
-                        return ListTile(
-                          title: const Text('Security Questions'),
-                          subtitle: const Text('For PIN recovery'),
-                          leading: const Icon(Icons.help_outline),
-                          trailing: const Icon(
-                            Icons.arrow_forward_ios,
-                            size: 16,
-                          ),
-                          onTap: () {
-                            _showSecurityQuestionsDialog(ref);
-                          },
-                        );
-                      },
-                    ),
                   ],
                 ),
               ),
@@ -400,6 +251,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ],
                 ),
               ),
+              const SizedBox(height: 32),
+
+              // Delete Account button (at bottom)
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () {
+                    _showDeleteAccountDialog(context);
+                  },
+                  child: Text(
+                    'Delete Account',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
             ],
           ),
         ),
@@ -601,218 +471,28 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  void _showFontSizeDialog(WidgetRef ref) {
-    final currentFontSize = ref.read(fontSizeProvider);
-
+  void _showDeleteAccountDialog(BuildContext context) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Choose Font Size'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            RadioListTile<FontSize>(
-              title: const Text('Small'),
-              value: FontSize.small,
-              groupValue: currentFontSize,
-              onChanged: (value) {
-                if (value != null) {
-                  ref.read(fontSizeProvider.notifier).setFontSize(value);
-                }
-                Navigator.pop(context);
-              },
-            ),
-            RadioListTile<FontSize>(
-              title: const Text('Medium'),
-              value: FontSize.medium,
-              groupValue: currentFontSize,
-              onChanged: (value) {
-                if (value != null) {
-                  ref.read(fontSizeProvider.notifier).setFontSize(value);
-                }
-                Navigator.pop(context);
-              },
-            ),
-            RadioListTile<FontSize>(
-              title: const Text('Large'),
-              value: FontSize.large,
-              groupValue: currentFontSize,
-              onChanged: (value) {
-                if (value != null) {
-                  ref.read(fontSizeProvider.notifier).setFontSize(value);
-                }
-                Navigator.pop(context);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showPaperStyleDialog(WidgetRef ref) {
-    final currentPaperStyle = ref.read(paperStyleProvider);
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Choose Paper Style'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            RadioListTile<PaperStyle>(
-              title: const Text('Plain'),
-              value: PaperStyle.plain,
-              groupValue: currentPaperStyle,
-              onChanged: (value) {
-                if (value != null) {
-                  ref.read(paperStyleProvider.notifier).setPaperStyle(value);
-                }
-                Navigator.pop(context);
-              },
-            ),
-            RadioListTile<PaperStyle>(
-              title: const Text('Ruled'),
-              value: PaperStyle.ruled,
-              groupValue: currentPaperStyle,
-              onChanged: (value) {
-                if (value != null) {
-                  ref.read(paperStyleProvider.notifier).setPaperStyle(value);
-                }
-                Navigator.pop(context);
-              },
-            ),
-            RadioListTile<PaperStyle>(
-              title: const Text('Grid'),
-              value: PaperStyle.grid,
-              groupValue: currentPaperStyle,
-              onChanged: (value) {
-                if (value != null) {
-                  ref.read(paperStyleProvider.notifier).setPaperStyle(value);
-                }
-                Navigator.pop(context);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showChangePinDialog(WidgetRef ref) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => const ChangePinScreen(),
-      ),
-    );
-  }
-
-  void _showAutoLockDialog(WidgetRef ref) {
-    final currentTimeout = ref.read(privacyLockProvider).autoLockTimeout;
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Auto-Lock Timeout'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            RadioListTile<int>(
-              title: const Text('Never'),
-              value: 0,
-              groupValue: currentTimeout,
-              onChanged: (value) {
-                if (value != null) {
-                  ref
-                      .read(privacyLockProvider.notifier)
-                      .setAutoLockTimeout(value);
-                }
-                Navigator.pop(context);
-              },
-            ),
-            RadioListTile<int>(
-              title: const Text('1 minute'),
-              value: 1,
-              groupValue: currentTimeout,
-              onChanged: (value) {
-                if (value != null) {
-                  ref
-                      .read(privacyLockProvider.notifier)
-                      .setAutoLockTimeout(value);
-                }
-                Navigator.pop(context);
-              },
-            ),
-            RadioListTile<int>(
-              title: const Text('5 minutes'),
-              value: 5,
-              groupValue: currentTimeout,
-              onChanged: (value) {
-                if (value != null) {
-                  ref
-                      .read(privacyLockProvider.notifier)
-                      .setAutoLockTimeout(value);
-                }
-                Navigator.pop(context);
-              },
-            ),
-            RadioListTile<int>(
-              title: const Text('15 minutes'),
-              value: 15,
-              groupValue: currentTimeout,
-              onChanged: (value) {
-                if (value != null) {
-                  ref
-                      .read(privacyLockProvider.notifier)
-                      .setAutoLockTimeout(value);
-                }
-                Navigator.pop(context);
-              },
-            ),
-            RadioListTile<int>(
-              title: const Text('30 minutes'),
-              value: 30,
-              groupValue: currentTimeout,
-              onChanged: (value) {
-                if (value != null) {
-                  ref
-                      .read(privacyLockProvider.notifier)
-                      .setAutoLockTimeout(value);
-                }
-                Navigator.pop(context);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showSecurityQuestionsDialog(WidgetRef ref) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Security Questions'),
+        title: const Text('Delete Account'),
         content: const Text(
-          'Set up security questions to recover your PIN if you forget it.',
+          'Are you sure you want to delete your account? This action cannot be undone and all your data will be permanently deleted.',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () => Navigator.pop(context),
             child: const Text('Cancel'),
           ),
-          TextButton(
+          ElevatedButton(
             onPressed: () {
-              Navigator.of(context).pop();
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const SecurityQuestionsScreen(
-                    isFromSetup: false,
-                  ),
-                ),
-              );
+              // TODO: Implement account deletion
+              Navigator.pop(context);
             },
-            child: const Text('Set Up'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('Delete'),
           ),
         ],
       ),

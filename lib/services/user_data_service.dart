@@ -1,12 +1,21 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:async';
 import 'error_logging_service.dart';
 import 'timezone_service.dart';
+import 'grace_system_service.dart';
+import 'data_fetch_service.dart';
+import 'database/database_manager.dart';
+import 'sync/supabase_sync_service.dart';
 
 class UserDataService {
   static final SupabaseClient _supabase = Supabase.instance.client;
+  static final SupabaseSyncService _syncService = SupabaseSyncService();
+  static Timer? _debounceTimer;
 
   /// Fetch all user data including profile, stats, and preferences
-  static Future<UserDataResult> fetchUserData() async {
+  /// 
+  /// Uses DataFetchService for caching if provided.
+  static Future<UserDataResult> fetchUserData({DataFetchService? dataFetchService}) async {
     try {
       final user = _supabase.auth.currentUser;
       if (user == null) {
@@ -18,7 +27,7 @@ class UserDataService {
       }
 
       // Fetch user profile data
-      final profileData = await _fetchUserProfile(user.id);
+      final profileData = await _fetchUserProfile(user.id, dataFetchService: dataFetchService);
       if (!profileData.success) {
         return UserDataResult(
           success: false,
@@ -28,10 +37,10 @@ class UserDataService {
       }
 
       // Fetch user statistics
-      final statsData = await _fetchUserStats(user.id);
+      final statsData = await _fetchUserStats(user.id, dataFetchService: dataFetchService);
 
       // Fetch user preferences
-      final preferencesData = await _fetchUserPreferences(user.id);
+      final preferencesData = await _fetchUserPreferences(user.id, dataFetchService: dataFetchService);
 
       final userData = UserData(
         id: user.id,
@@ -63,13 +72,24 @@ class UserDataService {
   }
 
   /// Fetch user profile information from users table
-  static Future<DataResult> _fetchUserProfile(String userId) async {
+  static Future<DataResult> _fetchUserProfile(
+    String userId, {
+    DataFetchService? dataFetchService,
+  }) async {
     try {
-      final response = await _supabase
-          .from('users')
-          .select('*')
-          .eq('id', userId)
-          .maybeSingle();
+      Map<String, dynamic>? response;
+      
+      if (dataFetchService != null) {
+        // Use cached fetchUserProfile
+        response = await dataFetchService.fetchUserProfile(userId);
+      } else {
+        // Fallback to direct query
+        response = await _supabase
+            .from('users')
+            .select('*')
+            .eq('id', userId)
+            .maybeSingle();
+      }
 
       // Case 1: User exists
       if (response != null) {
@@ -120,7 +140,7 @@ class UserDataService {
         // Handle duplicate key error (race condition)
         if (_isDuplicateKeyError(insertError)) {
           // User was created between check and insert, retry fetch
-          return await _retryFetchUser(userId);
+          return await _retryFetchUser(userId, dataFetchService: dataFetchService);
         }
         // Other insert errors - log and return
         await _logUserCreationError(insertError, userId, 'insert_failed');
@@ -150,13 +170,24 @@ class UserDataService {
   }
 
   /// Retry fetch after duplicate key error
-  static Future<DataResult> _retryFetchUser(String userId) async {
+  static Future<DataResult> _retryFetchUser(
+    String userId, {
+    DataFetchService? dataFetchService,
+  }) async {
     try {
-      final retryResponse = await _supabase
-          .from('users')
-          .select('*')
-          .eq('id', userId)
-          .maybeSingle();
+      Map<String, dynamic>? retryResponse;
+      
+      if (dataFetchService != null) {
+        // Use cached fetchUserProfile
+        retryResponse = await dataFetchService.fetchUserProfile(userId);
+      } else {
+        // Fallback to direct query
+        retryResponse = await _supabase
+            .from('users')
+            .select('*')
+            .eq('id', userId)
+            .maybeSingle();
+      }
 
       if (retryResponse != null) {
         return DataResult(success: true, data: retryResponse);
@@ -244,30 +275,59 @@ class UserDataService {
   }
 
   /// Fetch user statistics (entries, streak, etc.)
-  static Future<DataResult> _fetchUserStats(String userId) async {
+  static Future<DataResult> _fetchUserStats(
+    String userId, {
+    DataFetchService? dataFetchService,
+  }) async {
     try {
-      // Get diary entries count
-      final entriesResponse = await _supabase
-          .from('entries')
-          .select('id, created_at')
-          .eq('user_id', userId);
-
-      final entries = entriesResponse as List;
+      // Get diary entries count (use entry_date for accurate streak calculation)
+      List<Map<String, dynamic>> entries;
+      
+      if (dataFetchService != null) {
+        // Use cached fetchEntries - fetch all entries (no date limit for stats)
+        // For stats, we need all entries, so use a wide date range
+        final now = DateTime.now();
+        final startDate = DateTime(now.year - 10, 1, 1); // 10 years ago (should cover all entries)
+        final entriesList = await dataFetchService.fetchEntries(
+          userId: userId,
+          startDate: startDate,
+          endDate: now,
+        );
+        entries = entriesList.map((e) => {
+          'id': e.id,
+          'entry_date': e.entryDate.toIso8601String().split('T')[0],
+          'created_at': e.createdAt.toIso8601String(),
+        }).toList();
+      } else {
+        // Fallback to direct query
+        final entriesResponse = await _supabase
+            .from('entries')
+            .select('id, entry_date, created_at')
+            .eq('user_id', userId);
+        entries = List<Map<String, dynamic>>.from(entriesResponse);
+      }
       final entriesCount = entries.length;
 
       // Calculate current streak
       final streak = await _calculateStreak(entries);
 
       // Persist streak counters to DB so Home can read from streaks table
+      // Use entry_date if available, fallback to created_at
+      final lastEntryDate = entries.isNotEmpty
+          ? (entries.first['entry_date'] ?? entries.first['created_at'])
+          : null;
       await _persistStreak(
         userId,
         streak,
-        lastEntryIso: entries.isNotEmpty ? entries.first['created_at'] : null,
+        lastEntryIso: lastEntryDate,
       );
 
       // Get days since first entry
-      final firstEntry = entries.isNotEmpty
-          ? DateTime.parse(entries.first['created_at'])
+      final firstEntryDate = entries.isNotEmpty
+          ? (entries.first['entry_date'] ?? entries.first['created_at'])
+          : null;
+      final firstEntry = firstEntryDate != null
+          ? DateTime.parse(firstEntryDate)
           : DateTime.now();
       final daysSinceFirst = DateTime.now().difference(firstEntry).inDays + 1;
 
@@ -275,9 +335,7 @@ class UserDataService {
         'entries_count': entriesCount,
         'current_streak': streak,
         'days_active': daysSinceFirst,
-        'last_entry_date': entries.isNotEmpty
-            ? entries.first['created_at']
-            : null,
+        'last_entry_date': lastEntryDate,
       };
 
       return DataResult(success: true, data: stats);
@@ -306,24 +364,31 @@ class UserDataService {
   static Future<int> _calculateStreak(List entries) async {
     if (entries.isEmpty) return 0;
 
-    // Sort entries by date (newest first)
-    entries.sort(
-      (a, b) => DateTime.parse(
-        b['created_at'],
-      ).compareTo(DateTime.parse(a['created_at'])),
-    );
-
-    int streak = 0;
-    DateTime currentDate = DateTime.now();
-
+    // Create a set of unique entry dates
+    final entryDates = <String>{};
     for (var entry in entries) {
-      final entryDate = DateTime.parse(entry['created_at']);
-      final daysDifference = currentDate.difference(entryDate).inDays;
+      final entryDateStr = entry['entry_date'] ?? entry['created_at'];
+      final entryDate = DateTime.parse(entryDateStr);
+      final entryDateOnly = DateTime(entryDate.year, entryDate.month, entryDate.day);
+      final dateKey = entryDateOnly.toIso8601String().split('T')[0];
+      entryDates.add(dateKey);
+    }
 
-      if (daysDifference == streak) {
+    // Count consecutive days starting from today
+    int streak = 0;
+    final today = DateTime.now();
+    final todayDateOnly = DateTime(today.year, today.month, today.day);
+
+    int currentDay = 0;
+    while (true) {
+      final checkDate = todayDateOnly.subtract(Duration(days: currentDay));
+      final dateKey = checkDate.toIso8601String().split('T')[0];
+      
+      if (entryDates.contains(dateKey)) {
         streak++;
-        currentDate = entryDate.subtract(const Duration(days: 1));
+        currentDay++;
       } else {
+        // Found a gap, stop counting
         break;
       }
     }
@@ -331,48 +396,65 @@ class UserDataService {
     return streak;
   }
 
-  /// Persist computed streak into public.streaks (current/longest/last_entry_date)
+  /// Persist computed streak into local SQLite (current/longest/last_entry_date)
+  /// Uses local-first approach: updates local SQLite, syncs to Supabase (debounced)
   static Future<void> _persistStreak(
     String userId,
     int computedStreak, {
     String? lastEntryIso,
   }) async {
     try {
-      // Get existing row (if any)
-      final existing = await _supabase
-          .from('streaks')
-          .select('longest')
-          .eq('user_id', userId)
-          .maybeSingle();
+      final db = await DatabaseManager().database;
+
+      // Get existing row from local SQLite
+      final existing = await db.query(
+        'streaks',
+        where: 'user_id = ?',
+        whereArgs: [userId],
+        limit: 1,
+      );
 
       final todayDateOnly = DateTime.now().toIso8601String().split('T')[0];
       final lastDate = lastEntryIso != null
           ? DateTime.parse(lastEntryIso).toIso8601String().split('T')[0]
           : todayDateOnly;
 
-      if (existing == null) {
-        await _supabase.from('streaks').insert({
-          'user_id': userId,
-          'current': computedStreak,
-          'longest': computedStreak,
-          'last_entry_date': lastDate,
-          'updated_at': DateTime.now().toIso8601String(),
-        });
-        return;
-      }
+      if (existing.isEmpty) {
+        // Create new record in local SQLite
+        await db.insert(
+          'streaks',
+          {
+            'user_id': userId,
+            'current': computedStreak,
+            'longest': computedStreak,
+            'last_entry_date': lastDate,
+            'freeze_credits': 0,
+            'grace_pieces_total': 0.0,
+            'updated_at': DateTime.now().toIso8601String(),
+            'is_synced': 0,
+          },
+        );
+      } else {
+        // Update existing record in local SQLite
+        final longest = (existing.first['longest'] as int? ?? 0);
+        final newLongest = computedStreak > longest ? computedStreak : longest;
 
-      final longest = (existing['longest'] ?? 0) as int;
-      final newLongest = computedStreak > longest ? computedStreak : longest;
-
-      await _supabase
-          .from('streaks')
-          .update({
+        await db.update(
+          'streaks',
+          {
             'current': computedStreak,
             'longest': newLongest,
             'last_entry_date': lastDate,
             'updated_at': DateTime.now().toIso8601String(),
-          })
-          .eq('user_id', userId);
+            'is_synced': 0,
+          },
+          where: 'user_id = ?',
+          whereArgs: [userId],
+        );
+      }
+
+      // Queue sync to Supabase (debounced, 2s)
+      _scheduleStreakSync(userId);
     } catch (e) {
       await ErrorLoggingService.logLowError(
         errorCode: 'ERRSYS156',
@@ -387,20 +469,44 @@ class UserDataService {
     }
   }
 
+  // Helper: Schedule debounced sync for streaks
+  static void _scheduleStreakSync(String userId) {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(seconds: 2), () async {
+      try {
+        await _syncService.syncAllStreaks(userId);
+      } catch (e) {
+        await ErrorLoggingService.logHighError(
+          errorCode: 'ERRSYS158',
+          errorMessage: 'Failed to sync streak: $e',
+          errorContext: {'userId': userId},
+        );
+      }
+    });
+  }
+
   /// Calculate streak with grace system logic
   static Future<int> calculateStreakWithGrace(
     String userId,
-    List entries,
-  ) async {
+    List entries, {
+    DataFetchService? dataFetchService,
+  }) async {
     try {
       // Get grace system settings
-      final graceSettings = await _supabase
-          .from('user_settings')
-          .select('grace_system_enabled')
-          .eq('user_id', userId)
-          .single();
+      Map<String, dynamic>? graceSettings;
+      
+      if (dataFetchService != null) {
+        final settings = await dataFetchService.fetchUserSettings(userId);
+        graceSettings = settings;
+      } else {
+        graceSettings = await _supabase
+            .from('user_settings')
+            .select('grace_system_enabled')
+            .eq('user_id', userId)
+            .maybeSingle();
+      }
 
-      final graceSystemEnabled = graceSettings['grace_system_enabled'] ?? true;
+      final graceSystemEnabled = graceSettings?['grace_system_enabled'] ?? true;
 
       if (!graceSystemEnabled) {
         // Use strict streak calculation
@@ -410,36 +516,42 @@ class UserDataService {
       // Get today's date in app timezone
       final today = DateTime.now().toIso8601String().split('T')[0];
       
-      // Check if user wrote today (has diary entry today)
-      final todayHabits = await _supabase
-          .from('habits_daily')
-          .select('wrote_entry')
-          .eq('user_id', userId)
-          .eq('date', today)
-          .maybeSingle();
+      // Check if user wrote today (has diary entry today) - read from local SQLite
+      bool wroteToday = false;
+      final db = await DatabaseManager().database;
+      
+      if (dataFetchService != null) {
+        final todayHabitsData = await dataFetchService.fetchHabitsForDate(
+          userId,
+          DateTime.now(),
+        );
+        wroteToday = todayHabitsData?.wroteEntry ?? false;
+      } else {
+        final todayHabits = await db.query(
+          'habits_daily',
+          where: 'user_id = ? AND date = ?',
+          whereArgs: [userId, today],
+          limit: 1,
+        );
+        wroteToday = todayHabits.isNotEmpty && (todayHabits.first['wrote_entry'] as int? ?? 0) == 1;
+      }
 
-      final wroteToday = todayHabits?['wrote_entry'] == true;
-
-      // Get grace system data
-      final graceData = await _supabase
-          .rpc(
-            'calculate_grace_days_from_habits',
-            params: {
-              'p_user_id': userId,
-              'p_date': today, // Pass app's current date
-            },
-          )
-          .single();
-
-      final graceDaysAvailable = graceData['grace_days_available'] ?? 0;
+      // Get grace system data (use app-level calculation)
+      final graceStatus = await GraceSystemService.getGraceStatus(
+        userId,
+        dataFetchService: dataFetchService,
+      );
+      final graceDaysAvailable = graceStatus?['grace_days_available'] ?? 0;
 
       // If user wrote today, calculate normal streak
       if (wroteToday && entries.isNotEmpty) {
         final streak = await _calculateStreak(entries);
+        // Use entry_date if available, fallback to created_at
+        final lastEntryDate = entries.first['entry_date'] ?? entries.first['created_at'];
         await _persistStreak(
           userId,
           streak,
-          lastEntryIso: entries.first['created_at'],
+          lastEntryIso: lastEntryDate,
         );
         return streak;
       }
@@ -458,11 +570,13 @@ class UserDataService {
       }
 
       // Has entries but didn't write today
-      final lastEntryDate = DateTime.parse(entries.first['created_at']);
-      final lastEntryDateOnly = lastEntryDate.toIso8601String().split('T')[0];
+      // Use entry_date if available, fallback to created_at
+      final lastEntryDateStr = entries.first['entry_date'] ?? entries.first['created_at'];
+      final lastEntryDate = DateTime.parse(lastEntryDateStr);
+      final lastEntryDateOnly = DateTime(lastEntryDate.year, lastEntryDate.month, lastEntryDate.day);
       final todayDate = DateTime.parse(today);
-      final lastDate = DateTime.parse(lastEntryDateOnly);
-      final daysDifference = todayDate.difference(lastDate).inDays;
+      final todayDateOnly = DateTime(todayDate.year, todayDate.month, todayDate.day);
+      final daysDifference = todayDateOnly.difference(lastEntryDateOnly).inDays;
 
       if (daysDifference == 1) {
         // Missed exactly 1 day (yesterday)
@@ -493,7 +607,8 @@ class UserDataService {
       } else {
         // daysDifference == 0 shouldn't happen if wroteToday is false, but handle it
         final streak = await _calculateStreak(entries);
-        await _persistStreak(userId, streak, lastEntryIso: entries.first['created_at']);
+        final lastEntryDate = entries.first['entry_date'] ?? entries.first['created_at'];
+        await _persistStreak(userId, streak, lastEntryIso: lastEntryDate);
         return streak;
       }
     } catch (e) {
@@ -509,60 +624,122 @@ class UserDataService {
     }
   }
 
-  /// Use freeze credit to maintain streak
-  static Future<void> _useFreezeCreditForStreak(
-    String userId,
-    int streakMaintained,
-  ) async {
+  /// Recalculate and update streak after entry save
+  /// Only recalculates if last_entry_date is > 1 day old
+  /// Uses local-first approach: reads from local SQLite, syncs to Supabase (debounced)
+  static Future<void> recalculateStreak(
+    String userId, {
+    DataFetchService? dataFetchService,
+  }) async {
     try {
-      await _supabase.from('streak_freeze_usage').insert({
-        'user_id': userId,
-        'reason': 'missed_day',
-        'streak_maintained': streakMaintained,
-        'grace_period_days': 1,
-      });
+      final db = await DatabaseManager().database;
+
+      // Check if recalculation is needed (only if last_entry_date is > 1 day old)
+      final streaks = await db.query(
+        'streaks',
+        where: 'user_id = ?',
+        whereArgs: [userId],
+        limit: 1,
+      );
+
+      if (streaks.isNotEmpty) {
+        final lastEntryDateStr = streaks.first['last_entry_date'] as String?;
+        if (lastEntryDateStr != null) {
+          final lastEntryDate = DateTime.parse(lastEntryDateStr);
+          final today = DateTime.now();
+          final daysDiff = today.difference(lastEntryDate).inDays;
+          if (daysDiff <= 1) {
+            // Recent entry, no need to recalculate
+            return;
+          }
+        }
+      }
+
+      // Fetch entries with entry_date (read from local SQLite or use DataFetchService)
+      List<Map<String, dynamic>> entries;
+      
+      if (dataFetchService != null) {
+        // Use cached fetchEntries
+        final now = DateTime.now();
+        final startDate = DateTime(now.year - 10, 1, 1);
+        final entriesList = await dataFetchService.fetchEntries(
+          userId: userId,
+          startDate: startDate,
+          endDate: now,
+        );
+        entries = entriesList.map((e) => {
+          'id': e.id,
+          'entry_date': e.entryDate.toIso8601String().split('T')[0],
+          'created_at': e.createdAt.toIso8601String(),
+        }).toList();
+      } else {
+        // Fallback: read from local SQLite
+        final localEntries = await db.query(
+          'entries',
+          columns: ['id', 'entry_date', 'created_at'],
+          where: 'user_id = ?',
+          whereArgs: [userId],
+          orderBy: 'entry_date DESC',
+        );
+        entries = localEntries;
+      }
+
+      // Calculate streak with grace system (automatically persists)
+      await calculateStreakWithGrace(
+        userId,
+        entries,
+        dataFetchService: dataFetchService,
+      );
     } catch (e) {
-      // Log error but don't throw
       await ErrorLoggingService.logLowError(
-        errorCode: 'ERRSYS119',
-        errorMessage: 'Freeze credit usage failed: ${e.toString()}',
+        errorCode: 'ERRSYS157',
+        errorMessage: 'Streak recalculation failed: ${e.toString()}',
         stackTrace: StackTrace.current.toString(),
-        errorContext: {'user_id': userId, 'operation': 'use_freeze_credit'},
+        errorContext: {
+          'user_id': userId,
+          'operation': 'recalculate_streak',
+        },
       );
     }
   }
 
   /// Use grace day to maintain streak
+  /// Uses local-first approach: updates local SQLite, syncs to Supabase (debounced)
   static Future<void> _useGraceDayForStreak(String userId) async {
     try {
-      // Get current streak
-      final currentStreak = await _getCurrentStreak(userId);
+      final db = await DatabaseManager().database;
 
-      // Record grace day usage
-      await _supabase.from('streak_freeze_usage').insert({
-        'user_id': userId,
-        'reason': 'grace_day_used',
-        'streak_maintained': currentStreak,
-        'grace_day_used': true,
-        'grace_period_days': 1,
-      });
+      // Get current grace days from local SQLite
+      final streaks = await db.query(
+        'streaks',
+        where: 'user_id = ?',
+        whereArgs: [userId],
+        limit: 1,
+      );
 
-      // Update streaks table (decrease grace days)
-      final currentStreakData = await _supabase
-          .from('streaks')
-          .select('freeze_credits')
-          .eq('user_id', userId)
-          .single();
+      if (streaks.isEmpty) {
+        return; // No streak record
+      }
 
-      final currentGraceDays = currentStreakData['freeze_credits'] ?? 0;
+      final currentGraceDays = streaks.first['freeze_credits'] as int? ?? 0;
+      if (currentGraceDays <= 0) {
+        return; // No grace days available
+      }
 
-      await _supabase
-          .from('streaks')
-          .update({
-            'freeze_credits': currentGraceDays - 1,
-            'updated_at': DateTime.now().toIso8601String(),
-          })
-          .eq('user_id', userId);
+      // Update streaks table in local SQLite (decrease grace days)
+      await db.update(
+        'streaks',
+        {
+          'freeze_credits': currentGraceDays - 1,
+          'updated_at': DateTime.now().toIso8601String(),
+          'is_synced': 0,
+        },
+        where: 'user_id = ?',
+        whereArgs: [userId],
+      );
+
+      // Queue sync to Supabase (debounced, 2s)
+      _scheduleStreakSync(userId);
     } catch (e) {
       // Log error
       await ErrorLoggingService.logMediumError(
@@ -574,28 +751,72 @@ class UserDataService {
     }
   }
 
-  /// Get current streak from database
-  static Future<int> _getCurrentStreak(String userId) async {
+  /// Get current streak from local SQLite
+  static Future<int> _getCurrentStreak(
+    String userId, {
+    DataFetchService? dataFetchService,
+  }) async {
     try {
-      final response = await _supabase
-          .from('streaks')
-          .select('current')
-          .eq('user_id', userId)
-          .single();
-      return response['current'] ?? 0;
+      final db = await DatabaseManager().database;
+      
+      if (dataFetchService != null) {
+        // Use cached fetchStreaks (now reconnected)
+        final response = await dataFetchService.fetchStreaks(userId);
+        return (response?['current'] as num?)?.toInt() ?? 0;
+      } else {
+        // Fallback: read from local SQLite
+        final streaks = await db.query(
+          'streaks',
+          columns: ['current'],
+          where: 'user_id = ?',
+          whereArgs: [userId],
+          limit: 1,
+        );
+        
+        if (streaks.isNotEmpty) {
+          return streaks.first['current'] as int? ?? 0;
+        }
+      }
+      
+      return 0;
     } catch (e) {
       return 0;
     }
   }
 
   /// Fetch user preferences
-  static Future<DataResult> _fetchUserPreferences(String userId) async {
+  static Future<DataResult> _fetchUserPreferences(
+    String userId, {
+    DataFetchService? dataFetchService,
+  }) async {
     try {
-      final response = await _supabase
-          .from('user_settings')
-          .select('*')
-          .eq('user_id', userId)
-          .single();
+      Map<String, dynamic>? response;
+      
+      if (dataFetchService != null) {
+        // Use cached fetchUserSettings
+        response = await dataFetchService.fetchUserSettings(userId);
+      } else {
+        // Fallback to direct query
+        response = await _supabase
+            .from('user_settings')
+            .select('*')
+            .eq('user_id', userId)
+            .maybeSingle();
+      }
+      
+      if (response == null) {
+        // Return default preferences if none exist
+        return DataResult(
+          success: true,
+          data: {
+            'theme': 'system',
+            'notifications': true,
+            'reminder_time': '20:00',
+            'writing_goal': 1,
+            'privacy_level': 'private',
+          },
+        );
+      }
 
       return DataResult(success: true, data: response);
     } catch (e) {
