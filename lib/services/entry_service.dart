@@ -32,26 +32,72 @@ class EntryService {
     }
   }
 
-  // Load entry for a specific date (offline-first)
+  // Load entry for a specific date (server-first to prevent race conditions)
   Future<EntryData?> loadEntryForDate(String userId, DateTime date) async {
-    // 1. Try local first
-    final localEntry = await _localService.getEntryByDate(userId, date);
+    // Use the date as-is (local date from device)
+    // entry_date is stored as date only (no time), so we use local date directly
+    final dateOnly = DateTime(date.year, date.month, date.day);
+    
+    try {
+      // 1. If online, fetch from server FIRST to get latest data (prevents race condition)
+      // This ensures server data (from other devices) is loaded before local unsynced data
+      Entry? cloudEntry;
+      if (await _isOnline()) {
+        try {
+          cloudEntry = await _syncService.fetchEntryFromCloud(userId, dateOnly);
+        } catch (e) {
+          await ErrorLoggingService.logError(
+            errorCode: 'ERRSYS186',
+            errorMessage: 'Failed to fetch entry from cloud: ${e.toString()}',
+            stackTrace: StackTrace.current.toString(),
+            severity: 'MEDIUM',
+            errorContext: {
+              'user_id': userId,
+              'date': dateOnly.toIso8601String().split('T')[0],
+              'operation': 'load_entry_fetch_cloud',
+            },
+          );
+          // Continue with local data if cloud fetch fails
+        }
+      }
+      
+      // 2. Get local entry
+      final localEntry = await _localService.getEntryByDate(userId, dateOnly);
 
-    // 2. If online and not synced, fetch from cloud
-    if (await _isOnline()) {
-      final cloudEntry = await _syncService.fetchEntryFromCloud(userId, date);
-
-      // 3. Merge and resolve conflicts (last-write-wins)
+      // 3. Merge and resolve conflicts (server wins if newer)
       if (cloudEntry != null) {
-        if (localEntry == null ||
+        if (localEntry == null || 
             cloudEntry.updatedAt.isAfter(localEntry.updatedAt)) {
+          // Server data is newer or local doesn't exist - use server data
+          await _localService.upsertEntry(cloudEntry);
+          return _buildEntryDataParallel(cloudEntry);
+        } else if (localEntry.updatedAt.isAfter(cloudEntry.updatedAt)) {
+          // Local data is newer - use local (will sync later)
+          return _buildEntryDataParallel(localEntry);
+        } else {
+          // Same timestamp - use server data (source of truth)
           await _localService.upsertEntry(cloudEntry);
           return _buildEntryDataParallel(cloudEntry);
         }
       }
-    }
 
-    return localEntry != null ? _buildEntryDataParallel(localEntry) : null;
+      // 4. If no cloud entry, use local entry
+      return localEntry != null ? _buildEntryDataParallel(localEntry) : null;
+      
+    } catch (e) {
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS187',
+        errorMessage: 'Failed to load entry for date: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'user_id': userId,
+          'date': dateOnly.toIso8601String().split('T')[0],
+          'operation': 'load_entry_for_date',
+        },
+      );
+      // Return null on error - entry screen will handle empty state
+      return null;
+    }
   }
 
   // Build complete entry data with all related fields
@@ -410,10 +456,23 @@ class EntryService {
   // Cache for entry creation (prevents repeated queries)
   final Map<String, Entry> _entryCache = {};
   
+  // Public getter for localService
+  LocalEntryService get localService => _localService;
+  
+  // Public method to get or create entry
+  Future<Entry> getOrCreateEntry(String userId, DateTime date) async {
+    return await _getOrCreateEntry(userId, date);
+  }
+  
   // Get or create entry (with caching)
   Future<Entry> _getOrCreateEntry(String userId, DateTime date) async {
-    // Generate cache key
-    final dateStr = date.toIso8601String().split('T')[0];
+    // Convert local date to UTC date for consistency
+    // Local date is used for UI, but we store UTC date in Supabase
+    final dateUtc = date.toUtc();
+    final dateUtcOnly = DateTime(dateUtc.year, dateUtc.month, dateUtc.day);
+    
+    // Generate cache key using UTC date
+    final dateStr = dateUtcOnly.toIso8601String().split('T')[0];
     final cacheKey = '${userId}_$dateStr';
     
     // Check cache first
@@ -421,18 +480,18 @@ class EntryService {
       return _entryCache[cacheKey]!;
     }
     
-    // Check local database
-    final existing = await _localService.getEntryByDate(userId, date);
+    // Check local database (use UTC date for querying)
+    final existing = await _localService.getEntryByDate(userId, dateUtcOnly);
     if (existing != null) {
       _entryCache[cacheKey] = existing;
       return existing;
     }
 
-    // Create new entry with default mood score of 3
+    // Create new entry with UTC date and default mood score of 3
     final newEntry = Entry(
       id: const Uuid().v4(),
       userId: userId,
-      entryDate: date,
+      entryDate: dateUtcOnly, // Store UTC date
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
       moodScore: 3, // Default mood score

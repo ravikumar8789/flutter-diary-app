@@ -1,9 +1,12 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:uuid/uuid.dart';
 import 'dart:async';
 import 'error_logging_service.dart';
 import 'timezone_service.dart';
 import 'grace_system_service.dart';
 import 'data_fetch_service.dart';
+import '../repositories/data_repository.dart';
 import 'database/database_manager.dart';
 import 'sync/supabase_sync_service.dart';
 
@@ -13,9 +16,11 @@ class UserDataService {
   static Timer? _debounceTimer;
 
   /// Fetch all user data including profile, stats, and preferences
-  /// 
+  ///
   /// Uses DataFetchService for caching if provided.
-  static Future<UserDataResult> fetchUserData({DataFetchService? dataFetchService}) async {
+  static Future<UserDataResult> fetchUserData({
+    DataFetchService? dataFetchService,
+  }) async {
     try {
       final user = _supabase.auth.currentUser;
       if (user == null) {
@@ -27,7 +32,10 @@ class UserDataService {
       }
 
       // Fetch user profile data
-      final profileData = await _fetchUserProfile(user.id, dataFetchService: dataFetchService);
+      final profileData = await _fetchUserProfile(
+        user.id,
+        dataFetchService: dataFetchService,
+      );
       if (!profileData.success) {
         return UserDataResult(
           success: false,
@@ -37,10 +45,16 @@ class UserDataService {
       }
 
       // Fetch user statistics
-      final statsData = await _fetchUserStats(user.id, dataFetchService: dataFetchService);
+      final statsData = await _fetchUserStats(
+        user.id,
+        dataFetchService: dataFetchService,
+      );
 
       // Fetch user preferences
-      final preferencesData = await _fetchUserPreferences(user.id, dataFetchService: dataFetchService);
+      final preferencesData = await _fetchUserPreferences(
+        user.id,
+        dataFetchService: dataFetchService,
+      );
 
       final userData = UserData(
         id: user.id,
@@ -78,7 +92,7 @@ class UserDataService {
   }) async {
     try {
       Map<String, dynamic>? response;
-      
+
       if (dataFetchService != null) {
         // Use cached fetchUserProfile
         response = await dataFetchService.fetchUserProfile(userId);
@@ -99,7 +113,8 @@ class UserDataService {
           TimezoneService.initializeUserTimezone(userId).catchError((e) {
             ErrorLoggingService.logLowError(
               errorCode: 'ERRSYS165',
-              errorMessage: 'Timezone update failed for existing user: ${e.toString()}',
+              errorMessage:
+                  'Timezone update failed for existing user: ${e.toString()}',
               stackTrace: StackTrace.current.toString(),
               errorContext: {
                 'user_id': userId,
@@ -140,7 +155,10 @@ class UserDataService {
         // Handle duplicate key error (race condition)
         if (_isDuplicateKeyError(insertError)) {
           // User was created between check and insert, retry fetch
-          return await _retryFetchUser(userId, dataFetchService: dataFetchService);
+          return await _retryFetchUser(
+            userId,
+            dataFetchService: dataFetchService,
+          );
         }
         // Other insert errors - log and return
         await _logUserCreationError(insertError, userId, 'insert_failed');
@@ -176,7 +194,7 @@ class UserDataService {
   }) async {
     try {
       Map<String, dynamic>? retryResponse;
-      
+
       if (dataFetchService != null) {
         // Use cached fetchUserProfile
         retryResponse = await dataFetchService.fetchUserProfile(userId);
@@ -205,7 +223,11 @@ class UserDataService {
       return DataResult(success: false, error: 'User not found', data: null);
     } catch (retryError) {
       await _logUserFetchError(retryError, userId, 'retry_fetch_failed');
-      return DataResult(success: false, error: 'Retry fetch failed', data: null);
+      return DataResult(
+        success: false,
+        error: 'Retry fetch failed',
+        data: null,
+      );
     }
   }
 
@@ -216,14 +238,18 @@ class UserDataService {
     String operation,
   ) async {
     final errorString = error.toString();
-    final isNetworkError = errorString.contains('timeout') ||
+    final isNetworkError =
+        errorString.contains('timeout') ||
         errorString.contains('network') ||
         errorString.contains('connection');
-    final isDbError = errorString.contains('database') ||
+    final isDbError =
+        errorString.contains('database') ||
         errorString.contains('PostgrestException');
 
     // Use ERRSYS121 for retry fetch failures, ERRSYS118 for initial fetch failures
-    final errorCode = operation == 'retry_fetch_failed' ? 'ERRSYS121' : 'ERRSYS118';
+    final errorCode = operation == 'retry_fetch_failed'
+        ? 'ERRSYS121'
+        : 'ERRSYS118';
     final errorMessage = operation == 'retry_fetch_failed'
         ? 'User retry fetch failed: $errorString'
         : 'User profile fetch failed: $errorString';
@@ -282,22 +308,30 @@ class UserDataService {
     try {
       // Get diary entries count (use entry_date for accurate streak calculation)
       List<Map<String, dynamic>> entries;
-      
+
       if (dataFetchService != null) {
         // Use cached fetchEntries - fetch all entries (no date limit for stats)
         // For stats, we need all entries, so use a wide date range
         final now = DateTime.now();
-        final startDate = DateTime(now.year - 10, 1, 1); // 10 years ago (should cover all entries)
+        final startDate = DateTime(
+          now.year - 10,
+          1,
+          1,
+        ); // 10 years ago (should cover all entries)
         final entriesList = await dataFetchService.fetchEntries(
           userId: userId,
           startDate: startDate,
           endDate: now,
         );
-        entries = entriesList.map((e) => {
-          'id': e.id,
-          'entry_date': e.entryDate.toIso8601String().split('T')[0],
-          'created_at': e.createdAt.toIso8601String(),
-        }).toList();
+        entries = entriesList
+            .map(
+              (e) => {
+                'id': e.id,
+                'entry_date': e.entryDate.toIso8601String().split('T')[0],
+                'created_at': e.createdAt.toIso8601String(),
+              },
+            )
+            .toList();
       } else {
         // Fallback to direct query
         final entriesResponse = await _supabase
@@ -308,19 +342,36 @@ class UserDataService {
       }
       final entriesCount = entries.length;
 
-      // Calculate current streak
-      final streak = await _calculateStreak(entries);
-
-      // Persist streak counters to DB so Home can read from streaks table
-      // Use entry_date if available, fallback to created_at
-      final lastEntryDate = entries.isNotEmpty
-          ? (entries.first['entry_date'] ?? entries.first['created_at'])
-          : null;
-      await _persistStreak(
-        userId,
-        streak,
-        lastEntryIso: lastEntryDate,
+      // Get current streak from streaks table (not calculating from habits_daily)
+      final db = await DatabaseManager().database;
+      final streakRecord = await db.query(
+        'streaks',
+        where: 'user_id = ?',
+        whereArgs: [userId],
+        limit: 1,
       );
+      final streak = streakRecord.isNotEmpty
+          ? (streakRecord.first['current'] as int? ?? 0)
+          : 0;
+
+      // Get last entry date from habits_daily (most recent date with any task completed)
+      final lastHabit = await db.query(
+        'habits_daily',
+        where:
+            'user_id = ? AND (wrote_entry = 1 OR filled_affirmations = 1 OR filled_gratitude = 1 OR self_care_completed_count > 0)',
+        whereArgs: [userId],
+        orderBy: 'date DESC',
+        limit: 1,
+      );
+      final lastEntryDate = lastHabit.isNotEmpty
+          ? lastHabit.first['date'] as String?
+          : null;
+
+      // Note: This method is READ-ONLY for stats display
+      // Do NOT persist/write streak data here - writing should only happen when:
+      // 1. User completes tasks (trackTaskCompletion)
+      // 2. Gap detected and handled (calculateStreakOnAppLaunch)
+      // 3. Streak recalculation needed (recalculateStreak after entry save)
 
       // Get days since first entry
       final firstEntryDate = entries.isNotEmpty
@@ -360,40 +411,115 @@ class UserDataService {
     }
   }
 
-  /// Calculate current writing streak with compassion logic
-  static Future<int> _calculateStreak(List entries) async {
-    if (entries.isEmpty) return 0;
+  /// Calculate streak from today's habits_daily only (simplified)
+  /// Uses current streak from streaks table and checks if today has activity
+  static Future<int> _calculateStreakFromTodayHabits(String userId) async {
+    print(
+      '🔥 STREAK DEBUG: _calculateStreakFromTodayHabits START - userId: $userId',
+    );
+    try {
+      final db = await DatabaseManager().database;
+      final today = DateTime.now().toIso8601String().split('T')[0];
+      print('🔥 STREAK DEBUG: Today: $today');
 
-    // Create a set of unique entry dates
-    final entryDates = <String>{};
-    for (var entry in entries) {
-      final entryDateStr = entry['entry_date'] ?? entry['created_at'];
-      final entryDate = DateTime.parse(entryDateStr);
-      final entryDateOnly = DateTime(entryDate.year, entryDate.month, entryDate.day);
-      final dateKey = entryDateOnly.toIso8601String().split('T')[0];
-      entryDates.add(dateKey);
-    }
+      // Get today's habits
+      final todayHabits = await db.query(
+        'habits_daily',
+        where: 'user_id = ? AND date = ?',
+        whereArgs: [userId, today],
+        limit: 1,
+      );
+      print(
+        '🔥 STREAK DEBUG: Today habits query result: ${todayHabits.length} records',
+      );
 
-    // Count consecutive days starting from today
-    int streak = 0;
-    final today = DateTime.now();
-    final todayDateOnly = DateTime(today.year, today.month, today.day);
-
-    int currentDay = 0;
-    while (true) {
-      final checkDate = todayDateOnly.subtract(Duration(days: currentDay));
-      final dateKey = checkDate.toIso8601String().split('T')[0];
-      
-      if (entryDates.contains(dateKey)) {
-        streak++;
-        currentDay++;
-      } else {
-        // Found a gap, stop counting
-        break;
+      if (todayHabits.isEmpty) {
+        print('🔥 STREAK DEBUG: No habits for today, returning 0');
+        return 0;
       }
-    }
 
-    return streak;
+      final habit = todayHabits.first;
+      print('🔥 STREAK DEBUG: Today habit data: $habit');
+      final hasActivity =
+          (habit['wrote_entry'] as int? ?? 0) == 1 ||
+          (habit['filled_affirmations'] as int? ?? 0) == 1 ||
+          (habit['filled_gratitude'] as int? ?? 0) == 1 ||
+          (habit['self_care_completed_count'] as int? ?? 0) > 0;
+      print('🔥 STREAK DEBUG: Has activity today: $hasActivity');
+
+      if (!hasActivity) {
+        print('🔥 STREAK DEBUG: No activity today, returning 0');
+        return 0;
+      }
+
+      // Get current streak from streaks table
+      final streak = await db.query(
+        'streaks',
+        where: 'user_id = ?',
+        whereArgs: [userId],
+        limit: 1,
+      );
+      print('🔥 STREAK DEBUG: Streak query result: ${streak.length} records');
+
+      if (streak.isEmpty) {
+        print('🔥 STREAK DEBUG: No streak record, returning 0');
+        return 0;
+      }
+
+      final currentStreak = streak.first['current'] as int? ?? 0;
+      final lastEntryDateStr = streak.first['last_entry_date'] as String?;
+      print(
+        '🔥 STREAK DEBUG: Current streak: $currentStreak, last_entry_date: $lastEntryDateStr',
+      );
+
+      if (lastEntryDateStr == null) {
+        print('🔥 STREAK DEBUG: No last_entry_date, returning 1');
+        return 1;
+      }
+
+      final lastEntryDate = DateTime.parse(lastEntryDateStr);
+      final lastDateOnly = DateTime(
+        lastEntryDate.year,
+        lastEntryDate.month,
+        lastEntryDate.day,
+      );
+      final todayDateOnly = DateTime(
+        DateTime.now().year,
+        DateTime.now().month,
+        DateTime.now().day,
+      );
+      final daysDiff = todayDateOnly.difference(lastDateOnly).inDays;
+      print(
+        '🔥 STREAK DEBUG: lastDateOnly: ${lastDateOnly.toIso8601String().split('T')[0]}, daysDiff: $daysDiff',
+      );
+
+      if (daysDiff == 0) {
+        // Same day - return current streak (already incremented)
+        print(
+          '🔥 STREAK DEBUG: Same day, returning current streak: $currentStreak',
+        );
+        return currentStreak;
+      } else if (daysDiff == 1) {
+        // Consecutive day - increment
+        final newStreak = currentStreak + 1;
+        print('🔥 STREAK DEBUG: Consecutive day, returning: $newStreak');
+        return newStreak;
+      } else {
+        // Gap - reset or use grace days (handled elsewhere)
+        print('🔥 STREAK DEBUG: Gap detected ($daysDiff days), returning 0');
+        return 0;
+      }
+    } catch (e) {
+      print('🔥 STREAK DEBUG: _calculateStreakFromTodayHabits ERROR: $e');
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS160',
+        errorMessage:
+            'Calculate streak from today habits failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {'user_id': userId},
+      );
+      return 0;
+    }
   }
 
   /// Persist computed streak into local SQLite (current/longest/last_entry_date)
@@ -403,6 +529,9 @@ class UserDataService {
     int computedStreak, {
     String? lastEntryIso,
   }) async {
+    print(
+      '🔥 STREAK DEBUG: _persistStreak START - userId: $userId, computedStreak: $computedStreak, lastEntryIso: $lastEntryIso',
+    );
     try {
       final db = await DatabaseManager().database;
 
@@ -413,49 +542,78 @@ class UserDataService {
         whereArgs: [userId],
         limit: 1,
       );
+      print(
+        '🔥 STREAK DEBUG: Existing streak record: ${existing.length} records',
+      );
+      if (existing.isNotEmpty) {
+        print('🔥 STREAK DEBUG: Existing data: ${existing.first}');
+      }
 
       final todayDateOnly = DateTime.now().toIso8601String().split('T')[0];
       final lastDate = lastEntryIso != null
           ? DateTime.parse(lastEntryIso).toIso8601String().split('T')[0]
           : todayDateOnly;
+      print('🔥 STREAK DEBUG: lastDate: $lastDate');
 
       if (existing.isEmpty) {
         // Create new record in local SQLite
-        await db.insert(
-          'streaks',
-          {
-            'user_id': userId,
-            'current': computedStreak,
-            'longest': computedStreak,
-            'last_entry_date': lastDate,
-            'freeze_credits': 0,
-            'grace_pieces_total': 0.0,
-            'updated_at': DateTime.now().toIso8601String(),
-            'is_synced': 0,
-          },
-        );
+        final newData = {
+          'user_id': userId,
+          'current': computedStreak,
+          'longest': computedStreak,
+          'last_entry_date': lastDate,
+          'freeze_credits': 0,
+          'grace_pieces_total': 0.0,
+          'today_date': todayDateOnly,
+          'today_diary': 0,
+          'today_affirmations': 0,
+          'today_gratitude': 0,
+          'today_self_care_count': 0,
+          'today_grace_pieces': 0.0,
+          'updated_at': DateTime.now().toIso8601String(),
+          'is_synced': 0,
+        };
+        print('🔥 STREAK DEBUG: Creating new streak record: $newData');
+        await db.insert('streaks', newData);
+        print('🔥 STREAK DEBUG: New streak record created');
       } else {
-        // Update existing record in local SQLite
+        // Update existing record in local SQLite (preserve today_* fields)
         final longest = (existing.first['longest'] as int? ?? 0);
         final newLongest = computedStreak > longest ? computedStreak : longest;
+        print(
+          '🔥 STREAK DEBUG: Existing longest: $longest, new longest: $newLongest',
+        );
 
+        final updateData = {
+          'current': computedStreak,
+          'longest': newLongest,
+          'last_entry_date': lastDate,
+          // Preserve today_* fields from existing record
+          'today_date': existing.first['today_date'],
+          'today_diary': existing.first['today_diary'],
+          'today_affirmations': existing.first['today_affirmations'],
+          'today_gratitude': existing.first['today_gratitude'],
+          'today_self_care_count': existing.first['today_self_care_count'],
+          'today_grace_pieces': existing.first['today_grace_pieces'],
+          'updated_at': DateTime.now().toIso8601String(),
+          'is_synced': 0,
+        };
+        print('🔥 STREAK DEBUG: Updating streak record: $updateData');
         await db.update(
           'streaks',
-          {
-            'current': computedStreak,
-            'longest': newLongest,
-            'last_entry_date': lastDate,
-            'updated_at': DateTime.now().toIso8601String(),
-            'is_synced': 0,
-          },
+          updateData,
           where: 'user_id = ?',
           whereArgs: [userId],
         );
+        print('🔥 STREAK DEBUG: Streak record updated');
       }
 
       // Queue sync to Supabase (debounced, 2s)
+      print('🔥 STREAK DEBUG: Scheduling streak sync');
       _scheduleStreakSync(userId);
+      print('🔥 STREAK DEBUG: _persistStreak END');
     } catch (e) {
+      print('🔥 STREAK DEBUG: _persistStreak ERROR: $e');
       await ErrorLoggingService.logLowError(
         errorCode: 'ERRSYS156',
         errorMessage: 'Persist streak failed: ${e.toString()}',
@@ -469,16 +627,54 @@ class UserDataService {
     }
   }
 
-  // Helper: Schedule debounced sync for streaks
+  // Helper: Schedule debounced sync for streaks via RPC
   static void _scheduleStreakSync(String userId) {
+    print('🔥 STREAK DEBUG: _scheduleStreakSync called - userId: $userId');
     _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(seconds: 2), () async {
+    _debounceTimer = Timer(const Duration(seconds: 3), () async {
+      print('🔥 STREAK DEBUG: _scheduleStreakSync timer fired - starting sync');
       try {
-        await _syncService.syncAllStreaks(userId);
+        final db = await DatabaseManager().database;
+        final unsyncedStreaks = await db.query(
+          'streaks',
+          where: 'user_id = ? AND is_synced = 0',
+          whereArgs: [userId],
+          limit: 1,
+        );
+        print('🔥 STREAK DEBUG: Unsynced streaks: ${unsyncedStreaks.length}');
+
+        if (unsyncedStreaks.isEmpty) {
+          print('🔥 STREAK DEBUG: No unsynced streaks, returning');
+          return;
+        }
+
+        final streak = unsyncedStreaks.first;
+        print('🔥 STREAK DEBUG: Unsynced streak data: $streak');
+        final streakData = {
+          'current': streak['current'] ?? 0,
+          'longest': streak['longest'] ?? 0,
+          'last_entry_date': streak['last_entry_date'],
+          'freeze_credits': streak['freeze_credits'] ?? 0,
+          'grace_pieces_total': streak['grace_pieces_total'] ?? 0.0,
+          'today_date': streak['today_date'],
+          'today_diary': (streak['today_diary'] as int? ?? 0) == 1,
+          'today_affirmations':
+              (streak['today_affirmations'] as int? ?? 0) == 1,
+          'today_gratitude': (streak['today_gratitude'] as int? ?? 0) == 1,
+          'today_self_care_count': streak['today_self_care_count'] ?? 0,
+          'today_grace_pieces': streak['today_grace_pieces'] ?? 0.0,
+        };
+        print('🔥 STREAK DEBUG: Syncing streak data to Supabase: $streakData');
+        await _syncService.batchUpdateStreakData(
+          userId: userId,
+          streakData: streakData,
+        );
+        print('🔥 STREAK DEBUG: Streak sync completed');
       } catch (e) {
+        print('🔥 STREAK DEBUG: _scheduleStreakSync ERROR: $e');
         await ErrorLoggingService.logHighError(
           errorCode: 'ERRSYS158',
-          errorMessage: 'Failed to sync streak: $e',
+          errorMessage: 'Failed to sync streak via RPC: $e',
           errorContext: {'userId': userId},
         );
       }
@@ -486,132 +682,164 @@ class UserDataService {
   }
 
   /// Calculate streak with grace system logic
+  /// Uses habits_daily instead of entries table
   static Future<int> calculateStreakWithGrace(
-    String userId,
-    List entries, {
+    String userId, {
     DataFetchService? dataFetchService,
   }) async {
+    print('🔥 STREAK DEBUG: calculateStreakWithGrace START - userId: $userId');
     try {
-      // Get grace system settings
-      Map<String, dynamic>? graceSettings;
-      
-      if (dataFetchService != null) {
-        final settings = await dataFetchService.fetchUserSettings(userId);
-        graceSettings = settings;
-      } else {
-        graceSettings = await _supabase
-            .from('user_settings')
-            .select('grace_system_enabled')
-            .eq('user_id', userId)
-            .maybeSingle();
-      }
+      // Grace system always enabled (no setting in UI)
+      // Calculate streak from today's habits_daily only
+      final newStreak = await _calculateStreakFromTodayHabits(userId);
+      print('🔥 STREAK DEBUG: Calculated new streak: $newStreak');
 
-      final graceSystemEnabled = graceSettings?['grace_system_enabled'] ?? true;
-
-      if (!graceSystemEnabled) {
-        // Use strict streak calculation
-        return await _calculateStreak(entries);
-      }
-
-      // Get today's date in app timezone
-      final today = DateTime.now().toIso8601String().split('T')[0];
-      
-      // Check if user wrote today (has diary entry today) - read from local SQLite
-      bool wroteToday = false;
+      // Get last entry date from habits_daily (most recent date with any task completed)
       final db = await DatabaseManager().database;
-      
-      if (dataFetchService != null) {
-        final todayHabitsData = await dataFetchService.fetchHabitsForDate(
-          userId,
-          DateTime.now(),
-        );
-        wroteToday = todayHabitsData?.wroteEntry ?? false;
-      } else {
-        final todayHabits = await db.query(
-          'habits_daily',
-          where: 'user_id = ? AND date = ?',
-          whereArgs: [userId, today],
-          limit: 1,
-        );
-        wroteToday = todayHabits.isNotEmpty && (todayHabits.first['wrote_entry'] as int? ?? 0) == 1;
-      }
+      final lastHabit = await db.query(
+        'habits_daily',
+        where:
+            'user_id = ? AND (wrote_entry = 1 OR filled_affirmations = 1 OR filled_gratitude = 1 OR self_care_completed_count > 0)',
+        whereArgs: [userId],
+        orderBy: 'date DESC',
+        limit: 1,
+      );
+      print(
+        '🔥 STREAK DEBUG: Last habit with activity: ${lastHabit.length} records',
+      );
 
-      // Get grace system data (use app-level calculation)
+      final lastEntryDate = lastHabit.isNotEmpty
+          ? lastHabit.first['date'] as String?
+          : null;
+      print('🔥 STREAK DEBUG: lastEntryDate: $lastEntryDate');
+
+      // Get grace system data
       final graceStatus = await GraceSystemService.getGraceStatus(
         userId,
         dataFetchService: dataFetchService,
       );
       final graceDaysAvailable = graceStatus?['grace_days_available'] ?? 0;
+      print('🔥 STREAK DEBUG: Grace days available: $graceDaysAvailable');
 
-      // If user wrote today, calculate normal streak
-      if (wroteToday && entries.isNotEmpty) {
-        final streak = await _calculateStreak(entries);
-        // Use entry_date if available, fallback to created_at
-        final lastEntryDate = entries.first['entry_date'] ?? entries.first['created_at'];
-        await _persistStreak(
-          userId,
-          streak,
-          lastEntryIso: lastEntryDate,
+      // Check if user completed any task today
+      final today = DateTime.now().toIso8601String().split('T')[0];
+      final todayHabits = await db.query(
+        'habits_daily',
+        where: 'user_id = ? AND date = ?',
+        whereArgs: [userId, today],
+        limit: 1,
+      );
+      print('🔥 STREAK DEBUG: Today habits: ${todayHabits.length} records');
+
+      final completedToday =
+          todayHabits.isNotEmpty &&
+          ((todayHabits.first['wrote_entry'] as int? ?? 0) == 1 ||
+              (todayHabits.first['filled_affirmations'] as int? ?? 0) == 1 ||
+              (todayHabits.first['filled_gratitude'] as int? ?? 0) == 1 ||
+              (todayHabits.first['self_care_completed_count'] as int? ?? 0) >
+                  0);
+      print('🔥 STREAK DEBUG: Completed today: $completedToday');
+
+      // If user completed tasks today, update streak normally
+      if (completedToday) {
+        print(
+          '🔥 STREAK DEBUG: User completed tasks today, persisting streak: $newStreak',
         );
-        return streak;
+        await _persistStreak(userId, newStreak, lastEntryIso: lastEntryDate);
+        print(
+          '🔥 STREAK DEBUG: calculateStreakWithGrace END - returning: $newStreak',
+        );
+        return newStreak;
       }
 
-      // User didn't write today - check if we should use grace day
-      if (entries.isEmpty) {
-        // No entries at all
+      // User didn't complete tasks today - check if we should use grace day
+      if (lastEntryDate == null) {
+        print(
+          '🔥 STREAK DEBUG: No lastEntryDate, graceDaysAvailable: $graceDaysAvailable',
+        );
+        // No previous tasks
         if (graceDaysAvailable > 0) {
-          // Use grace day to maintain streak
+          print('🔥 STREAK DEBUG: Using grace day (no previous tasks)');
           await _useGraceDayForStreak(userId);
-          return await _getCurrentStreak(userId);
+          final current = await _getCurrentStreak(userId);
+          print(
+            '🔥 STREAK DEBUG: calculateStreakWithGrace END - returning current: $current',
+          );
+          return current;
         }
-        // No grace days, reset streak
+        print('🔥 STREAK DEBUG: No grace days, persisting streak 0');
         await _persistStreak(userId, 0);
+        print('🔥 STREAK DEBUG: calculateStreakWithGrace END - returning 0');
         return 0;
       }
 
-      // Has entries but didn't write today
-      // Use entry_date if available, fallback to created_at
-      final lastEntryDateStr = entries.first['entry_date'] ?? entries.first['created_at'];
-      final lastEntryDate = DateTime.parse(lastEntryDateStr);
-      final lastEntryDateOnly = DateTime(lastEntryDate.year, lastEntryDate.month, lastEntryDate.day);
-      final todayDate = DateTime.parse(today);
-      final todayDateOnly = DateTime(todayDate.year, todayDate.month, todayDate.day);
-      final daysDifference = todayDateOnly.difference(lastEntryDateOnly).inDays;
+      // Check gap
+      final lastDate = DateTime.parse(lastEntryDate);
+      final todayDate = DateTime.now();
+      final todayDateOnly = DateTime(
+        todayDate.year,
+        todayDate.month,
+        todayDate.day,
+      );
+      final lastDateOnly = DateTime(
+        lastDate.year,
+        lastDate.month,
+        lastDate.day,
+      );
+      final daysDifference = todayDateOnly.difference(lastDateOnly).inDays;
+      print(
+        '🔥 STREAK DEBUG: Gap check - lastDateOnly: ${lastDateOnly.toIso8601String().split('T')[0]}, daysDifference: $daysDifference',
+      );
 
       if (daysDifference == 1) {
         // Missed exactly 1 day (yesterday)
+        print('🔥 STREAK DEBUG: 1 day gap detected');
         if (graceDaysAvailable > 0) {
-          // Use grace day to maintain streak
+          print('🔥 STREAK DEBUG: Using grace day for 1 day gap');
           final currentStreak = await _getCurrentStreak(userId);
           await _useGraceDayForStreak(userId);
+          print(
+            '🔥 STREAK DEBUG: calculateStreakWithGrace END - returning current: $currentStreak',
+          );
           return currentStreak; // Maintain current streak
         } else {
-          // No grace days, reset streak
+          print('🔥 STREAK DEBUG: No grace days, persisting streak 0');
           await _persistStreak(userId, 0);
+          print('🔥 STREAK DEBUG: calculateStreakWithGrace END - returning 0');
           return 0;
         }
       } else if (daysDifference > 1) {
         // Missed multiple days
+        print('🔥 STREAK DEBUG: Multiple days gap: $daysDifference');
         if (graceDaysAvailable >= daysDifference - 1) {
-          // Use multiple grace days if available
+          print('🔥 STREAK DEBUG: Using ${daysDifference - 1} grace days');
           for (int i = 0; i < daysDifference - 1; i++) {
             await _useGraceDayForStreak(userId);
           }
-          final currentStreak = await _getCurrentStreak(userId);
-          return currentStreak;
+          final current = await _getCurrentStreak(userId);
+          print(
+            '🔥 STREAK DEBUG: calculateStreakWithGrace END - returning current: $current',
+          );
+          return current;
         } else {
-          // Not enough grace days, reset streak
+          print('🔥 STREAK DEBUG: Not enough grace days, persisting streak 0');
           await _persistStreak(userId, 0);
+          print('🔥 STREAK DEBUG: calculateStreakWithGrace END - returning 0');
           return 0;
         }
       } else {
-        // daysDifference == 0 shouldn't happen if wroteToday is false, but handle it
-        final streak = await _calculateStreak(entries);
-        final lastEntryDate = entries.first['entry_date'] ?? entries.first['created_at'];
-        await _persistStreak(userId, streak, lastEntryIso: lastEntryDate);
-        return streak;
+        // Same day or future (shouldn't happen)
+        print(
+          '🔥 STREAK DEBUG: Same day or future, persisting streak: $newStreak',
+        );
+        await _persistStreak(userId, newStreak, lastEntryIso: lastEntryDate);
+        print(
+          '🔥 STREAK DEBUG: calculateStreakWithGrace END - returning: $newStreak',
+        );
+        return newStreak;
       }
     } catch (e) {
+      print('🔥 STREAK DEBUG: calculateStreakWithGrace ERROR: $e');
       // Log error
       await ErrorLoggingService.logMediumError(
         errorCode: 'ERRSYS119',
@@ -619,86 +847,529 @@ class UserDataService {
         stackTrace: StackTrace.current.toString(),
         errorContext: {'operation': 'calculate_streak_with_grace'},
       );
-      // Fallback to regular streak calculation
-      return await _calculateStreak(entries);
+      // Fallback to today's streak calculation
+      print('🔥 STREAK DEBUG: Falling back to _calculateStreakFromTodayHabits');
+      return await _calculateStreakFromTodayHabits(userId);
     }
   }
 
-  /// Recalculate and update streak after entry save
-  /// Only recalculates if last_entry_date is > 1 day old
-  /// Uses local-first approach: reads from local SQLite, syncs to Supabase (debounced)
-  static Future<void> recalculateStreak(
-    String userId, {
-    DataFetchService? dataFetchService,
-  }) async {
+  /// Calculate streak on app launch (using today_* fields from streaks table)
+  /// Fetches streaks only (1 call), populates local habits_daily from today_* fields
+  static Future<void> calculateStreakOnAppLaunch(String userId) async {
+    print(
+      '🔥 STREAK DEBUG: calculateStreakOnAppLaunch START - userId: $userId',
+    );
     try {
       final db = await DatabaseManager().database;
+      final dataFetchService = DataFetchService(repository: DataRepository());
 
-      // Check if recalculation is needed (only if last_entry_date is > 1 day old)
-      final streaks = await db.query(
+      // 1. Store app startup date (for all operations today)
+      final appStartupDate = DateTime.now();
+      final todayDateOnly = DateTime(
+        appStartupDate.year,
+        appStartupDate.month,
+        appStartupDate.day,
+      );
+      final todayDateStr = todayDateOnly.toIso8601String().split('T')[0];
+      print('🔥 STREAK DEBUG: Today date: $todayDateStr');
+
+      // 2. Fetch streaks from Supabase (1 call)
+      // Invalidate cache first to ensure we get fresh data from Supabase (not cached local)
+      dataFetchService.invalidateStreaksCache(userId);
+      // Also invalidate local DB's last_sync_at to force fresh fetch
+      await db.update(
+        'streaks',
+        {'last_sync_at': null},
+        where: 'user_id = ?',
+        whereArgs: [userId],
+      );
+      print('🔥 STREAK DEBUG: Fetching streaks from Supabase...');
+      final supabaseStreak = await dataFetchService.fetchStreaks(userId);
+      print('🔥 STREAK DEBUG: Supabase streak data: $supabaseStreak');
+
+      if (supabaseStreak == null) {
+        // No streak data, initialize
+        print('🔥 STREAK DEBUG: No Supabase streak data, initializing...');
+        await _ensureStreaksRecordExists(userId);
+        print(
+          '🔥 STREAK DEBUG: calculateStreakOnAppLaunch END - initialized new record',
+        );
+        return;
+      }
+
+      // 3. Cache streaks in local DB (if not already cached)
+      print('🔥 STREAK DEBUG: Checking local streak cache...');
+      final localStreak = await db.query(
+        'streaks',
+        where: 'user_id = ?',
+        whereArgs: [userId],
+        limit: 1,
+      );
+      print(
+        '🔥 STREAK DEBUG: Local streak exists: ${localStreak.isNotEmpty}, last_sync_at: ${localStreak.isNotEmpty ? localStreak.first['last_sync_at'] : 'null'}',
+      );
+
+      if (localStreak.isEmpty || localStreak.first['last_sync_at'] == null) {
+        // Cache Supabase data locally
+        print('🔥 STREAK DEBUG: Caching Supabase data to local DB...');
+        final cacheData = {
+          'user_id': userId,
+          'current': supabaseStreak['current'] ?? 0,
+          'longest': supabaseStreak['longest'] ?? 0,
+          'last_entry_date': supabaseStreak['last_entry_date'],
+          'freeze_credits': supabaseStreak['freeze_credits'] ?? 0,
+          'grace_pieces_total': supabaseStreak['grace_pieces_total'] ?? 0.0,
+          'today_date': supabaseStreak['today_date'],
+          'today_diary': (supabaseStreak['today_diary'] ?? false) ? 1 : 0,
+          'today_affirmations': (supabaseStreak['today_affirmations'] ?? false)
+              ? 1
+              : 0,
+          'today_gratitude': (supabaseStreak['today_gratitude'] ?? false)
+              ? 1
+              : 0,
+          'today_self_care_count': supabaseStreak['today_self_care_count'] ?? 0,
+          'today_grace_pieces': supabaseStreak['today_grace_pieces'] ?? 0.0,
+          'updated_at':
+              supabaseStreak['updated_at'] ?? DateTime.now().toIso8601String(),
+          'is_synced': 1,
+          'last_sync_at': DateTime.now().toIso8601String(),
+        };
+        print('🔥 STREAK DEBUG: Cache data: $cacheData');
+        await db.insert(
+          'streaks',
+          cacheData,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+        print('🔥 STREAK DEBUG: Local cache updated');
+      } else {
+        // Cache exists but ensure today_* fields are synced from Supabase if they're null in local
+        final localTodayDate = localStreak.first['today_date'] as String?;
+        final supabaseTodayDate = supabaseStreak['today_date'] as String?;
+        print(
+          '🔥 STREAK DEBUG: Local cache exists, local today_date: $localTodayDate, Supabase today_date: $supabaseTodayDate',
+        );
+
+        if (localTodayDate == null && supabaseTodayDate != null) {
+          print(
+            '🔥 STREAK DEBUG: Local today_date is null but Supabase has value, updating local today_* fields',
+          );
+          await db.update(
+            'streaks',
+            {
+              'today_date': supabaseTodayDate,
+              'today_diary': (supabaseStreak['today_diary'] ?? false) ? 1 : 0,
+              'today_affirmations':
+                  (supabaseStreak['today_affirmations'] ?? false) ? 1 : 0,
+              'today_gratitude': (supabaseStreak['today_gratitude'] ?? false)
+                  ? 1
+                  : 0,
+              'today_self_care_count':
+                  supabaseStreak['today_self_care_count'] ?? 0,
+              'today_grace_pieces': supabaseStreak['today_grace_pieces'] ?? 0.0,
+            },
+            where: 'user_id = ?',
+            whereArgs: [userId],
+          );
+          print('🔥 STREAK DEBUG: Local today_* fields updated from Supabase');
+        } else {
+          print(
+            '🔥 STREAK DEBUG: Local cache already exists, skipping cache update',
+          );
+        }
+      }
+
+      // 4. Check if today_date matches today
+      final streakTodayDate = supabaseStreak['today_date'] as String?;
+      final isNewDay = streakTodayDate != todayDateStr;
+      print(
+        '🔥 STREAK DEBUG: Streak today_date: $streakTodayDate, App today: $todayDateStr, isNewDay: $isNewDay',
+      );
+
+      if (isNewDay) {
+        // New day - clear local habits_daily and reset today_* fields
+        print(
+          '🔥 STREAK DEBUG: NEW DAY detected - clearing habits_daily and resetting today_* fields',
+        );
+        await db.delete(
+          'habits_daily',
+          where: 'user_id = ?',
+          whereArgs: [userId],
+        );
+        print('🔥 STREAK DEBUG: Deleted all habits_daily records for user');
+
+        // Reset today_* fields in local streaks
+        final resetData = {
+          'today_date': todayDateStr,
+          'today_diary': 0,
+          'today_affirmations': 0,
+          'today_gratitude': 0,
+          'today_self_care_count': 0,
+          'today_grace_pieces': 0.0,
+          'is_synced': 0,
+        };
+        print(
+          '🔥 STREAK DEBUG: Resetting local streaks today_* fields: $resetData',
+        );
+        await db.update(
+          'streaks',
+          resetData,
+          where: 'user_id = ?',
+          whereArgs: [userId],
+        );
+        print('🔥 STREAK DEBUG: Local streaks updated with reset data');
+
+        // Push reset to Supabase via RPC
+        final syncData = {
+          'current': supabaseStreak['current'] ?? 0,
+          'longest': supabaseStreak['longest'] ?? 0,
+          'last_entry_date': supabaseStreak['last_entry_date'],
+          'freeze_credits': supabaseStreak['freeze_credits'] ?? 0,
+          'grace_pieces_total': supabaseStreak['grace_pieces_total'] ?? 0.0,
+          'today_date': todayDateStr,
+          'today_diary': false,
+          'today_affirmations': false,
+          'today_gratitude': false,
+          'today_self_care_count': 0,
+          'today_grace_pieces': 0.0,
+        };
+        print('🔥 STREAK DEBUG: Syncing reset data to Supabase: $syncData');
+        await _syncService.batchUpdateStreakData(
+          userId: userId,
+          streakData: syncData,
+        );
+        print('🔥 STREAK DEBUG: Reset data synced to Supabase');
+      } else {
+        // Same day - populate local habits_daily from streaks.today_* fields
+        print(
+          '🔥 STREAK DEBUG: SAME DAY - populating habits_daily from streaks.today_*',
+        );
+        final todayHabits = await db.query(
+          'habits_daily',
+          where: 'user_id = ? AND date = ?',
+          whereArgs: [userId, todayDateStr],
+          limit: 1,
+        );
+        print(
+          '🔥 STREAK DEBUG: Existing habits_daily records: ${todayHabits.length}',
+        );
+
+        if (todayHabits.isEmpty) {
+          // Create today's habits_daily record from streaks.today_* fields
+          final uuid = const Uuid().v4();
+          final habitData = {
+            'id': uuid,
+            'user_id': userId,
+            'date': todayDateStr,
+            'wrote_entry': (supabaseStreak['today_diary'] ?? false) ? 1 : 0,
+            'filled_affirmations':
+                (supabaseStreak['today_affirmations'] ?? false) ? 1 : 0,
+            'filled_gratitude': (supabaseStreak['today_gratitude'] ?? false)
+                ? 1
+                : 0,
+            'self_care_completed_count':
+                supabaseStreak['today_self_care_count'] ?? 0,
+            'grace_pieces_earned': supabaseStreak['today_grace_pieces'] ?? 0.0,
+            'is_synced': 1,
+            'last_sync_at': DateTime.now().toIso8601String(),
+          };
+          print('🔥 STREAK DEBUG: Creating habits_daily record: $habitData');
+          await db.insert('habits_daily', habitData);
+          print('🔥 STREAK DEBUG: habits_daily record created');
+        } else {
+          print(
+            '🔥 STREAK DEBUG: habits_daily record already exists, skipping creation',
+          );
+        }
+      }
+
+      // 5. Check for gaps and handle streak
+      final lastEntryDateStr = supabaseStreak['last_entry_date'] as String?;
+      final currentStreak = supabaseStreak['current'] as int? ?? 0;
+      print(
+        '🔥 STREAK DEBUG: last_entry_date: $lastEntryDateStr, current: $currentStreak',
+      );
+
+      if (lastEntryDateStr == null) {
+        // No last_entry_date - only recalculate if current streak is 0 (new user)
+        // If current > 0, trust the Supabase value (might be manually set)
+        print(
+          '🔥 STREAK DEBUG: last_entry_date is null, current: $currentStreak',
+        );
+        if (currentStreak == 0) {
+          print('🔥 STREAK DEBUG: Recalculating streak (new user)');
+          await recalculateStreak(userId, dataFetchService: dataFetchService);
+        } else {
+          print(
+            '🔥 STREAK DEBUG: Trusting Supabase value (manually set), skipping recalculation',
+          );
+        }
+        print(
+          '🔥 STREAK DEBUG: calculateStreakOnAppLaunch END - no last_entry_date',
+        );
+        return;
+      }
+
+      final lastEntryDate = DateTime.parse(lastEntryDateStr);
+      final lastDateOnly = DateTime(
+        lastEntryDate.year,
+        lastEntryDate.month,
+        lastEntryDate.day,
+      );
+      final daysDiff = todayDateOnly.difference(lastDateOnly).inDays;
+      print(
+        '🔥 STREAK DEBUG: lastDateOnly: ${lastDateOnly.toIso8601String().split('T')[0]}, daysDiff: $daysDiff',
+      );
+
+      if (daysDiff == 0) {
+        // Same day - trust current streak from Supabase (don't recalculate)
+        // BUT: If current > longest, update longest to match current (handles manual updates)
+        final currentStreak = supabaseStreak['current'] as int? ?? 0;
+        final longestStreak = supabaseStreak['longest'] as int? ?? 0;
+
+        if (currentStreak > longestStreak) {
+          print(
+            '🔥 STREAK DEBUG: current ($currentStreak) > longest ($longestStreak), updating longest',
+          );
+          // Update longest to match current
+          await db.update(
+            'streaks',
+            {
+              'longest': currentStreak,
+              'updated_at': DateTime.now().toIso8601String(),
+              'is_synced': 0,
+            },
+            where: 'user_id = ?',
+            whereArgs: [userId],
+          );
+
+          // Sync updated longest to Supabase
+          final syncData = {
+            'current': currentStreak,
+            'longest': currentStreak, // Updated longest
+            'last_entry_date': supabaseStreak['last_entry_date'],
+            'freeze_credits': supabaseStreak['freeze_credits'] ?? 0,
+            'grace_pieces_total': supabaseStreak['grace_pieces_total'] ?? 0.0,
+            'today_date': supabaseStreak['today_date'],
+            'today_diary': supabaseStreak['today_diary'] ?? false,
+            'today_affirmations': supabaseStreak['today_affirmations'] ?? false,
+            'today_gratitude': supabaseStreak['today_gratitude'] ?? false,
+            'today_self_care_count':
+                supabaseStreak['today_self_care_count'] ?? 0,
+            'today_grace_pieces': supabaseStreak['today_grace_pieces'] ?? 0.0,
+          };
+          print(
+            '🔥 STREAK DEBUG: Syncing updated longest to Supabase: $syncData',
+          );
+          await _syncService.batchUpdateStreakData(
+            userId: userId,
+            streakData: syncData,
+          );
+          print('🔥 STREAK DEBUG: Longest updated and synced to Supabase');
+        } else {
+          print(
+            '🔥 STREAK DEBUG: Same day, trusting Supabase streak, skipping recalculation',
+          );
+        }
+        print('🔥 STREAK DEBUG: calculateStreakOnAppLaunch END - same day');
+        return;
+      }
+
+      if (daysDiff > 0) {
+        // Gap detected - handle with grace days
+        final graceDays = supabaseStreak['freeze_credits'] as int? ?? 0;
+        print(
+          '🔥 STREAK DEBUG: Gap detected: $daysDiff days, grace days available: $graceDays',
+        );
+
+        if (daysDiff == 1 && graceDays > 0) {
+          print('🔥 STREAK DEBUG: 1 day gap, using grace day');
+          await GraceSystemService.useGraceDay(
+            userId,
+            dataFetchService: dataFetchService,
+          );
+          await recalculateStreak(userId, dataFetchService: dataFetchService);
+        } else if (daysDiff > 1) {
+          if (graceDays >= daysDiff - 1) {
+            print(
+              '🔥 STREAK DEBUG: $daysDiff days gap, using ${daysDiff - 1} grace days',
+            );
+            for (int i = 0; i < daysDiff - 1; i++) {
+              await GraceSystemService.useGraceDay(
+                userId,
+                dataFetchService: dataFetchService,
+              );
+            }
+            await recalculateStreak(userId, dataFetchService: dataFetchService);
+          } else {
+            // Reset streak
+            print(
+              '🔥 STREAK DEBUG: Not enough grace days, resetting streak to 0',
+            );
+            await db.update(
+              'streaks',
+              {
+                'current': 0,
+                'last_entry_date': null,
+                'updated_at': DateTime.now().toIso8601String(),
+                'is_synced': 0,
+              },
+              where: 'user_id = ?',
+              whereArgs: [userId],
+            );
+            final resetSyncData = {
+              'current': 0,
+              'longest': supabaseStreak['longest'] ?? 0,
+              'last_entry_date': null,
+              'freeze_credits': graceDays,
+              'grace_pieces_total': supabaseStreak['grace_pieces_total'] ?? 0.0,
+              'today_date': todayDateStr,
+              'today_diary': false,
+              'today_affirmations': false,
+              'today_gratitude': false,
+              'today_self_care_count': 0,
+              'today_grace_pieces': 0.0,
+            };
+            print(
+              '🔥 STREAK DEBUG: Syncing reset streak to Supabase: $resetSyncData',
+            );
+            await _syncService.batchUpdateStreakData(
+              userId: userId,
+              streakData: resetSyncData,
+            );
+          }
+        }
+      }
+      print('🔥 STREAK DEBUG: calculateStreakOnAppLaunch END - completed');
+    } catch (e) {
+      print('🔥 STREAK DEBUG: calculateStreakOnAppLaunch ERROR: $e');
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS162',
+        errorMessage: 'App launch streak calculation failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {'user_id': userId},
+      );
+    }
+  }
+
+  /// Helper: Ensure streaks record exists
+  static Future<void> _ensureStreaksRecordExists(String userId) async {
+    try {
+      final db = await DatabaseManager().database;
+      final existing = await db.query(
         'streaks',
         where: 'user_id = ?',
         whereArgs: [userId],
         limit: 1,
       );
 
+      if (existing.isEmpty) {
+        final todayDateStr = DateTime.now().toIso8601String().split('T')[0];
+        await db.insert('streaks', {
+          'user_id': userId,
+          'current': 0,
+          'longest': 0,
+          'last_entry_date': null,
+          'freeze_credits': 0,
+          'grace_pieces_total': 0.0,
+          'today_date': todayDateStr,
+          'today_diary': 0,
+          'today_affirmations': 0,
+          'today_gratitude': 0,
+          'today_self_care_count': 0,
+          'today_grace_pieces': 0.0,
+          'updated_at': DateTime.now().toIso8601String(),
+          'is_synced': 0,
+        });
+      }
+    } catch (e) {
+      // Silently fail - this is a helper method
+    }
+  }
+
+  /// Recalculate and update streak after entry save
+  /// Uses habits_daily instead of entries table
+  /// Uses local-first approach: reads from local SQLite, syncs to Supabase via RPC (debounced)
+  static Future<void> recalculateStreak(
+    String userId, {
+    DataFetchService? dataFetchService,
+  }) async {
+    print('🔥 STREAK DEBUG: recalculateStreak START - userId: $userId');
+    try {
+      final db = await DatabaseManager().database;
+
+      // Check if recalculation is needed (recalculate if date changed)
+      final streaks = await db.query(
+        'streaks',
+        where: 'user_id = ?',
+        whereArgs: [userId],
+        limit: 1,
+      );
+      print('🔥 STREAK DEBUG: Existing streaks: ${streaks.length}');
+
       if (streaks.isNotEmpty) {
         final lastEntryDateStr = streaks.first['last_entry_date'] as String?;
+        print('🔥 STREAK DEBUG: last_entry_date: $lastEntryDateStr');
         if (lastEntryDateStr != null) {
-          final lastEntryDate = DateTime.parse(lastEntryDateStr);
-          final today = DateTime.now();
-          final daysDiff = today.difference(lastEntryDate).inDays;
-          if (daysDiff <= 1) {
-            // Recent entry, no need to recalculate
-            return;
+          try {
+            final lastEntryDate = DateTime.parse(lastEntryDateStr);
+            final today = DateTime.now();
+            final todayDateOnly = DateTime(today.year, today.month, today.day);
+            final lastDateOnly = DateTime(
+              lastEntryDate.year,
+              lastEntryDate.month,
+              lastEntryDate.day,
+            );
+            print(
+              '🔥 STREAK DEBUG: lastDateOnly: ${lastDateOnly.toIso8601String().split('T')[0]}, todayDateOnly: ${todayDateOnly.toIso8601String().split('T')[0]}',
+            );
+
+            // Recalculate if last_entry_date is before today (date changed)
+            // This fixes the bug where daysDiff = 1 (yesterday) was incorrectly skipped
+            if (lastDateOnly.isAtSameMomentAs(todayDateOnly) ||
+                lastDateOnly.isAfter(todayDateOnly)) {
+              // Same day or future date, no need to recalculate
+              print(
+                '🔥 STREAK DEBUG: Same day or future, skipping recalculation',
+              );
+              return;
+            }
+            // Date changed (lastDateOnly is before todayDateOnly), continue to recalculate
+            print(
+              '🔥 STREAK DEBUG: Date changed, proceeding with recalculation',
+            );
+          } catch (e) {
+            print('🔥 STREAK DEBUG: Date parsing error: $e');
+            // Date parsing failed, continue to recalculate to be safe
+            await ErrorLoggingService.logLowError(
+              errorCode: 'ERRSYS159',
+              errorMessage:
+                  'Date parsing failed in recalculateStreak: ${e.toString()}',
+              stackTrace: StackTrace.current.toString(),
+              errorContext: {
+                'user_id': userId,
+                'last_entry_date': lastEntryDateStr,
+                'operation': 'recalculate_streak_date_check',
+              },
+            );
+            // Continue to recalculate if date parsing fails
           }
         }
       }
 
-      // Fetch entries with entry_date (read from local SQLite or use DataFetchService)
-      List<Map<String, dynamic>> entries;
-      
-      if (dataFetchService != null) {
-        // Use cached fetchEntries
-        final now = DateTime.now();
-        final startDate = DateTime(now.year - 10, 1, 1);
-        final entriesList = await dataFetchService.fetchEntries(
-          userId: userId,
-          startDate: startDate,
-          endDate: now,
-        );
-        entries = entriesList.map((e) => {
-          'id': e.id,
-          'entry_date': e.entryDate.toIso8601String().split('T')[0],
-          'created_at': e.createdAt.toIso8601String(),
-        }).toList();
-      } else {
-        // Fallback: read from local SQLite
-        final localEntries = await db.query(
-          'entries',
-          columns: ['id', 'entry_date', 'created_at'],
-          where: 'user_id = ?',
-          whereArgs: [userId],
-          orderBy: 'entry_date DESC',
-        );
-        entries = localEntries;
-      }
-
-      // Calculate streak with grace system (automatically persists)
+      // Calculate streak from habits_daily (not entries table)
+      print('🔥 STREAK DEBUG: Calling calculateStreakWithGrace');
       await calculateStreakWithGrace(
         userId,
-        entries,
         dataFetchService: dataFetchService,
       );
+      print('🔥 STREAK DEBUG: recalculateStreak END');
     } catch (e) {
+      print('🔥 STREAK DEBUG: recalculateStreak ERROR: $e');
       await ErrorLoggingService.logLowError(
         errorCode: 'ERRSYS157',
         errorMessage: 'Streak recalculation failed: ${e.toString()}',
         stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'operation': 'recalculate_streak',
-        },
+        errorContext: {'user_id': userId, 'operation': 'recalculate_streak'},
       );
     }
   }
@@ -758,7 +1429,7 @@ class UserDataService {
   }) async {
     try {
       final db = await DatabaseManager().database;
-      
+
       if (dataFetchService != null) {
         // Use cached fetchStreaks (now reconnected)
         final response = await dataFetchService.fetchStreaks(userId);
@@ -772,12 +1443,12 @@ class UserDataService {
           whereArgs: [userId],
           limit: 1,
         );
-        
+
         if (streaks.isNotEmpty) {
           return streaks.first['current'] as int? ?? 0;
         }
       }
-      
+
       return 0;
     } catch (e) {
       return 0;
@@ -791,7 +1462,7 @@ class UserDataService {
   }) async {
     try {
       Map<String, dynamic>? response;
-      
+
       if (dataFetchService != null) {
         // Use cached fetchUserSettings
         response = await dataFetchService.fetchUserSettings(userId);
@@ -803,7 +1474,7 @@ class UserDataService {
             .eq('user_id', userId)
             .maybeSingle();
       }
-      
+
       if (response == null) {
         // Return default preferences if none exist
         return DataResult(

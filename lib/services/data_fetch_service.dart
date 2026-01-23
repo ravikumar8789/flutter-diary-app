@@ -6,6 +6,7 @@ import '../models/analytics_models.dart';
 import 'error_logging_service.dart';
 import 'analytics_service.dart';
 import 'database/database_manager.dart';
+import 'user_data_service.dart';
 
 /// Centralized data fetching service
 /// 
@@ -87,109 +88,47 @@ class DataFetchService {
 
   /// Fetch habits_daily with date range
   /// 
-  /// Returns cached data if available, otherwise fetches from DB.
-  /// Automatically handles deduplication if same query is in-flight.
-  /// Uses local-first approach: reads from local SQLite first, then Supabase if missing.
+  /// DEPRECATED: This method is deprecated. habits_daily table removed from Supabase.
+  /// Use streaks.today_* fields instead. This method now only returns today's data from local DB.
+  /// 
+  /// Returns today's data from local SQLite only (if available).
+  /// No longer fetches from Supabase or historical data.
+  @Deprecated('Use streaks.today_* fields instead. This method only returns today\'s local data.')
   Future<List<HabitsDaily>> fetchHabitsDaily({
     required String userId,
     required DateTime startDate,
     required DateTime endDate,
   }) async {
-    // Generate cache key
-    final startDateStr = startDate.toIso8601String().split('T')[0];
-    final endDateStr = endDate.toIso8601String().split('T')[0];
-    final key = 'habits_${userId}_${startDateStr}_${endDateStr}';
-
+    // DEPRECATED: Only return today's data from local DB (if available)
+    // No longer fetches from Supabase or historical data
     try {
-      return await _repository.fetch<List<HabitsDaily>>(
-        key: key,
-        fetcher: () async {
-          try {
-            // Local-first: Try to read from local SQLite first
-            final db = await DatabaseManager().database;
-            final localHabits = await db.query(
-              'habits_daily',
-              where: 'user_id = ? AND date >= ? AND date <= ?',
-              whereArgs: [userId, startDateStr, endDateStr],
-              orderBy: 'date DESC',
-            );
-
-            // Check if we have all dates covered
-            final localDates = localHabits.map((h) => h['date'] as String).toSet();
-            final allDates = <String>{};
-            var currentDate = startDate;
-            while (currentDate.isBefore(endDate) || currentDate.isAtSameMomentAs(endDate)) {
-              allDates.add(currentDate.toIso8601String().split('T')[0]);
-              currentDate = currentDate.add(const Duration(days: 1));
-            }
-
-            // If we have all dates locally, return local data
-            if (localDates.length == allDates.length && localHabits.isNotEmpty) {
-              return localHabits.map((h) {
-                return HabitsDaily(
-                  id: h['id'] as String,
-                  userId: h['user_id'] as String,
-                  date: DateTime.parse(h['date'] as String),
-                  wroteEntry: (h['wrote_entry'] as int? ?? 0) == 1,
-                  filledAffirmations: (h['filled_affirmations'] as int? ?? 0) == 1,
-                  filledGratitude: (h['filled_gratitude'] as int? ?? 0) == 1,
-                  selfCareCompletedCount: h['self_care_completed_count'] as int? ?? 0,
-                  gracePiecesEarned: (h['grace_pieces_earned'] as num? ?? 0.0).toDouble(),
-                );
-              }).toList();
-            }
-
-            // If missing, fetch from Supabase
-            final response = await _supabase
-                .from('habits_daily')
-                .select('*')
-                .eq('user_id', userId)
-                .gte('date', startDateStr)
-                .lte('date', endDateStr)
-                .order('date', ascending: false);
-
-            final habits = (response as List)
-                .map((e) => HabitsDaily.fromJson(e as Map<String, dynamic>))
-                .toList();
-
-            // Cache in local SQLite
-            for (final habit in habits) {
-              await db.insert(
-                'habits_daily',
-                {
-                  'id': habit.id,
-                  'user_id': habit.userId,
-                  'date': habit.date.toIso8601String().split('T')[0],
-                  'wrote_entry': habit.wroteEntry ? 1 : 0,
-                  'filled_affirmations': habit.filledAffirmations ? 1 : 0,
-                  'filled_gratitude': habit.filledGratitude ? 1 : 0,
-                  'self_care_completed_count': habit.selfCareCompletedCount,
-                  'grace_pieces_earned': habit.gracePiecesEarned,
-                  'is_synced': 1,
-                  'last_sync_at': DateTime.now().toIso8601String(),
-                },
-                conflictAlgorithm: ConflictAlgorithm.replace,
-              );
-            }
-
-            return habits;
-          } catch (e) {
-            await ErrorLoggingService.logHighError(
-              errorCode: 'ERRDATA210',
-              errorMessage: 'DB query failed (habits_daily): ${e.toString()}',
-              stackTrace: StackTrace.current.toString(),
-              errorContext: {
-                'user_id': userId,
-                'start_date': startDateStr,
-                'end_date': endDateStr,
-                'table': 'habits_daily',
-                'operation': 'fetch_habits_daily',
-              },
-            );
-            rethrow;
-          }
-        },
+      final today = DateTime.now().toIso8601String().split('T')[0];
+      final db = await DatabaseManager().database;
+      
+      // Only return today's data from local DB
+      final todayHabits = await db.query(
+        'habits_daily',
+        where: 'user_id = ? AND date = ?',
+        whereArgs: [userId, today],
+        limit: 1,
       );
+
+      if (todayHabits.isEmpty) {
+        return <HabitsDaily>[];
+      }
+
+      return todayHabits.map((h) {
+        return HabitsDaily(
+          id: h['id'] as String,
+          userId: h['user_id'] as String,
+          date: DateTime.parse(h['date'] as String),
+          wroteEntry: (h['wrote_entry'] as int? ?? 0) == 1,
+          filledAffirmations: (h['filled_affirmations'] as int? ?? 0) == 1,
+          filledGratitude: (h['filled_gratitude'] as int? ?? 0) == 1,
+          selfCareCompletedCount: h['self_care_completed_count'] as int? ?? 0,
+          gracePiecesEarned: (h['grace_pieces_earned'] as num? ?? 0.0).toDouble(),
+        );
+      }).toList();
     } catch (e) {
       await ErrorLoggingService.logHighError(
         errorCode: 'ERRDATA211',
@@ -197,11 +136,10 @@ class DataFetchService {
         stackTrace: StackTrace.current.toString(),
         errorContext: {
           'user_id': userId,
-          'cache_key': key,
-          'operation': 'fetch_habits_daily',
+          'operation': 'fetch_habits_daily_deprecated',
         },
       );
-      rethrow;
+      return <HabitsDaily>[];
     }
   }
 
@@ -466,35 +404,68 @@ class DataFetchService {
 
             if (localStreak.isNotEmpty) {
               final streak = localStreak.first;
-              // Check if stale (older than 15 minutes)
-              final lastSyncAt = streak['last_sync_at'] as String?;
-              if (lastSyncAt != null) {
-                final lastSync = DateTime.parse(lastSyncAt);
-                final now = DateTime.now();
-                if (now.difference(lastSync).inMinutes < 15) {
-                  // Return local data if fresh
-                  return {
-                    'user_id': streak['user_id'],
-                    'current': streak['current'],
-                    'longest': streak['longest'],
-                    'last_entry_date': streak['last_entry_date'],
-                    'freeze_credits': streak['freeze_credits'],
-                    'grace_pieces_total': streak['grace_pieces_total'],
-                    'updated_at': streak['updated_at'],
-                  };
+              
+              // CRITICAL: Check if date changed (more important than time-based staleness)
+              final lastEntryDateStr = streak['last_entry_date'] as String?;
+              bool dateChanged = false;
+              
+              if (lastEntryDateStr != null) {
+                try {
+                  final lastEntryDate = DateTime.parse(lastEntryDateStr);
+                  final today = DateTime.now();
+                  final todayDateOnly = DateTime(today.year, today.month, today.day);
+                  final lastDateOnly = DateTime(lastEntryDate.year, lastEntryDate.month, lastEntryDate.day);
+                  
+                  // If date changed, need recalculation (don't return cached data)
+                  dateChanged = lastDateOnly.isBefore(todayDateOnly);
+                } catch (e) {
+                  // If date parsing fails, treat as date changed to be safe
+                  dateChanged = true;
                 }
               }
+              
+              // If date changed, skip cache and trigger recalculation
+              if (!dateChanged) {
+                // Same day, check time-based staleness (15 minutes)
+                final lastSyncAt = streak['last_sync_at'] as String?;
+                if (lastSyncAt != null) {
+                  final lastSync = DateTime.parse(lastSyncAt);
+                  final now = DateTime.now();
+                  if (now.difference(lastSync).inMinutes < 15) {
+                    // Return local data if fresh (same day and recent sync)
+                    return {
+                      'user_id': streak['user_id'],
+                      'current': streak['current'],
+                      'longest': streak['longest'],
+                      'last_entry_date': streak['last_entry_date'],
+                      'freeze_credits': streak['freeze_credits'],
+                      'grace_pieces_total': streak['grace_pieces_total'],
+                      'updated_at': streak['updated_at'],
+                      'today_date': streak['today_date'],
+                      'today_diary': streak['today_diary'],
+                      'today_affirmations': streak['today_affirmations'],
+                      'today_gratitude': streak['today_gratitude'],
+                      'today_self_care_count': streak['today_self_care_count'],
+                      'today_grace_pieces': streak['today_grace_pieces'],
+                    };
+                  }
+                }
+              }
+              // If date changed or stale, fall through to fetch from Supabase and recalculate
             }
 
             // If missing or stale, fetch from Supabase
+            print('🔥 STREAK DEBUG: fetchStreaks - Fetching from Supabase with select(*)');
             final response = await _supabase
                 .from('streaks')
                 .select('*')
                 .eq('user_id', userId)
                 .maybeSingle();
+            print('🔥 STREAK DEBUG: fetchStreaks - Supabase raw response: $response');
 
             if (response != null) {
               // Cache in local SQLite
+              print('🔥 STREAK DEBUG: fetchStreaks - Caching Supabase response to local DB');
               await db.insert(
                 'streaks',
                 {
@@ -504,12 +475,52 @@ class DataFetchService {
                   'last_entry_date': response['last_entry_date'],
                   'freeze_credits': response['freeze_credits'] ?? 0,
                   'grace_pieces_total': response['grace_pieces_total'] ?? 0.0,
+                  'today_date': response['today_date'],
+                  'today_diary': (response['today_diary'] ?? false) ? 1 : 0,
+                  'today_affirmations': (response['today_affirmations'] ?? false) ? 1 : 0,
+                  'today_gratitude': (response['today_gratitude'] ?? false) ? 1 : 0,
+                  'today_self_care_count': response['today_self_care_count'] ?? 0,
+                  'today_grace_pieces': response['today_grace_pieces'] ?? 0.0,
                   'updated_at': response['updated_at'] ?? DateTime.now().toIso8601String(),
                   'is_synced': 1,
                   'last_sync_at': DateTime.now().toIso8601String(),
                 },
                 conflictAlgorithm: ConflictAlgorithm.replace,
               );
+              print('🔥 STREAK DEBUG: fetchStreaks - Cached to local DB');
+              
+              // Check if date changed and trigger recalculation if needed
+              final lastEntryDateStr = response['last_entry_date'] as String?;
+              if (lastEntryDateStr != null) {
+                try {
+                  final lastEntryDate = DateTime.parse(lastEntryDateStr);
+                  final today = DateTime.now();
+                  final todayDateOnly = DateTime(today.year, today.month, today.day);
+                  final lastDateOnly = DateTime(lastEntryDate.year, lastEntryDate.month, lastEntryDate.day);
+                  
+                  // If date changed, trigger recalculation (async, non-blocking)
+                  if (lastDateOnly.isBefore(todayDateOnly)) {
+                    // Date changed, recalculate streak in background
+                    UserDataService.recalculateStreak(
+                      userId,
+                      dataFetchService: this,
+                    ).catchError((e) {
+                    // Log error but don't fail the fetch
+                    ErrorLoggingService.logLowError(
+                      errorCode: 'ERRDATA225',
+                      errorMessage: 'Background streak recalculation failed: ${e.toString()}',
+                      stackTrace: StackTrace.current.toString(),
+                      errorContext: {
+                        'user_id': userId,
+                        'operation': 'fetch_streaks_recalculate',
+                      },
+                    );
+                    });
+                  }
+                } catch (e) {
+                  // Date parsing failed, skip recalculation
+                }
+              }
             } else {
               // Create default record in local SQLite if doesn't exist
               await db.insert(

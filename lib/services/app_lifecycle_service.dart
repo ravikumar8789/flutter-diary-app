@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'sync/sync_worker.dart';
 import 'error_logging_service.dart';
 import '../providers/privacy_lock_provider.dart';
+import '../providers/entry_provider.dart';
 
 class AppLifecycleService extends WidgetsBindingObserver {
   final SyncWorker _syncWorker = SyncWorker();
@@ -44,12 +45,28 @@ class AppLifecycleService extends WidgetsBindingObserver {
           _checkPrivacyLockAutoLock();
           break;
         case AppLifecycleState.paused:
+        case AppLifecycleState.detached:
+          // Force immediate save before app closes
+          if (_container != null) {
+            try {
+              final entryNotifier = _container!.read(entryProvider.notifier);
+              entryNotifier.forceImmediateSave();
+            } catch (e) {
+              ErrorLoggingService.logMediumError(
+                errorCode: 'ERRSYS022',
+                errorMessage: 'Force save on app close failed: ${e.toString()}',
+                stackTrace: StackTrace.current.toString(),
+                errorContext: {
+                  'lifecycle_state': state.toString(),
+                  'operation': 'force_save_on_close',
+                },
+              );
+            }
+          }
           // App is going to background - start auto-lock timer
           _startAutoLockTimer();
           break;
         case AppLifecycleState.inactive:
-          break;
-        case AppLifecycleState.detached:
           break;
         case AppLifecycleState.hidden:
           break;

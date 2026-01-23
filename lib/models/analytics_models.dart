@@ -175,6 +175,12 @@ class Streak {
   final DateTime? lastEntryDate;
   final int freezeCredits;
   final double gracePiecesTotal;
+  final DateTime? todayDate;
+  final bool todayDiary;
+  final bool todayAffirmations;
+  final bool todayGratitude;
+  final int todaySelfCareCount;
+  final double todayGracePieces;
   final DateTime updatedAt;
 
   Streak({
@@ -184,6 +190,12 @@ class Streak {
     this.lastEntryDate,
     this.freezeCredits = 0,
     this.gracePiecesTotal = 0.0,
+    this.todayDate,
+    this.todayDiary = false,
+    this.todayAffirmations = false,
+    this.todayGratitude = false,
+    this.todaySelfCareCount = 0,
+    this.todayGracePieces = 0.0,
     required this.updatedAt,
   });
 
@@ -197,6 +209,14 @@ class Streak {
           : null,
       freezeCredits: json['freeze_credits'] as int? ?? 0,
       gracePiecesTotal: ((json['grace_pieces_total'] ?? 0.0) as num).toDouble(),
+      todayDate: json['today_date'] != null
+          ? DateTime.parse(json['today_date'] as String)
+          : null,
+      todayDiary: json['today_diary'] as bool? ?? false,
+      todayAffirmations: json['today_affirmations'] as bool? ?? false,
+      todayGratitude: json['today_gratitude'] as bool? ?? false,
+      todaySelfCareCount: json['today_self_care_count'] as int? ?? 0,
+      todayGracePieces: ((json['today_grace_pieces'] ?? 0.0) as num).toDouble(),
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );
   }
@@ -211,6 +231,12 @@ class Streak {
       )[0], // Date only
       'freeze_credits': freezeCredits,
       'grace_pieces_total': gracePiecesTotal,
+      'today_date': todayDate?.toIso8601String().split('T')[0],
+      'today_diary': todayDiary,
+      'today_affirmations': todayAffirmations,
+      'today_gratitude': todayGratitude,
+      'today_self_care_count': todaySelfCareCount,
+      'today_grace_pieces': todayGracePieces,
       'updated_at': updatedAt.toIso8601String(),
     };
   }

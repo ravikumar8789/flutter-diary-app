@@ -66,10 +66,19 @@ class Entry {
 
   // Convert to Supabase JSON format
   Map<String, dynamic> toSupabaseJson() {
+    // Convert entryDate to UTC before extracting date string
+    // Supabase stores entry_date in UTC, so we must send UTC date
+    final entryDateUtc = entryDate.toUtc();
+    final entryDateStr = DateTime(
+      entryDateUtc.year,
+      entryDateUtc.month,
+      entryDateUtc.day,
+    ).toIso8601String().split('T')[0];
+    
     return {
       'id': id,
       'user_id': userId,
-      'entry_date': entryDate.toIso8601String().split('T')[0],
+      'entry_date': entryDateStr,
       'diary_text': diaryText,
       'mood_score': moodScore,
       'tags': tags,

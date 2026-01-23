@@ -1,4 +1,4 @@
 ---
-alwaysApply: true
+alwaysApply: false
 ---
 dont add any dependency on your own, if needed tell me i will do it mannualy.

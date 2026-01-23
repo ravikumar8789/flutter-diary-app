@@ -8,12 +8,14 @@ import '../providers/user_data_provider.dart';
 import '../providers/grace_system_provider.dart';
 import '../widgets/grace_system_info_card.dart';
 import '../providers/data_providers.dart'; // Use new cached providers (homeSummaryProvider)
-import '../providers/home_summary_provider.dart'; // For aiInsightProvider, recentInsightsProvider, yesterdayInsightProvider
 import '../models/home_summary_models.dart';
 import '../widgets/yesterday_insight_card.dart';
 import '../providers/recent_entries_provider.dart';
 import '../models/history_entry_model.dart';
 import '../services/streak_motivation_service.dart';
+import '../services/data_sync_flag_service.dart';
+import '../services/data_prefetch_service.dart';
+import '../services/error_logging_service.dart';
 
 // Import aiInsightProvider from home_summary_provider
 
@@ -82,6 +84,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _hasLoadedUserData = false;
+  bool _hasCheckedPrefetch = false;
   String? _currentUserId;
 
   @override
@@ -104,6 +107,57 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
+  /// Handle prefetch after login (7 days data only)
+  /// Called when HomeScreen shows loading state after login
+  Future<void> _handlePrefetchAfterLogin(String userId) async {
+    try {
+      // Check if data fetch is needed
+      final needsFetch = await DataSyncFlagService.needsDataFetch();
+      
+      if (needsFetch) {
+        try {
+          final dataFetchService = ref.read(dataFetchServiceProvider);
+          
+          // Fetch 7 days data (includes today, so no need for separate today fetch)
+          await DataPrefetchService.prefetch7DaysData(
+            userId,
+            dataFetchService,
+          );
+          
+          // Set flag to false after successful fetch
+          await DataSyncFlagService.clearNeedsDataFetch();
+          
+          // Invalidate home summary cache and provider to refresh week stats
+          dataFetchService.invalidateHomeSummaryCache(userId);
+          ref.invalidate(homeSummaryProvider);
+          
+        } catch (e) {
+          // Log error but continue - data will be fetched on-demand
+          await ErrorLoggingService.logHighError(
+            errorCode: 'ERRSYS184',
+            errorMessage: 'Prefetch failed in HomeScreen after login: ${e.toString()}',
+            stackTrace: StackTrace.current.toString(),
+            errorContext: {
+              'user_id': userId,
+              'operation': 'home_prefetch_after_login',
+            },
+          );
+          // Keep flag as true so it retries next time
+        }
+      }
+    } catch (e) {
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS185',
+        errorMessage: 'Failed to check prefetch flag in HomeScreen: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'user_id': userId,
+          'operation': 'home_check_prefetch',
+        },
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
@@ -117,6 +171,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     // Show loading state while user data is being fetched
     if (isLoading && userData == null) {
+      // Check if prefetch is needed (after login or fresh install)
+      if (user != null && !_hasCheckedPrefetch) {
+        _hasCheckedPrefetch = true;
+        _handlePrefetchAfterLogin(user.id);
+      }
+      
       return Scaffold(
         appBar: null,
         body: const Center(
@@ -138,7 +198,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         return true;
       },
       child: Scaffold(
-        appBar: null, // No app bar for InnerGlow design
+        appBar: AppBar(
+          title: const Text('Home'),
+        ),
         // drawer removed - using bottom navigation
         body: SafeArea(
           bottom: false,
@@ -963,4 +1025,5 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         return '😐';
     }
   }
+
 }

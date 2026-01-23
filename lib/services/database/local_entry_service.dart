@@ -3,14 +3,18 @@ import 'package:sqflite/sqflite.dart';
 import 'package:intl/intl.dart';
 import '../database/database_manager.dart';
 import '../../models/entry_models.dart';
+import '../error_logging_service.dart';
 
 class LocalEntryService {
   final DatabaseManager _dbManager = DatabaseManager();
 
   // Fetch today's entry (or any date)
+  // Use local date as-is (entry_date is stored as date only, no time)
   Future<Entry?> getEntryByDate(String userId, DateTime date) async {
     final db = await _dbManager.database;
-    final dateStr = DateFormat('yyyy-MM-dd').format(date);
+    // Use date as-is (local date from device)
+    final dateOnly = DateTime(date.year, date.month, date.day);
+    final dateStr = DateFormat('yyyy-MM-dd').format(dateOnly);
 
     final results = await db.query(
       'entries',
@@ -24,134 +28,262 @@ class LocalEntryService {
 
   // Upsert entry (insert or update)
   Future<void> upsertEntry(Entry entry) async {
-    final db = await _dbManager.database;
-    await db.insert(
-      'entries',
-      entry.toJson(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    try {
+      final db = await _dbManager.database;
+      await db.insert(
+        'entries',
+        entry.toJson(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
 
-    // Add to sync queue
-    await _addToSyncQueue(entry.id, 'entries', 'upsert', entry.toJson());
+      // Add to sync queue
+      await _addToSyncQueue(entry.id, 'entries', 'upsert', entry.toJson());
+    } catch (e) {
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRDB010',
+        errorMessage: 'Local entry upsert failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'entry_id': entry.id,
+          'user_id': entry.userId,
+          'entry_date': entry.entryDate.toIso8601String(),
+          'operation': 'upsert_entry_local',
+        },
+      );
+      rethrow;
+    }
   }
 
   // Upsert affirmations
   Future<void> upsertAffirmations(EntryAffirmations affirmations) async {
-    final db = await _dbManager.database;
-    await db.insert(
-      'entry_affirmations',
-      affirmations.toJson(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    try {
+      final db = await _dbManager.database;
+      await db.insert(
+        'entry_affirmations',
+        affirmations.toJson(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
 
-    await _addToSyncQueue(
-      affirmations.entryId,
-      'entry_affirmations',
-      'upsert',
-      affirmations.toJson(),
-    );
+      await _addToSyncQueue(
+        affirmations.entryId,
+        'entry_affirmations',
+        'upsert',
+        affirmations.toJson(),
+      );
+    } catch (e) {
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRDB011',
+        errorMessage: 'Local affirmations upsert failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'entry_id': affirmations.entryId,
+          'affirmations_count': affirmations.affirmations.length,
+          'operation': 'upsert_affirmations_local',
+        },
+      );
+      rethrow;
+    }
   }
 
   // Upsert priorities
   Future<void> upsertPriorities(EntryPriorities priorities) async {
-    final db = await _dbManager.database;
-    await db.insert(
-      'entry_priorities',
-      priorities.toJson(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    try {
+      final db = await _dbManager.database;
+      await db.insert(
+        'entry_priorities',
+        priorities.toJson(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
 
-    await _addToSyncQueue(
-      priorities.entryId,
-      'entry_priorities',
-      'upsert',
-      priorities.toJson(),
-    );
+      await _addToSyncQueue(
+        priorities.entryId,
+        'entry_priorities',
+        'upsert',
+        priorities.toJson(),
+      );
+    } catch (e) {
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRDB012',
+        errorMessage: 'Local priorities upsert failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'entry_id': priorities.entryId,
+          'priorities_count': priorities.priorities.length,
+          'operation': 'upsert_priorities_local',
+        },
+      );
+      rethrow;
+    }
   }
 
   // Upsert meals
   Future<void> upsertMeals(EntryMeals meals) async {
-    final db = await _dbManager.database;
-    await db.insert(
-      'entry_meals',
-      meals.toJson(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    try {
+      final db = await _dbManager.database;
+      await db.insert(
+        'entry_meals',
+        meals.toJson(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
 
-    await _addToSyncQueue(
-      meals.entryId,
-      'entry_meals',
-      'upsert',
-      meals.toJson(),
-    );
+      await _addToSyncQueue(
+        meals.entryId,
+        'entry_meals',
+        'upsert',
+        meals.toJson(),
+      );
+    } catch (e) {
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRDB013',
+        errorMessage: 'Local meals upsert failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'entry_id': meals.entryId,
+          'water_cups': meals.waterCups,
+          'has_breakfast': meals.breakfast != null,
+          'has_lunch': meals.lunch != null,
+          'has_dinner': meals.dinner != null,
+          'operation': 'upsert_meals_local',
+        },
+      );
+      rethrow;
+    }
   }
 
   // Upsert gratitude
   Future<void> upsertGratitude(EntryGratitude gratitude) async {
-    final db = await _dbManager.database;
-    await db.insert(
-      'entry_gratitude',
-      gratitude.toJson(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    try {
+      final db = await _dbManager.database;
+      await db.insert(
+        'entry_gratitude',
+        gratitude.toJson(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
 
-    await _addToSyncQueue(
-      gratitude.entryId,
-      'entry_gratitude',
-      'upsert',
-      gratitude.toJson(),
-    );
+      await _addToSyncQueue(
+        gratitude.entryId,
+        'entry_gratitude',
+        'upsert',
+        gratitude.toJson(),
+      );
+    } catch (e) {
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRDB014',
+        errorMessage: 'Local gratitude upsert failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'entry_id': gratitude.entryId,
+          'grateful_items_count': gratitude.gratefulItems.length,
+          'operation': 'upsert_gratitude_local',
+        },
+      );
+      rethrow;
+    }
   }
 
   // Upsert self care
   Future<void> upsertSelfCare(EntrySelfCare selfCare) async {
-    final db = await _dbManager.database;
-    await db.insert(
-      'entry_self_care',
-      selfCare.toJson(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    try {
+      final db = await _dbManager.database;
+      await db.insert(
+        'entry_self_care',
+        selfCare.toJson(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
 
-    await _addToSyncQueue(
-      selfCare.entryId,
-      'entry_self_care',
-      'upsert',
-      selfCare.toJson(),
-    );
+      await _addToSyncQueue(
+        selfCare.entryId,
+        'entry_self_care',
+        'upsert',
+        selfCare.toJson(),
+      );
+    } catch (e) {
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRDB015',
+        errorMessage: 'Local self-care upsert failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'entry_id': selfCare.entryId,
+          'self_care_data': {
+            'sleep': selfCare.sleep,
+            'get_up_early': selfCare.getUpEarly,
+            'fresh_air': selfCare.freshAir,
+            'learn_new': selfCare.learnNew,
+            'balanced_diet': selfCare.balancedDiet,
+            'podcast': selfCare.podcast,
+            'me_moment': selfCare.meMoment,
+            'hydrated': selfCare.hydrated,
+            'read_book': selfCare.readBook,
+            'exercise': selfCare.exercise,
+          },
+          'operation': 'upsert_self_care_local',
+        },
+      );
+      rethrow;
+    }
   }
 
   // Upsert shower bath
   Future<void> upsertShowerBath(EntryShowerBath showerBath) async {
-    final db = await _dbManager.database;
-    await db.insert(
-      'entry_shower_bath',
-      showerBath.toJson(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    try {
+      final db = await _dbManager.database;
+      await db.insert(
+        'entry_shower_bath',
+        showerBath.toJson(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
 
-    await _addToSyncQueue(
-      showerBath.entryId,
-      'entry_shower_bath',
-      'upsert',
-      showerBath.toJson(),
-    );
+      await _addToSyncQueue(
+        showerBath.entryId,
+        'entry_shower_bath',
+        'upsert',
+        showerBath.toJson(),
+      );
+    } catch (e) {
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRDB016',
+        errorMessage: 'Local shower bath upsert failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'entry_id': showerBath.entryId,
+          'took_shower': showerBath.tookShower,
+          'has_note': showerBath.note != null,
+          'operation': 'upsert_shower_bath_local',
+        },
+      );
+      rethrow;
+    }
   }
 
   // Upsert tomorrow notes
   Future<void> upsertTomorrowNotes(EntryTomorrowNotes tomorrowNotes) async {
-    final db = await _dbManager.database;
-    await db.insert(
-      'entry_tomorrow_notes',
-      tomorrowNotes.toJson(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    try {
+      final db = await _dbManager.database;
+      await db.insert(
+        'entry_tomorrow_notes',
+        tomorrowNotes.toJson(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
 
-    await _addToSyncQueue(
-      tomorrowNotes.entryId,
-      'entry_tomorrow_notes',
-      'upsert',
-      tomorrowNotes.toJson(),
-    );
+      await _addToSyncQueue(
+        tomorrowNotes.entryId,
+        'entry_tomorrow_notes',
+        'upsert',
+        tomorrowNotes.toJson(),
+      );
+    } catch (e) {
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRDB017',
+        errorMessage: 'Local tomorrow notes upsert failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'entry_id': tomorrowNotes.entryId,
+          'tomorrow_notes_count': tomorrowNotes.tomorrowNotes.length,
+          'operation': 'upsert_tomorrow_notes_local',
+        },
+      );
+      rethrow;
+    }
   }
 
   // Get affirmations for entry
@@ -327,13 +459,26 @@ class LocalEntryService {
 
   // Mark entry as synced
   Future<void> markAsSynced(String entryId) async {
-    final db = await _dbManager.database;
-    await db.update(
-      'entries',
-      {'is_synced': 1, 'last_sync_at': DateTime.now().toIso8601String()},
-      where: 'id = ?',
-      whereArgs: [entryId],
-    );
+    try {
+      final db = await _dbManager.database;
+      await db.update(
+        'entries',
+        {'is_synced': 1, 'last_sync_at': DateTime.now().toIso8601String()},
+        where: 'id = ?',
+        whereArgs: [entryId],
+      );
+    } catch (e) {
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRDB018',
+        errorMessage: 'Local mark as synced failed: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'entry_id': entryId,
+          'operation': 'mark_as_synced_local',
+        },
+      );
+      rethrow;
+    }
   }
 
   // Get sync queue

@@ -264,11 +264,11 @@ class DataRepository {
     }
   }
 
-  /// Invalidate home summary cache for a user (debounced)
+  /// Invalidate home summary cache for a user (immediate)
   void invalidateHomeSummary(String userId) {
     try {
       final key = 'home_summary_${userId}';
-      invalidate(key); // Use debounced invalidation
+      invalidateImmediate(key); // Use immediate invalidation to prevent race condition
     } catch (e) {
       ErrorLoggingService.logLowError(
         errorCode: 'ERRDATA209',

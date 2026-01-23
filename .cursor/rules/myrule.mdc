@@ -1,0 +1,9 @@
+---
+name: myrule
+description: This is a new rule
+---
+
+# Overview
+
+Before implementing any code to any feature first check what other functionality needs to be taken care and the implementation we are going to do, what other related things we have to take care for the better flow of the app.
+

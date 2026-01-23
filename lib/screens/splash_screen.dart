@@ -106,12 +106,21 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
       if (_isDisposed) return;
 
-      // Use the global provider to load user data
+      // Calculate streak on app launch FIRST (check gaps, auto-use grace days)
+      // This must run before loadUserData() so the updated streak value is available
+      await UserDataService.calculateStreakOnAppLaunch(user.id);
+
+      // Invalidate caches to ensure fresh data is read
+      final dataFetchService = ref.read(dataFetchServiceProvider);
+      dataFetchService.invalidateStreaksCache(user.id);
+      dataFetchService.invalidateHomeSummaryCache(user.id);
+
+      // Use the global provider to load user data (will now read updated streak value)
       await ref.read(userDataProvider.notifier).loadUserData();
 
       // Step 4: Check if data fetch is needed (after logout or fresh install)
       final needsFetch = await DataSyncFlagService.needsDataFetch();
-      
+
       if (needsFetch) {
         if (mounted && !_isDisposed) {
           setState(() {
@@ -119,33 +128,71 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
           });
         }
         await Future.delayed(const Duration(milliseconds: 200));
-        
+
         if (_isDisposed) return;
-        
-        // Prefetch 7 days data
+
+        // Prefetch 7 days data (with all related fields)
+        // This includes today's data, so no separate today fetch needed here
         try {
           final dataFetchService = ref.read(dataFetchServiceProvider);
           await DataPrefetchService.prefetch7DaysData(
             user.id,
             dataFetchService,
           );
-          
+
           // Set flag to false after successful fetch
           await DataSyncFlagService.clearNeedsDataFetch();
+
+          // Invalidate home summary cache and provider to refresh week stats
+          dataFetchService.invalidateHomeSummaryCache(user.id);
+          ref.invalidate(homeSummaryProvider);
         } catch (e) {
           // Log error but continue - data will be fetched on-demand
-          await ErrorLoggingService.logError(
+          await ErrorLoggingService.logHighError(
             errorCode: 'ERRSYS170',
-            errorMessage: 'Prefetch failed in splash screen: ${e.toString()}',
+            errorMessage:
+                'Prefetch 7 days failed in splash screen: ${e.toString()}',
             stackTrace: StackTrace.current.toString(),
-            severity: 'MEDIUM',
             errorContext: {
               'user_id': user.id,
-              'operation': 'splash_prefetch',
+              'operation': 'splash_prefetch_7days',
             },
           );
           // Keep flag as true so it retries next time
         }
+      }
+
+      // Step 4.5: Always prefetch today's data for multi-device sync (regardless of needsFetch flag)
+      // This ensures today's data is always fresh on every app startup
+      if (mounted && !_isDisposed) {
+        setState(() {
+          _loadingMessage = 'Updating today\'s data...';
+        });
+      }
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      if (_isDisposed) return;
+
+      try {
+        final dataFetchService = ref.read(dataFetchServiceProvider);
+        await DataPrefetchService.prefetchTodayData(user.id, dataFetchService);
+
+        // Invalidate home summary cache and provider to refresh week stats
+        dataFetchService.invalidateHomeSummaryCache(user.id);
+        ref.invalidate(homeSummaryProvider);
+      } catch (e) {
+        // Log error but continue - data will be fetched on-demand
+        await ErrorLoggingService.logHighError(
+          errorCode: 'ERRSYS171',
+          errorMessage:
+              'Prefetch today\'s data failed in splash screen: ${e.toString()}',
+          stackTrace: StackTrace.current.toString(),
+          errorContext: {
+            'user_id': user.id,
+            'operation': 'splash_prefetch_today',
+          },
+        );
+        // Continue - today's data will be fetched on-demand when user opens entry screen
       }
 
       // Step 5: Clean up old entries (7-day retention policy)
@@ -301,7 +348,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
               // Subtle background pattern
               Positioned.fill(
                 child: CustomPaint(
-                  painter: _BackgroundPatternPainter(primaryColor: colorScheme.primary),
+                  painter: _BackgroundPatternPainter(
+                    primaryColor: colorScheme.primary,
+                  ),
                 ),
               ),
 
@@ -342,7 +391,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                                             ),
                                             boxShadow: [
                                               BoxShadow(
-                                                color: colorScheme.primary.withOpacity(0.3),
+                                                color: colorScheme.primary
+                                                    .withOpacity(0.3),
                                                 blurRadius: 30,
                                                 spreadRadius: 8,
                                               ),

@@ -14,21 +14,21 @@ class NewDiaryScreen extends ConsumerStatefulWidget {
   ConsumerState<NewDiaryScreen> createState() => _NewDiaryScreenState();
 }
 
-class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen> 
+class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
     with TickerProviderStateMixin {
   // Diary text
   final TextEditingController _diaryController = TextEditingController();
   final FocusNode _diaryFocusNode = FocusNode();
-  
+
   // Mood
   int _selectedMood = 3;
-  
+
   // Morning Rituals - Affirmations & Priorities
   List<TextEditingController> _affirmationControllers = [];
   List<TextEditingController> _priorityControllers = [];
   late AnimationController _affirmationAnimationController;
   late AnimationController _priorityAnimationController;
-  
+
   // Wellness - Self-Care, Water, Meals
   final Map<String, bool> _selfCare = {
     'sleep': false,
@@ -46,13 +46,13 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
   final TextEditingController _breakfastController = TextEditingController();
   final TextEditingController _lunchController = TextEditingController();
   final TextEditingController _dinnerController = TextEditingController();
-  
+
   // Gratitude & Tomorrow Notes
   List<TextEditingController> _gratitudeControllers = [];
   List<TextEditingController> _tomorrowControllers = [];
   late AnimationController _gratitudeAnimationController;
   late AnimationController _tomorrowAnimationController;
-  
+
   bool _isInitialized = false;
   bool _isLoading = true;
   String? _userId; // Cached userId to avoid repeated Supabase calls
@@ -69,7 +69,7 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
       _loadEntryData();
     });
   }
-  
+
   void _setupAnimations() {
     _affirmationAnimationController = AnimationController(
       duration: const Duration(milliseconds: 300),
@@ -88,7 +88,7 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
       vsync: this,
     );
   }
-  
+
   void _setupAutoSaveListeners() {
     _diaryController.addListener(() => _onDiaryTextChanged());
     _breakfastController.addListener(() => _onMealsChanged());
@@ -123,40 +123,50 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
   }
 
   Future<void> _loadEntryData() async {
-    final currentDate = DateTime.now();
+    // Use LOCAL device date for querying (entry_date is just a date, no time)
+    // This matches what the user sees on their device
+    final currentDateLocal = DateTime.now();
+    final currentDateLocalOnly = DateTime(currentDateLocal.year, currentDateLocal.month, currentDateLocal.day);
+    print('🔍 DIARY DEBUG: Using local date: ${currentDateLocalOnly.toIso8601String().split('T')[0]}');
+    print('🔍 DIARY DEBUG: Local timezone: ${currentDateLocal.timeZoneName}, UTC offset: ${currentDateLocal.timeZoneOffset}');
 
     if (_userId != null && !_isInitialized) {
       _isInitialized = true;
       setState(() => _isLoading = true);
-      
+
       // Load entry data from service (includes all related data)
+      // Use LOCAL date for querying (entry_date is stored as date only)
       final entryService = EntryService();
-      final entryData = await entryService.loadEntryForDate(_userId!, currentDate);
-      
-      // Also load via provider for sync status
-      await ref.read(entryProvider.notifier).loadEntry(_userId!, currentDate);
-      
+      final entryData = await entryService.loadEntryForDate(
+        _userId!,
+        currentDateLocalOnly, // Use local date (what user sees)
+      );
+
+      // Also load via provider for sync status (use local date)
+      await ref.read(entryProvider.notifier).loadEntry(_userId!, currentDateLocalOnly);
+
       if (entryData != null) {
         // Load diary text
         _diaryController.text = entryData.entry.diaryText ?? '';
-        
+
         // Load mood
         _selectedMood = entryData.entry.moodScore ?? 3;
-        
+
         // Load affirmations
         _loadAffirmations(entryData.affirmations);
-        
+
         // Load priorities
         _loadPriorities(entryData.priorities);
-        
+
         // Load meals
         if (entryData.meals != null) {
+          // Set water FIRST before setting controller text (which triggers auto-save)
+          _waterCups = entryData.meals!.waterCups;
           _breakfastController.text = entryData.meals!.breakfast ?? '';
           _lunchController.text = entryData.meals!.lunch ?? '';
           _dinnerController.text = entryData.meals!.dinner ?? '';
-          _waterCups = entryData.meals!.waterCups;
         }
-        
+
         // Load self-care
         if (entryData.selfCare != null) {
           _selfCare['sleep'] = entryData.selfCare!.sleep;
@@ -170,22 +180,22 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
           _selfCare['read_book'] = entryData.selfCare!.readBook;
           _selfCare['exercise'] = entryData.selfCare!.exercise;
         }
-        
+
         // Load gratitude
         _loadGratitude(entryData.gratitude);
-        
+
         // Load tomorrow notes
         _loadTomorrowNotes(entryData.tomorrowNotes);
       }
-      
+
       setState(() => _isLoading = false);
     }
   }
-  
+
   void _loadAffirmations(EntryAffirmations? affirmations) {
     final texts = affirmations?.affirmations.map((a) => a.text).toList() ?? [];
     while (texts.length < 2) texts.add('');
-    
+
     while (_affirmationControllers.length < texts.length) {
       final c = TextEditingController();
       c.addListener(() => _onAffirmationChanged());
@@ -198,11 +208,11 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
       _affirmationControllers[i].text = texts[i];
     }
   }
-  
+
   void _loadPriorities(EntryPriorities? priorities) {
     final texts = priorities?.priorities.map((p) => p.text).toList() ?? [];
     while (texts.length < 2) texts.add('');
-    
+
     while (_priorityControllers.length < texts.length) {
       final c = TextEditingController();
       c.addListener(() => _onPriorityChanged());
@@ -215,11 +225,11 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
       _priorityControllers[i].text = texts[i];
     }
   }
-  
+
   void _loadGratitude(EntryGratitude? gratitude) {
     final texts = gratitude?.gratefulItems.map((g) => g.text).toList() ?? [];
     while (texts.length < 2) texts.add('');
-    
+
     while (_gratitudeControllers.length < texts.length) {
       final c = TextEditingController();
       c.addListener(() => _onGratitudeChanged());
@@ -232,11 +242,12 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
       _gratitudeControllers[i].text = texts[i];
     }
   }
-  
+
   void _loadTomorrowNotes(EntryTomorrowNotes? tomorrowNotes) {
-    final texts = tomorrowNotes?.tomorrowNotes.map((t) => t.text).toList() ?? [];
+    final texts =
+        tomorrowNotes?.tomorrowNotes.map((t) => t.text).toList() ?? [];
     while (texts.length < 2) texts.add('');
-    
+
     while (_tomorrowControllers.length < texts.length) {
       final c = TextEditingController();
       c.addListener(() => _onTomorrowChanged());
@@ -264,9 +275,9 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
           ),
           title: Text(
             DateFormat('EEEE, MMMM d, y').format(DateTime.now()),
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
           ),
         ),
         body: const Center(
@@ -290,13 +301,17 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
         ),
         title: Row(
           children: [
-            Icon(Icons.calendar_today, size: 18, color: Theme.of(context).colorScheme.onSurface),
+            Icon(
+              Icons.calendar_today,
+              size: 18,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
             const SizedBox(width: 8),
             Text(
               DateFormat('EEEE, MMMM d, y').format(DateTime.now()),
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
             ),
           ],
         ),
@@ -313,31 +328,31 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
             // Mood Selector (InnerGlow Style)
             _buildMoodSection(context),
             const SizedBox(height: 24),
-            
+
             // "What's on your mind?" Diary Text Area (InnerGlow Style)
             _buildDiaryTextSection(context),
             const SizedBox(height: 24),
-            
+
             // Morning Rituals Section (InnerGlow Style)
             _buildMorningRitualsSection(context),
             const SizedBox(height: 24),
-            
+
             // Self-Care Checklist Section (InnerGlow Style)
             _buildSelfCareSection(context),
             const SizedBox(height: 24),
-            
+
             // Water Intake Section (InnerGlow Style)
             _buildWaterIntakeSection(context),
             const SizedBox(height: 24),
-            
+
             // Meals Section (InnerGlow Style)
             _buildMealsSection(context),
             const SizedBox(height: 24),
-            
+
             // Gratitude Section (InnerGlow Style)
             _buildGratitudeSection(context),
             const SizedBox(height: 24),
-            
+
             // Notes for Tomorrow Section (InnerGlow Style)
             _buildTomorrowNotesSection(context),
             const SizedBox(height: 24),
@@ -367,22 +382,25 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
     }
   }
 
-
   // InnerGlow Design Builder Methods
-  
+
   Widget _buildMoodSection(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Icon(Icons.mood, color: Theme.of(context).colorScheme.primary, size: 20),
+            Icon(
+              Icons.mood,
+              color: Theme.of(context).colorScheme.primary,
+              size: 20,
+            ),
             const SizedBox(width: 8),
             Text(
               'How are you feeling today?',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
             ),
           ],
         ),
@@ -426,20 +444,24 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
       ],
     );
   }
-  
+
   Widget _buildDiaryTextSection(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Icon(Icons.edit_note, color: Theme.of(context).colorScheme.primary, size: 20),
+            Icon(
+              Icons.edit_note,
+              color: Theme.of(context).colorScheme.primary,
+              size: 20,
+            ),
             const SizedBox(width: 8),
             Text(
               'What\'s on your mind?',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
             ),
           ],
         ),
@@ -465,20 +487,24 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
       ],
     );
   }
-  
+
   Widget _buildMorningRitualsSection(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Icon(Icons.wb_sunny, color: Theme.of(context).colorScheme.primary, size: 20),
+            Icon(
+              Icons.wb_sunny,
+              color: Theme.of(context).colorScheme.primary,
+              size: 20,
+            ),
             const SizedBox(width: 8),
             Text(
               'Morning Rituals',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
             ),
           ],
         ),
@@ -507,7 +533,7 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
       ],
     );
   }
-  
+
   Widget _buildSubsection(
     BuildContext context,
     String title,
@@ -525,7 +551,11 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
           children: [
             Row(
               children: [
-                Icon(icon, size: 18, color: Theme.of(context).colorScheme.primary),
+                Icon(
+                  icon,
+                  size: 18,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
                 const SizedBox(width: 8),
                 Text(
                   title,
@@ -575,22 +605,38 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
       ),
     );
   }
-  
+
   Widget _buildSelfCareSection(BuildContext context) {
     final completedCount = _selfCare.values.where((v) => v).length;
     final selfCareItems = [
       {'key': 'sleep', 'label': '😴 Sleep well', 'icon': Icons.bedtime},
-      {'key': 'get_up_early', 'label': '🌅 Get up early', 'icon': Icons.wb_sunny},
+      {
+        'key': 'get_up_early',
+        'label': '🌅 Get up early',
+        'icon': Icons.wb_sunny,
+      },
       {'key': 'fresh_air', 'label': '🍃 Fresh air', 'icon': Icons.air},
       {'key': 'learn_new', 'label': '📚 Learn something', 'icon': Icons.school},
-      {'key': 'balanced_diet', 'label': '🥗 Balanced diet', 'icon': Icons.restaurant},
+      {
+        'key': 'balanced_diet',
+        'label': '🥗 Balanced diet',
+        'icon': Icons.restaurant,
+      },
       {'key': 'podcast', 'label': '🎧 Podcast', 'icon': Icons.headphones},
-      {'key': 'me_moment', 'label': '🧘 Me moment', 'icon': Icons.self_improvement},
-      {'key': 'hydrated', 'label': '💧 Stay hydrated', 'icon': Icons.water_drop},
+      {
+        'key': 'me_moment',
+        'label': '🧘 Me moment',
+        'icon': Icons.self_improvement,
+      },
+      {
+        'key': 'hydrated',
+        'label': '💧 Stay hydrated',
+        'icon': Icons.water_drop,
+      },
       {'key': 'read_book', 'label': '📖 Read a book', 'icon': Icons.menu_book},
       {'key': 'exercise', 'label': '🏃 Exercise', 'icon': Icons.fitness_center},
     ];
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -599,13 +645,17 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
           children: [
             Row(
               children: [
-                Icon(Icons.favorite, color: Theme.of(context).colorScheme.primary, size: 20),
+                Icon(
+                  Icons.favorite,
+                  color: Theme.of(context).colorScheme.primary,
+                  size: 20,
+                ),
                 const SizedBox(width: 8),
                 Text(
                   'Self-Care Checklist',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
                 ),
               ],
             ),
@@ -638,20 +688,24 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
       ],
     );
   }
-  
+
   Widget _buildWaterIntakeSection(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Icon(Icons.water_drop, color: Theme.of(context).colorScheme.primary, size: 20),
+            Icon(
+              Icons.water_drop,
+              color: Theme.of(context).colorScheme.primary,
+              size: 20,
+            ),
             const SizedBox(width: 8),
             Text(
               'Water Intake',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
             ),
           ],
         ),
@@ -661,9 +715,9 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
           children: [
             Text(
               '$_waterCups / 8 cups',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
             ),
             Row(
               children: List.generate(8, (index) {
@@ -675,7 +729,9 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
                   child: Container(
                     margin: const EdgeInsets.symmetric(horizontal: 2),
                     child: Icon(
-                      index < _waterCups ? Icons.water_drop : Icons.water_drop_outlined,
+                      index < _waterCups
+                          ? Icons.water_drop
+                          : Icons.water_drop_outlined,
                       color: index < _waterCups
                           ? Colors.blue[400]
                           : Colors.grey[300],
@@ -690,16 +746,16 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
       ],
     );
   }
-  
+
   Widget _buildMealsSection(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           'Meals',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
+          style: Theme.of(
+            context,
+          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 12),
         TextField(
@@ -707,9 +763,7 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
           decoration: InputDecoration(
             labelText: 'Breakfast',
             hintText: 'What did you have?',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           ),
         ),
         const SizedBox(height: 12),
@@ -718,9 +772,7 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
           decoration: InputDecoration(
             labelText: 'Lunch',
             hintText: 'What did you have?',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           ),
         ),
         const SizedBox(height: 12),
@@ -729,28 +781,30 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
           decoration: InputDecoration(
             labelText: 'Dinner',
             hintText: 'What did you have?',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           ),
         ),
       ],
     );
   }
-  
+
   Widget _buildGratitudeSection(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Icon(Icons.favorite_border, color: Theme.of(context).colorScheme.primary, size: 20),
+            Icon(
+              Icons.favorite_border,
+              color: Theme.of(context).colorScheme.primary,
+              size: 20,
+            ),
             const SizedBox(width: 8),
             Text(
               'Gratitude',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
             ),
           ],
         ),
@@ -767,20 +821,24 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
       ],
     );
   }
-  
+
   Widget _buildTomorrowNotesSection(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Icon(Icons.note_add, color: Theme.of(context).colorScheme.primary, size: 20),
+            Icon(
+              Icons.note_add,
+              color: Theme.of(context).colorScheme.primary,
+              size: 20,
+            ),
             const SizedBox(width: 8),
             Text(
               'Notes for Tomorrow',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
             ),
           ],
         ),
@@ -797,43 +855,39 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
       ],
     );
   }
-  
+
   // Auto-save Methods
-  
+
   void _onDiaryTextChanged() {
     final currentDate = DateTime.now();
     if (_userId != null) {
-      ref.read(entryProvider.notifier).updateDiaryText(
-        _userId!,
-        currentDate,
-        _diaryController.text,
-      );
+      ref
+          .read(entryProvider.notifier)
+          .updateDiaryText(_userId!, currentDate, _diaryController.text);
     }
   }
-  
+
   void _onMoodChanged(int mood) {
     final currentDate = DateTime.now();
     if (_userId != null) {
-      ref.read(entryProvider.notifier).updateMoodScore(
-        _userId!,
-        currentDate,
-        mood,
-      );
+      ref
+          .read(entryProvider.notifier)
+          .updateMoodScore(_userId!, currentDate, mood);
     }
   }
-  
+
   void _addAffirmationField() {
     final controller = TextEditingController();
     controller.addListener(() => _onAffirmationChanged());
     setState(() => _affirmationControllers.add(controller));
   }
-  
+
   void _removeAffirmationField(int index) {
     _affirmationControllers[index].dispose();
     setState(() => _affirmationControllers.removeAt(index));
     _onAffirmationChanged();
   }
-  
+
   void _onAffirmationChanged() {
     final currentDate = DateTime.now();
     if (_userId != null) {
@@ -843,26 +897,24 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
           .where((e) => e.value.text.trim().isNotEmpty)
           .map((e) => AffirmationItem(text: e.value.text.trim(), order: e.key))
           .toList();
-      ref.read(entryProvider.notifier).updateAffirmations(
-        _userId!,
-        currentDate,
-        affirmations,
-      );
+      ref
+          .read(entryProvider.notifier)
+          .updateAffirmations(_userId!, currentDate, affirmations);
     }
   }
-  
+
   void _addPriorityField() {
     final controller = TextEditingController();
     controller.addListener(() => _onPriorityChanged());
     setState(() => _priorityControllers.add(controller));
   }
-  
+
   void _removePriorityField(int index) {
     _priorityControllers[index].dispose();
     setState(() => _priorityControllers.removeAt(index));
     _onPriorityChanged();
   }
-  
+
   void _onPriorityChanged() {
     final currentDate = DateTime.now();
     if (_userId != null) {
@@ -872,67 +924,75 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
           .where((e) => e.value.text.trim().isNotEmpty)
           .map((e) => PriorityItem(text: e.value.text.trim(), order: e.key))
           .toList();
-      ref.read(entryProvider.notifier).updatePriorities(
-        _userId!,
-        currentDate,
-        priorities,
-      );
+      ref
+          .read(entryProvider.notifier)
+          .updatePriorities(_userId!, currentDate, priorities);
     }
   }
-  
+
   void _onSelfCareChanged() {
     final currentDate = DateTime.now();
     if (_userId != null) {
-      ref.read(entryProvider.notifier).updateSelfCare(
-        _userId!,
-        currentDate,
-        EntrySelfCare(
-          entryId: '', // Will be set by provider
-          sleep: _selfCare['sleep'] ?? false,
-          getUpEarly: _selfCare['get_up_early'] ?? false,
-          freshAir: _selfCare['fresh_air'] ?? false,
-          learnNew: _selfCare['learn_new'] ?? false,
-          balancedDiet: _selfCare['balanced_diet'] ?? false,
-          podcast: _selfCare['podcast'] ?? false,
-          meMoment: _selfCare['me_moment'] ?? false,
-          hydrated: _selfCare['hydrated'] ?? false,
-          readBook: _selfCare['read_book'] ?? false,
-          exercise: _selfCare['exercise'] ?? false,
-        ),
-      );
+      ref
+          .read(entryProvider.notifier)
+          .updateSelfCare(
+            _userId!,
+            currentDate,
+            EntrySelfCare(
+              entryId: '', // Will be set by provider
+              sleep: _selfCare['sleep'] ?? false,
+              getUpEarly: _selfCare['get_up_early'] ?? false,
+              freshAir: _selfCare['fresh_air'] ?? false,
+              learnNew: _selfCare['learn_new'] ?? false,
+              balancedDiet: _selfCare['balanced_diet'] ?? false,
+              podcast: _selfCare['podcast'] ?? false,
+              meMoment: _selfCare['me_moment'] ?? false,
+              hydrated: _selfCare['hydrated'] ?? false,
+              readBook: _selfCare['read_book'] ?? false,
+              exercise: _selfCare['exercise'] ?? false,
+            ),
+          );
     }
   }
-  
+
   void _onWaterChanged() async {
     _onMealsChanged(); // Water is part of meals
   }
-  
+
   void _onMealsChanged() {
     final currentDate = DateTime.now();
     if (_userId != null) {
-      ref.read(entryProvider.notifier).updateMeals(
-        _userId!,
-        currentDate,
-        _breakfastController.text.trim().isEmpty ? null : _breakfastController.text.trim(),
-        _lunchController.text.trim().isEmpty ? null : _lunchController.text.trim(),
-        _dinnerController.text.trim().isEmpty ? null : _dinnerController.text.trim(),
-        _waterCups,
-      );
+      ref
+          .read(entryProvider.notifier)
+          .updateMeals(
+            _userId!,
+            currentDate,
+            _breakfastController.text.trim().isEmpty
+                ? null
+                : _breakfastController.text.trim(),
+            _lunchController.text.trim().isEmpty
+                ? null
+                : _lunchController.text.trim(),
+            _dinnerController.text.trim().isEmpty
+                ? null
+                : _dinnerController.text.trim(),
+            _waterCups,
+          );
     }
   }
-  
+
   void _addGratitudeField() {
     final controller = TextEditingController();
     controller.addListener(() => _onGratitudeChanged());
     setState(() => _gratitudeControllers.add(controller));
   }
-  
+
   void _removeGratitudeField(int index) {
     _gratitudeControllers[index].dispose();
     setState(() => _gratitudeControllers.removeAt(index));
     _onGratitudeChanged();
   }
-  
+
   void _onGratitudeChanged() {
     final currentDate = DateTime.now();
     if (_userId != null) {
@@ -942,26 +1002,24 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
           .where((e) => e.value.text.trim().isNotEmpty)
           .map((e) => GratitudeItem(text: e.value.text.trim(), order: e.key))
           .toList();
-      ref.read(entryProvider.notifier).updateGratitude(
-        _userId!,
-        currentDate,
-        gratitudeItems,
-      );
+      ref
+          .read(entryProvider.notifier)
+          .updateGratitude(_userId!, currentDate, gratitudeItems);
     }
   }
-  
+
   void _addTomorrowField() {
     final controller = TextEditingController();
     controller.addListener(() => _onTomorrowChanged());
     setState(() => _tomorrowControllers.add(controller));
   }
-  
+
   void _removeTomorrowField(int index) {
     _tomorrowControllers[index].dispose();
     setState(() => _tomorrowControllers.removeAt(index));
     _onTomorrowChanged();
   }
-  
+
   void _onTomorrowChanged() {
     final currentDate = DateTime.now();
     if (_userId != null) {
@@ -971,11 +1029,9 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
           .where((e) => e.value.text.trim().isNotEmpty)
           .map((e) => TomorrowNoteItem(text: e.value.text.trim(), order: e.key))
           .toList();
-      ref.read(entryProvider.notifier).updateTomorrowNotes(
-        _userId!,
-        currentDate,
-        tomorrowNotes,
-      );
+      ref
+          .read(entryProvider.notifier)
+          .updateTomorrowNotes(_userId!, currentDate, tomorrowNotes);
     }
   }
 }

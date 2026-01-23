@@ -4,7 +4,7 @@ import '../error_logging_service.dart';
 
 class DatabaseManager {
   static Database? _database;
-  static const int _version = 2;
+  static const int _version = 3;
   static const String _databaseName = 'diary_app.db';
 
   Future<Database> get database async {
@@ -57,8 +57,12 @@ class DatabaseManager {
         // Migration from version 1 to 2: Add streaks and habits_daily tables
         await _createStreaksAndHabitsTables(db);
       }
+      if (oldVersion < 3) {
+        // Migration from version 2 to 3: Add today_* fields to streaks table
+        await _addTodayFieldsToStreaks(db);
+      }
       // For future migrations, add more conditions here
-      if (oldVersion < newVersion && oldVersion >= 2) {
+      if (oldVersion < newVersion && oldVersion >= 3) {
         // Recreate all tables if needed for other migrations
         await _createTables(db);
       }
@@ -191,6 +195,12 @@ class DatabaseManager {
         last_entry_date TEXT,
         freeze_credits INTEGER DEFAULT 0,
         grace_pieces_total REAL DEFAULT 0.0,
+        today_date TEXT,
+        today_diary INTEGER DEFAULT 0,
+        today_affirmations INTEGER DEFAULT 0,
+        today_gratitude INTEGER DEFAULT 0,
+        today_self_care_count INTEGER DEFAULT 0,
+        today_grace_pieces REAL DEFAULT 0.0,
         updated_at TEXT NOT NULL,
         is_synced INTEGER DEFAULT 0,
         last_sync_at TEXT
@@ -276,6 +286,59 @@ class DatabaseManager {
       await db.execute(
         'CREATE INDEX idx_habits_user_date ON habits_daily(user_id, date)',
       );
+    }
+  }
+
+  // Helper method to add today_* fields to streaks table (migration v2 to v3)
+  Future<void> _addTodayFieldsToStreaks(Database db) async {
+    try {
+      // Add new columns if they don't exist
+      await db.execute('ALTER TABLE streaks ADD COLUMN today_date TEXT');
+    } catch (e) {
+      // Column might already exist, ignore error
+      if (!e.toString().contains('duplicate column')) {
+        rethrow;
+      }
+    }
+
+    try {
+      await db.execute('ALTER TABLE streaks ADD COLUMN today_diary INTEGER DEFAULT 0');
+    } catch (e) {
+      if (!e.toString().contains('duplicate column')) {
+        rethrow;
+      }
+    }
+
+    try {
+      await db.execute('ALTER TABLE streaks ADD COLUMN today_affirmations INTEGER DEFAULT 0');
+    } catch (e) {
+      if (!e.toString().contains('duplicate column')) {
+        rethrow;
+      }
+    }
+
+    try {
+      await db.execute('ALTER TABLE streaks ADD COLUMN today_gratitude INTEGER DEFAULT 0');
+    } catch (e) {
+      if (!e.toString().contains('duplicate column')) {
+        rethrow;
+      }
+    }
+
+    try {
+      await db.execute('ALTER TABLE streaks ADD COLUMN today_self_care_count INTEGER DEFAULT 0');
+    } catch (e) {
+      if (!e.toString().contains('duplicate column')) {
+        rethrow;
+      }
+    }
+
+    try {
+      await db.execute('ALTER TABLE streaks ADD COLUMN today_grace_pieces REAL DEFAULT 0.0');
+    } catch (e) {
+      if (!e.toString().contains('duplicate column')) {
+        rethrow;
+      }
     }
   }
 

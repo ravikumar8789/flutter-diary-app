@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/grace_system_service.dart';
 import '../services/error_logging_service.dart';
 import 'data_providers.dart';
+import 'streak_provider.dart';
 
 class GraceSystemState {
   final bool isLoading;
@@ -87,7 +88,6 @@ class GraceSystemNotifier extends Notifier<GraceSystemState> {
     try {
       final date = DateTime.now();
       final fetchService = ref.read(dataFetchServiceProvider);
-      
       await GraceSystemService.trackTaskCompletion(
         userId: _currentUserId!,
         date: date,
@@ -104,6 +104,10 @@ class GraceSystemNotifier extends Notifier<GraceSystemState> {
       if (!_isRefreshing) {
         await _refreshGraceStatus();
       }
+      
+      // Refresh streak provider and home summary to reflect UI changes
+      ref.read(streakProvider.notifier).refresh();
+      ref.invalidate(homeSummaryProvider);
     } catch (e) {
       await ErrorLoggingService.logHighError(
         errorCode: 'ERRDATA124',

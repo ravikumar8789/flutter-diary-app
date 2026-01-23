@@ -5,6 +5,7 @@ import 'register_screen.dart';
 import '../utils/snackbar_utils.dart';
 import '../providers/auth_provider.dart';
 import '../services/error_logging_service.dart';
+import '../services/data_sync_flag_service.dart';
 import 'home_screen.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -41,6 +42,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         await ref
             .read(authControllerProvider)
             .signIn(_emailController.text.trim(), _passwordController.text);
+
+        // Set needsDataFetch flag to true after successful login
+        // This ensures 7-day data is fetched when HomeScreen loads
+        try {
+          await DataSyncFlagService.setNeedsDataFetch(true);
+        } catch (e) {
+          await ErrorLoggingService.logError(
+            errorCode: 'ERRSYS183',
+            errorMessage: 'Failed to set data fetch flag after login: ${e.toString()}',
+            stackTrace: StackTrace.current.toString(),
+            severity: 'MEDIUM',
+            errorContext: {
+              'operation': 'login_set_flag',
+            },
+          );
+        }
 
         SnackbarUtils.showLoginSuccess(
           context,

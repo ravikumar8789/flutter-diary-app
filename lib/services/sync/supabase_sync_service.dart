@@ -30,6 +30,8 @@ class SupabaseSyncService {
   }
 
   // Sync affirmations to Supabase (JSONB format)
+  // NOTE: Legacy method - kept for backward compatibility with EntryService
+  // New code should use batchSaveEntry() RPC function instead
   Future<bool> syncAffirmations(EntryAffirmations affirmations) async {
     try {
       await _supabase.from('entry_affirmations').upsert({
@@ -56,6 +58,8 @@ class SupabaseSyncService {
   }
 
   // Sync priorities to Supabase (JSONB format)
+  // NOTE: Legacy method - kept for backward compatibility with EntryService
+  // New code should use batchSaveEntry() RPC function instead
   Future<bool> syncPriorities(EntryPriorities priorities) async {
     try {
       await _supabase.from('entry_priorities').upsert({
@@ -80,6 +84,8 @@ class SupabaseSyncService {
   }
 
   // Sync meals to Supabase
+  // NOTE: Legacy method - kept for backward compatibility with EntryService
+  // New code should use batchSaveEntry() RPC function instead
   Future<bool> syncMeals(EntryMeals meals) async {
     try {
       await _supabase.from('entry_meals').upsert(meals.toJson());
@@ -97,6 +103,8 @@ class SupabaseSyncService {
   }
 
   // Sync gratitude to Supabase (JSONB format)
+  // NOTE: Legacy method - kept for backward compatibility with EntryService
+  // New code should use batchSaveEntry() RPC function instead
   Future<bool> syncGratitude(EntryGratitude gratitude) async {
     try {
       await _supabase.from('entry_gratitude').upsert({
@@ -123,6 +131,8 @@ class SupabaseSyncService {
   }
 
   // Sync self care to Supabase
+  // NOTE: Legacy method - kept for backward compatibility with EntryService
+  // New code should use batchSaveEntry() RPC function instead
   Future<bool> syncSelfCare(EntrySelfCare selfCare) async {
     try {
       await _supabase.from('entry_self_care').upsert(selfCare.toJson());
@@ -143,6 +153,8 @@ class SupabaseSyncService {
   }
 
   // Sync shower bath to Supabase
+  // NOTE: Legacy method - kept for backward compatibility with EntryService
+  // New code should use batchSaveEntry() RPC function instead
   Future<bool> syncShowerBath(EntryShowerBath showerBath) async {
     try {
       await _supabase.from('entry_shower_bath').upsert(showerBath.toJson());
@@ -163,6 +175,8 @@ class SupabaseSyncService {
   }
 
   // Sync tomorrow notes to Supabase (JSONB format)
+  // NOTE: Legacy method - kept for backward compatibility with EntryService
+  // New code should use batchSaveEntry() RPC function instead
   Future<bool> syncTomorrowNotes(EntryTomorrowNotes tomorrowNotes) async {
     try {
       await _supabase.from('entry_tomorrow_notes').upsert({
@@ -190,7 +204,10 @@ class SupabaseSyncService {
 
   // Pull latest data from Supabase (for multi-device sync)
   Future<Entry?> fetchEntryFromCloud(String userId, DateTime date) async {
-    final dateStr = DateFormat('yyyy-MM-dd').format(date);
+    // Use date as-is (local date from device)
+    // entry_date is stored as date only, so format local date directly
+    final dateOnly = DateTime(date.year, date.month, date.day);
+    final dateStr = DateFormat('yyyy-MM-dd').format(dateOnly);
 
     try {
       final response = await _supabase
@@ -470,97 +487,191 @@ class SupabaseSyncService {
     }
   }
 
-  // Sync all pending streak changes
-  Future<void> syncAllStreaks(String userId) async {
-    try {
-      final db = await DatabaseManager().database;
-      final unsyncedStreaks = await db.query(
-        'streaks',
-        where: 'user_id = ? AND is_synced = 0',
-        whereArgs: [userId],
-      );
-
-      if (unsyncedStreaks.isEmpty) return;
-
-      for (final streak in unsyncedStreaks) {
-        final success = await syncStreak(userId, {
-          'current': streak['current'],
-          'longest': streak['longest'],
-          'last_entry_date': streak['last_entry_date'],
-          'freeze_credits': streak['freeze_credits'],
-          'grace_pieces_total': streak['grace_pieces_total'],
-        });
-
-        if (!success) {
-          // Log error but continue with other records
-          await ErrorLoggingService.logHighError(
-            errorCode: 'ERRSYS119',
-            errorMessage: 'Failed to sync streak for user: $userId',
-            errorContext: {'user_id': userId, 'operation': 'sync_all_streaks'},
-          );
-        }
-      }
-    } catch (e) {
-      await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS120',
-        errorMessage: 'Sync all streaks failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {'user_id': userId, 'operation': 'sync_all_streaks'},
-      );
-    }
-  }
-
-  // Sync all pending habits changes
-  Future<void> syncAllHabits(String userId) async {
-    try {
-      final db = await DatabaseManager().database;
-      final unsyncedHabits = await db.query(
-        'habits_daily',
-        where: 'user_id = ? AND is_synced = 0',
-        whereArgs: [userId],
-      );
-
-      if (unsyncedHabits.isEmpty) return;
-
-      for (final habit in unsyncedHabits) {
-        final success = await syncHabitsDaily(
-          userId,
-          habit['date'] as String,
-          {
-            'id': habit['id'],
-            'wrote_entry': habit['wrote_entry'] == 1,
-            'filled_affirmations': habit['filled_affirmations'] == 1,
-            'filled_gratitude': habit['filled_gratitude'] == 1,
-            'self_care_completed_count': habit['self_care_completed_count'],
-            'grace_pieces_earned': habit['grace_pieces_earned'],
-          },
-        );
-
-        if (!success) {
-          // Log error but continue with other records
-          await ErrorLoggingService.logHighError(
-            errorCode: 'ERRSYS121',
-            errorMessage: 'Failed to sync habits for user: $userId, date: ${habit['date']}',
-            errorContext: {
-              'user_id': userId,
-              'date': habit['date'],
-              'operation': 'sync_all_habits',
-            },
-          );
-        }
-      }
-    } catch (e) {
-      await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS122',
-        errorMessage: 'Sync all habits failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {'user_id': userId, 'operation': 'sync_all_habits'},
-      );
-    }
-  }
+  // NOTE: syncAllStreaks() and syncAllHabits() removed
+  // Replaced by batchUpdateStreakData() RPC method for efficient single-call syncing
 
   // Process sync queue (for offline changes)
   Future<void> processSyncQueue() async {
     // This will be implemented in Phase 7 with the sync worker
+  }
+
+  // Batch save entry using RPC function (single API call)
+  Future<bool> batchSaveEntry({
+    required Entry entry,
+    EntryAffirmations? affirmations,
+    EntryPriorities? priorities,
+    EntryMeals? meals,
+    EntryGratitude? gratitude,
+    EntrySelfCare? selfCare,
+    EntryShowerBath? showerBath,
+    EntryTomorrowNotes? tomorrowNotes,
+  }) async {
+    try {
+      final entryData = entry.toSupabaseJson();
+      final Map<String, dynamic> params = {'p_entry': entryData};
+      
+      if (affirmations != null) {
+        params['p_affirmations'] = affirmations.affirmations.map((a) => a.toJson()).toList();
+      }
+      if (priorities != null) {
+        params['p_priorities'] = priorities.priorities.map((p) => p.toJson()).toList();
+      }
+      if (meals != null) {
+        params['p_meals'] = {
+          'breakfast': meals.breakfast,
+          'lunch': meals.lunch,
+          'dinner': meals.dinner,
+          'water_cups': meals.waterCups,
+        };
+      }
+      if (gratitude != null) {
+        params['p_gratitude'] = gratitude.gratefulItems.map((g) => g.toJson()).toList();
+      }
+      if (selfCare != null) {
+        params['p_self_care'] = {
+          'sleep': selfCare.sleep,
+          'get_up_early': selfCare.getUpEarly,
+          'fresh_air': selfCare.freshAir,
+          'learn_new': selfCare.learnNew,
+          'balanced_diet': selfCare.balancedDiet,
+          'podcast': selfCare.podcast,
+          'me_moment': selfCare.meMoment,
+          'hydrated': selfCare.hydrated,
+          'read_book': selfCare.readBook,
+          'exercise': selfCare.exercise,
+        };
+      }
+      if (showerBath != null) {
+        params['p_shower_bath'] = {
+          'took_shower': showerBath.tookShower,
+          'note': showerBath.note,
+        };
+      }
+      if (tomorrowNotes != null) {
+        params['p_tomorrow_notes'] = tomorrowNotes.tomorrowNotes.map((t) => t.toJson()).toList();
+      }
+      
+      final response = await _supabase.rpc('batch_save_entry', params: params);
+      final result = response as Map<String, dynamic>;
+      
+      if (result['success'] == true) {
+        return true;
+      } else {
+        await ErrorLoggingService.logHighError(
+          errorCode: result['error_code'] ?? 'ERRSYS200',
+          errorMessage: 'RPC batch save failed: ${result['error_message']}',
+          stackTrace: StackTrace.current.toString(),
+          errorContext: {
+            'entry_id': entry.id,
+            'rpc_response': result,
+            'operation': 'batch_save_entry_rpc',
+          },
+        );
+        return false;
+      }
+    } catch (e) {
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS200',
+        errorMessage: 'RPC batch save exception: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'entry_id': entry.id,
+          'operation': 'batch_save_entry_rpc',
+        },
+      );
+      return false;
+    }
+  }
+
+  /// Batch update streak data via RPC (single API call)
+  /// Updates both streaks and habits_daily tables in one transaction
+  Future<bool> batchUpdateStreakData({
+    required String userId,
+    required Map<String, dynamic> streakData,
+    List<Map<String, dynamic>>? habitsData,
+  }) async {
+    try {
+      final params = {
+        'p_user_id': userId,
+        'p_streak_data': {
+          'current': streakData['current'] ?? 0,
+          'longest': streakData['longest'] ?? 0,
+          'last_entry_date': streakData['last_entry_date'],
+          'freeze_credits': streakData['freeze_credits'] ?? 0,
+          'grace_pieces_total': streakData['grace_pieces_total'] ?? 0.0,
+          'today_date': streakData['today_date'],
+          'today_diary': streakData['today_diary'] ?? false,
+          'today_affirmations': streakData['today_affirmations'] ?? false,
+          'today_gratitude': streakData['today_gratitude'] ?? false,
+          'today_self_care_count': streakData['today_self_care_count'] ?? 0,
+          'today_grace_pieces': streakData['today_grace_pieces'] ?? 0.0,
+        },
+      };
+
+      // Always pass p_habits_data as empty array (deprecated, not used anymore)
+      // This ensures Postgres can resolve the function overload (jsonb[] version)
+      params['p_habits_data'] = <Map<String, dynamic>>[];
+
+      final response = await _supabase.rpc('batch_update_streak_data', params: params);
+      final result = response as Map<String, dynamic>;
+
+      if (result['success'] == true) {
+        print('🔥 STREAK DEBUG: RPC call successful, marking as synced in local DB');
+        // Mark as synced in local DB
+        final db = await DatabaseManager().database;
+        await db.update(
+          'streaks',
+          {
+            'is_synced': 1,
+            'last_sync_at': DateTime.now().toIso8601String(),
+          },
+          where: 'user_id = ?',
+          whereArgs: [userId],
+        );
+        print('🔥 STREAK DEBUG: Streaks marked as synced');
+
+        // Mark habits as synced
+        if (habitsData != null) {
+          print('🔥 STREAK DEBUG: Marking ${habitsData.length} habits as synced');
+          for (final habit in habitsData) {
+            await db.update(
+              'habits_daily',
+              {
+                'is_synced': 1,
+                'last_sync_at': DateTime.now().toIso8601String(),
+              },
+              where: 'id = ?',
+              whereArgs: [habit['id']],
+            );
+          }
+        }
+        print('🔥 STREAK DEBUG: batchUpdateStreakData END - success');
+        return true;
+      } else {
+        print('🔥 STREAK DEBUG: RPC call failed - error: ${result['error_message']}');
+        await ErrorLoggingService.logHighError(
+          errorCode: result['error_code'] ?? 'ERRSYS300',
+          errorMessage: 'RPC batch streak update failed: ${result['error_message']}',
+          stackTrace: StackTrace.current.toString(),
+          errorContext: {
+            'user_id': userId,
+            'rpc_response': result,
+            'operation': 'batch_update_streak_data_rpc',
+          },
+        );
+        return false;
+      }
+    } catch (e) {
+      await ErrorLoggingService.logHighError(
+        errorCode: 'ERRSYS300',
+        errorMessage: 'RPC batch streak update exception: ${e.toString()}',
+        stackTrace: StackTrace.current.toString(),
+        errorContext: {
+          'user_id': userId,
+          'operation': 'batch_update_streak_data_rpc',
+        },
+      );
+      return false;
+    }
   }
 }
