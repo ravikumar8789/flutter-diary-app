@@ -5,7 +5,6 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import '../widgets/bottom_navigation_bar.dart';
 import '../widgets/daily_insights_timeline.dart';
-import '../widgets/period_comparison_card.dart';
 import '../widgets/week_chips_carousel.dart';
 import '../widgets/month_chips_carousel.dart';
 import '../widgets/mini_calendar_widget.dart';
@@ -523,10 +522,6 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
         _buildTodayInsightStatusCard(context),
         const SizedBox(height: 32),
 
-        // Period Comparison
-        PeriodComparisonCard(period: AnalyticsPeriod.weekly),
-        const SizedBox(height: 32),
-
         // Daily Insights Timeline
         _buildSectionHeader(context, 'Daily Insights Timeline'),
         const SizedBox(height: 16),
@@ -586,9 +581,6 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
               _buildAiInsightsCardMonthly(context, data),
               const SizedBox(height: 32),
 
-              // Period Comparison
-              PeriodComparisonCard(period: AnalyticsPeriod.monthly),
-              const SizedBox(height: 32),
             ],
           );
         } catch (e) {

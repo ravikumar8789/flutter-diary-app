@@ -703,52 +703,6 @@ class DailyInsightWithMood {
   }
 }
 
-/// Period comparison data
-class PeriodComparison {
-  final PeriodData current;
-  final PeriodData previous;
-  final ComparisonMetrics metrics;
-
-  PeriodComparison({
-    required this.current,
-    required this.previous,
-    required this.metrics,
-  });
-}
-
-class PeriodData {
-  final DateTime startDate;
-  final DateTime endDate;
-  final int entriesCount;
-  final double? avgMood;
-  final double consistencyScore;
-  final double selfCareRate;
-
-  PeriodData({
-    required this.startDate,
-    required this.endDate,
-    required this.entriesCount,
-    this.avgMood,
-    required this.consistencyScore,
-    required this.selfCareRate,
-  });
-}
-
-class ComparisonMetrics {
-  final double moodChange;
-  final int entriesChange;
-  final double consistencyChange;
-  final double selfCareChange;
-  final String overallTrend; // 'improving', 'declining', 'stable'
-
-  ComparisonMetrics({
-    required this.moodChange,
-    required this.entriesChange,
-    required this.consistencyChange,
-    required this.selfCareChange,
-    required this.overallTrend,
-  });
-}
 
 /// Homescreen insight set - 5 insights per entry for carousel display
 class HomescreenInsightSet {
