@@ -16,6 +16,7 @@ class DataPrefetchService {
   /// - Last 7 days of habits_daily (deprecated, but kept for compatibility)
   /// - Current streak data
   /// 
+  /// Uses local device date (consistent with prefetchTodayData() and entry storage).
   /// Fetches in parallel for better performance.
   /// Does not throw exceptions - errors are logged but app continues.
   static Future<void> prefetch7DaysData(
@@ -23,33 +24,17 @@ class DataPrefetchService {
     DataFetchService dataFetchService,
   ) async {
     try {
-      // Get today's date from Supabase streak table (source of truth)
-      // This ensures we use the same date logic as Supabase uses for entry_date
-      DateTime todayUtc;
-      try {
-        final streakData = await dataFetchService.fetchStreaks(userId);
-        if (streakData != null && streakData['today_date'] != null) {
-          // Parse the date string from streak table (already in UTC format YYYY-MM-DD)
-          final todayDateStr = streakData['today_date'] as String;
-          final parts = todayDateStr.split('-');
-          todayUtc = DateTime.utc(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
-        } else {
-          // Fallback to UTC calculation if streak data not available
-          final nowUtc = DateTime.now().toUtc();
-          todayUtc = DateTime(nowUtc.year, nowUtc.month, nowUtc.day);
-        }
-      } catch (e) {
-        // Fallback to UTC calculation if fetch fails
-        final nowUtc = DateTime.now().toUtc();
-        todayUtc = DateTime(nowUtc.year, nowUtc.month, nowUtc.day);
-      }
-      
-      final weekStartUtc = todayUtc.subtract(const Duration(days: 6)); // Last 7 days
+      // Use local device date (extract date components only, no timezone conversion)
+      // entry_date is stored as date only, so we use local date to match user's device date
+      // This ensures consistency with prefetchTodayData() and entry storage
+      final now = DateTime.now();
+      final todayLocal = DateTime(now.year, now.month, now.day);
+      final weekStartLocal = todayLocal.subtract(const Duration(days: 6)); // Last 7 days
       
       // Fetch in parallel for better performance
       await Future.wait([
-        _fetchEntriesWithJoins(userId, weekStartUtc, todayUtc, dataFetchService),
-        _fetchHabits(userId, weekStartUtc, todayUtc, dataFetchService),
+        _fetchEntriesWithJoins(userId, weekStartLocal, todayLocal, dataFetchService),
+        _fetchHabits(userId, weekStartLocal, todayLocal, dataFetchService),
         _fetchStreaks(userId, dataFetchService),
       ]);
       
@@ -81,32 +66,16 @@ class DataPrefetchService {
     DataFetchService dataFetchService,
   ) async {
     try {
-      // Get today's date from Supabase streak table (source of truth)
-      // This ensures we use the same date logic as Supabase uses for entry_date
-      DateTime todayUtc;
-      try {
-        final streakData = await dataFetchService.fetchStreaks(userId);
-        if (streakData != null && streakData['today_date'] != null) {
-          // Parse the date string from streak table (already in UTC format YYYY-MM-DD)
-          final todayDateStr = streakData['today_date'] as String;
-          final parts = todayDateStr.split('-');
-          todayUtc = DateTime.utc(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
-        } else {
-          // Fallback to UTC calculation if streak data not available
-          final nowUtc = DateTime.now().toUtc();
-          todayUtc = DateTime(nowUtc.year, nowUtc.month, nowUtc.day);
-        }
-      } catch (e) {
-        // Fallback to UTC calculation if fetch fails
-        final nowUtc = DateTime.now().toUtc();
-        todayUtc = DateTime(nowUtc.year, nowUtc.month, nowUtc.day);
-      }
+      // Use local device date (extract date components only, no timezone conversion)
+      // entry_date is stored as date only, so we use local date to match user's device date
+      final now = DateTime.now();
+      final todayLocal = DateTime(now.year, now.month, now.day);
       
       // Fetch today's data with joins
       final entries = await dataFetchService.fetchEntriesWithJoins(
         userId: userId,
-        startDate: todayUtc,
-        endDate: todayUtc,
+        startDate: todayLocal,
+        endDate: todayLocal,
       );
       
       // If no entry found, return early (no logging - expected behavior)

@@ -466,13 +466,12 @@ class EntryService {
   
   // Get or create entry (with caching)
   Future<Entry> _getOrCreateEntry(String userId, DateTime date) async {
-    // Convert local date to UTC date for consistency
-    // Local date is used for UI, but we store UTC date in Supabase
-    final dateUtc = date.toUtc();
-    final dateUtcOnly = DateTime(dateUtc.year, dateUtc.month, dateUtc.day);
+    // Use local date directly (extract date components only, no timezone conversion)
+    // entry_date is stored as date only, so we use local date to match user's device date
+    final dateOnly = DateTime(date.year, date.month, date.day);
     
-    // Generate cache key using UTC date
-    final dateStr = dateUtcOnly.toIso8601String().split('T')[0];
+    // Generate cache key using local date
+    final dateStr = dateOnly.toIso8601String().split('T')[0];
     final cacheKey = '${userId}_$dateStr';
     
     // Check cache first
@@ -480,18 +479,18 @@ class EntryService {
       return _entryCache[cacheKey]!;
     }
     
-    // Check local database (use UTC date for querying)
-    final existing = await _localService.getEntryByDate(userId, dateUtcOnly);
+    // Check local database (use local date for querying)
+    final existing = await _localService.getEntryByDate(userId, dateOnly);
     if (existing != null) {
       _entryCache[cacheKey] = existing;
       return existing;
     }
 
-    // Create new entry with UTC date and default mood score of 3
+    // Create new entry with local date and default mood score of 3
     final newEntry = Entry(
       id: const Uuid().v4(),
       userId: userId,
-      entryDate: dateUtcOnly, // Store UTC date
+      entryDate: dateOnly, // Store local date (matches user's device date)
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
       moodScore: 3, // Default mood score

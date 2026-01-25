@@ -66,13 +66,13 @@ class Entry {
 
   // Convert to Supabase JSON format
   Map<String, dynamic> toSupabaseJson() {
-    // Convert entryDate to UTC before extracting date string
-    // Supabase stores entry_date in UTC, so we must send UTC date
-    final entryDateUtc = entryDate.toUtc();
+    // Extract date components directly from entryDate (local date from device)
+    // entry_date is stored as DATE type (no timezone), so we send local date as-is
+    // Edge functions use user's timezone from profile for processing
     final entryDateStr = DateTime(
-      entryDateUtc.year,
-      entryDateUtc.month,
-      entryDateUtc.day,
+      entryDate.year,
+      entryDate.month,
+      entryDate.day,
     ).toIso8601String().split('T')[0];
     
     return {
