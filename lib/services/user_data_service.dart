@@ -14,6 +14,8 @@ class UserDataService {
   static final SupabaseClient _supabase = Supabase.instance.client;
   static final SupabaseSyncService _syncService = SupabaseSyncService();
   static Timer? _debounceTimer;
+  static final Set<String> _recalcInProgress = {};
+  static final Set<String> _recalcQueued = {};
 
   /// Fetch all user data including profile, stats, and preferences
   ///
@@ -1293,6 +1295,12 @@ class UserDataService {
     String userId, {
     DataFetchService? dataFetchService,
   }) async {
+    if (_recalcInProgress.contains(userId)) {
+      _recalcQueued.add(userId);
+      return;
+    }
+
+    _recalcInProgress.add(userId);
     print('🔥 STREAK DEBUG: recalculateStreak START - userId: $userId');
     try {
       final db = await DatabaseManager().database;
@@ -1371,6 +1379,13 @@ class UserDataService {
         stackTrace: StackTrace.current.toString(),
         errorContext: {'user_id': userId, 'operation': 'recalculate_streak'},
       );
+    } finally {
+      _recalcInProgress.remove(userId);
+      if (_recalcQueued.remove(userId)) {
+        Future.microtask(() {
+          recalculateStreak(userId, dataFetchService: dataFetchService);
+        });
+      }
     }
   }
 

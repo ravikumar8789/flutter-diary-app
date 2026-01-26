@@ -106,14 +106,17 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
       if (_isDisposed) return;
 
+      final dataFetchService = ref.read(dataFetchServiceProvider);
+      bool refreshHomeSummary = false;
+      bool didPrefetch7Days = false;
+
       // Calculate streak on app launch FIRST (check gaps, auto-use grace days)
       // This must run before loadUserData() so the updated streak value is available
       await UserDataService.calculateStreakOnAppLaunch(user.id);
 
-      // Invalidate caches to ensure fresh data is read
-      final dataFetchService = ref.read(dataFetchServiceProvider);
+      // Invalidate streaks cache to ensure fresh data is read
       dataFetchService.invalidateStreaksCache(user.id);
-      dataFetchService.invalidateHomeSummaryCache(user.id);
+      refreshHomeSummary = true;
 
       // Use the global provider to load user data (will now read updated streak value)
       await ref.read(userDataProvider.notifier).loadUserData();
@@ -134,7 +137,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
         // Prefetch 7 days data (with all related fields)
         // This includes today's data, so no separate today fetch needed here
         try {
-          final dataFetchService = ref.read(dataFetchServiceProvider);
           await DataPrefetchService.prefetch7DaysData(
             user.id,
             dataFetchService,
@@ -143,9 +145,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
           // Set flag to false after successful fetch
           await DataSyncFlagService.clearNeedsDataFetch();
 
-          // Invalidate home summary cache and provider to refresh week stats
-          dataFetchService.invalidateHomeSummaryCache(user.id);
-          ref.invalidate(homeSummaryProvider);
+          didPrefetch7Days = true;
+          refreshHomeSummary = true;
         } catch (e) {
           // Log error but continue - data will be fetched on-demand
           await ErrorLoggingService.logHighError(
@@ -162,37 +163,40 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
         }
       }
 
-      // Step 4.5: Always prefetch today's data for multi-device sync (regardless of needsFetch flag)
+      // Step 4.5: Prefetch today's data for multi-device sync (only if 7-day fetch didn't run)
       // This ensures today's data is always fresh on every app startup
-      if (mounted && !_isDisposed) {
-        setState(() {
-          _loadingMessage = 'Updating today\'s data...';
-        });
+      if (!didPrefetch7Days) {
+        if (mounted && !_isDisposed) {
+          setState(() {
+            _loadingMessage = 'Updating today\'s data...';
+          });
+        }
+        await Future.delayed(const Duration(milliseconds: 200));
+
+        if (_isDisposed) return;
+
+        try {
+          await DataPrefetchService.prefetchTodayData(user.id, dataFetchService);
+          refreshHomeSummary = true;
+        } catch (e) {
+          // Log error but continue - data will be fetched on-demand
+          await ErrorLoggingService.logHighError(
+            errorCode: 'ERRSYS171',
+            errorMessage:
+                'Prefetch today\'s data failed in splash screen: ${e.toString()}',
+            stackTrace: StackTrace.current.toString(),
+            errorContext: {
+              'user_id': user.id,
+              'operation': 'splash_prefetch_today',
+            },
+          );
+          // Continue - today's data will be fetched on-demand when user opens entry screen
+        }
       }
-      await Future.delayed(const Duration(milliseconds: 200));
 
-      if (_isDisposed) return;
-
-      try {
-        final dataFetchService = ref.read(dataFetchServiceProvider);
-        await DataPrefetchService.prefetchTodayData(user.id, dataFetchService);
-
-        // Invalidate home summary cache and provider to refresh week stats
+      if (refreshHomeSummary) {
         dataFetchService.invalidateHomeSummaryCache(user.id);
         ref.invalidate(homeSummaryProvider);
-      } catch (e) {
-        // Log error but continue - data will be fetched on-demand
-        await ErrorLoggingService.logHighError(
-          errorCode: 'ERRSYS171',
-          errorMessage:
-              'Prefetch today\'s data failed in splash screen: ${e.toString()}',
-          stackTrace: StackTrace.current.toString(),
-          errorContext: {
-            'user_id': user.id,
-            'operation': 'splash_prefetch_today',
-          },
-        );
-        // Continue - today's data will be fetched on-demand when user opens entry screen
       }
 
       // Step 5: Clean up old entries (7-day retention policy)

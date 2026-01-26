@@ -6,6 +6,7 @@ import '../database/database_manager.dart';
 
 class SupabaseSyncService {
   final SupabaseClient _supabase = Supabase.instance.client;
+  static final Map<String, Future<Entry?>> _inFlightEntryFetches = {};
 
   // Sync entry to Supabase
   Future<bool> syncEntry(Entry entry) async {
@@ -208,7 +209,27 @@ class SupabaseSyncService {
     // entry_date is stored as date only, so format local date directly
     final dateOnly = DateTime(date.year, date.month, date.day);
     final dateStr = DateFormat('yyyy-MM-dd').format(dateOnly);
+    final requestKey = '${userId}_$dateStr';
 
+    final existingRequest = _inFlightEntryFetches[requestKey];
+    if (existingRequest != null) {
+      return await existingRequest;
+    }
+
+    final requestFuture = _fetchEntryFromCloudInternal(userId, dateStr);
+    _inFlightEntryFetches[requestKey] = requestFuture;
+
+    try {
+      return await requestFuture;
+    } finally {
+      _inFlightEntryFetches.remove(requestKey);
+    }
+  }
+
+  Future<Entry?> _fetchEntryFromCloudInternal(
+    String userId,
+    String dateStr,
+  ) async {
     try {
       final response = await _supabase
           .from('entries')

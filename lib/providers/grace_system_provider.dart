@@ -107,6 +107,7 @@ class GraceSystemNotifier extends Notifier<GraceSystemState> {
       
       // Refresh streak provider and home summary to reflect UI changes
       ref.read(streakProvider.notifier).refresh();
+      fetchService.invalidateHomeSummaryCache(_currentUserId!);
       ref.invalidate(homeSummaryProvider);
     } catch (e) {
       await ErrorLoggingService.logHighError(
@@ -134,6 +135,9 @@ class GraceSystemNotifier extends Notifier<GraceSystemState> {
       );
       if (success) {
         await _refreshGraceStatus();
+        ref.read(streakProvider.notifier).refresh();
+        fetchService.invalidateHomeSummaryCache(_currentUserId!);
+        ref.invalidate(homeSummaryProvider);
       }
       return success;
     } catch (e) {

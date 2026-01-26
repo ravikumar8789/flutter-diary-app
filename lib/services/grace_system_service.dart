@@ -271,6 +271,7 @@ class GraceSystemService {
       if (dataFetchService != null) {
         dataFetchService.invalidateHabitsCache(userId, date);
         dataFetchService.invalidateStreaksCache(userId);
+        dataFetchService.invalidateHomeSummaryCache(userId);
       }
 
       print('🔥 STREAK DEBUG: GraceSystemService.trackTaskCompletion END - success');
@@ -328,6 +329,7 @@ class GraceSystemService {
       // Invalidate cache after update
       if (dataFetchService != null) {
         dataFetchService.invalidateStreaksCache(userId);
+        dataFetchService.invalidateHomeSummaryCache(userId);
       }
 
       return true;
@@ -446,6 +448,7 @@ class GraceSystemService {
               DateTime.parse(dateStr),
             );
           }
+          dataFetchService.invalidateHomeSummaryCache(userId);
         }
       } catch (e) {
         await ErrorLoggingService.logHighError(

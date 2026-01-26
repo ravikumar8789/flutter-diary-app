@@ -33,6 +33,9 @@ class DataRepository {
   // In-flight requests tracking (prevents duplicate queries)
   final Map<String, Future> _inFlightRequests = {};
 
+  // Background refetch tracking (prevents duplicate SWR refetches)
+  final Map<String, Future<void>> _backgroundFetches = {};
+
   // Cache TTL: 5 minutes default
   static const Duration defaultCacheTTL = Duration(minutes: 5);
   
@@ -133,9 +136,13 @@ class DataRepository {
     Future<T> Function() fetcher,
     Duration? ttl,
   ) {
+    if (_backgroundFetches.containsKey(key)) {
+      return;
+    }
+
     // Don't track in in-flight requests (this is background only)
     // Don't await - fire and forget
-    fetcher().then((data) {
+    final backgroundFuture = fetcher().then((data) {
       // Update cache with fresh data
       _cache[key] = CachedData(data, ttl ?? defaultCacheTTL);
     }).catchError((e) {
@@ -149,7 +156,11 @@ class DataRepository {
           'operation': 'background_refetch',
         },
       );
+    }).whenComplete(() {
+      _backgroundFetches.remove(key);
     });
+
+    _backgroundFetches[key] = backgroundFuture;
   }
 
   /// Invalidate specific cache key (debounced)
@@ -399,6 +410,7 @@ class DataRepository {
       _invalidationDebounceTimer = null;
       _pendingInvalidations.clear();
       _inFlightRequests.clear();
+      _backgroundFetches.clear();
       _cache.clear();
     } catch (e) {
       ErrorLoggingService.logLowError(

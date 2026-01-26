@@ -112,6 +112,8 @@ class EntryNotifier extends Notifier<EntryState> {
 
   String? _currentUserId;
   DateTime? _currentDate;
+  bool _saveInProgress = false;
+  bool _saveQueued = false;
 
   @override
   EntryState build() => EntryState();
@@ -422,16 +424,35 @@ class EntryNotifier extends Notifier<EntryState> {
   /// Execute batch save for all pending changes using RPC
   Future<void> _executeBatchSave() async {
     if (_currentUserId == null || _currentDate == null) return;
+    if (!_hasPendingChanges()) return;
+
+    if (_saveInProgress) {
+      _saveQueued = true;
+      _scheduleBatchSave();
+      return;
+    }
 
     final userId = _currentUserId!;
     final date = _currentDate!;
 
     try {
-      // Get or create entry
-      final entryData = await _entryService.loadEntryForDate(userId, date);
-      Entry entry =
-          entryData?.entry ??
-          await _entryService.getOrCreateEntry(userId, date);
+      _saveInProgress = true;
+      _saveQueued = false;
+
+      // Get or create entry (avoid refetch if state already has it)
+      Entry? entry = state.entry;
+      if (entry == null) {
+        final dateOnly = DateTime(date.year, date.month, date.day);
+        entry = await _entryService.localService.getEntryByDate(
+          userId,
+          dateOnly,
+        );
+      }
+      if (entry == null) {
+        final entryData = await _entryService.loadEntryForDate(userId, date);
+        entry = entryData?.entry;
+      }
+      entry ??= await _entryService.getOrCreateEntry(userId, date);
 
       // Apply pending changes
       if (_pendingMoodScore != null)
@@ -541,6 +562,11 @@ class EntryNotifier extends Notifier<EntryState> {
         },
       );
       ref.read(syncStatusProvider.notifier).setError('ERRDATA260: $e');
+    } finally {
+      _saveInProgress = false;
+      if (_saveQueued && _hasPendingChanges()) {
+        _scheduleBatchSave();
+      }
     }
   }
 
@@ -854,6 +880,7 @@ class EntryNotifier extends Notifier<EntryState> {
           dataFetchService: dataFetchService,
         );
         dataFetchService.invalidateStreaksCache(userId);
+        dataFetchService.invalidateHomeSummaryCache(userId);
         // Refresh providers to reflect UI changes
         ref.read(streakProvider.notifier).refresh();
         ref.invalidate(homeSummaryProvider);
@@ -870,6 +897,7 @@ class EntryNotifier extends Notifier<EntryState> {
           dataFetchService: dataFetchService,
         );
         dataFetchService.invalidateStreaksCache(userId);
+        dataFetchService.invalidateHomeSummaryCache(userId);
         // Refresh providers to reflect UI changes
         ref.read(streakProvider.notifier).refresh();
         ref.invalidate(homeSummaryProvider);
@@ -893,6 +921,7 @@ class EntryNotifier extends Notifier<EntryState> {
           dataFetchService: dataFetchService,
         );
         dataFetchService.invalidateStreaksCache(userId);
+        dataFetchService.invalidateHomeSummaryCache(userId);
         // Refresh providers to reflect UI changes
         ref.read(streakProvider.notifier).refresh();
         ref.invalidate(homeSummaryProvider);
@@ -915,6 +944,7 @@ class EntryNotifier extends Notifier<EntryState> {
             dataFetchService: dataFetchService,
           );
           dataFetchService.invalidateStreaksCache(userId);
+          dataFetchService.invalidateHomeSummaryCache(userId);
           // Refresh providers to reflect UI changes
           ref.read(streakProvider.notifier).refresh();
           ref.invalidate(homeSummaryProvider);
@@ -933,6 +963,7 @@ class EntryNotifier extends Notifier<EntryState> {
               dataFetchService: dataFetchService,
             );
             dataFetchService.invalidateStreaksCache(userId);
+            dataFetchService.invalidateHomeSummaryCache(userId);
             // Refresh providers to reflect UI changes
             ref.read(streakProvider.notifier).refresh();
             ref.invalidate(homeSummaryProvider);
@@ -962,6 +993,7 @@ class EntryNotifier extends Notifier<EntryState> {
               },
             );
             dataFetchService.invalidateStreaksCache(userId);
+            dataFetchService.invalidateHomeSummaryCache(userId);
             // Refresh providers to reflect UI changes
             ref.read(streakProvider.notifier).refresh();
             ref.invalidate(homeSummaryProvider);
@@ -990,6 +1022,19 @@ class EntryNotifier extends Notifier<EntryState> {
     _pendingTomorrowNotes = null;
     _pendingMoodScore = null;
     _pendingTags = null;
+  }
+
+  bool _hasPendingChanges() {
+    return _pendingDiaryText != null ||
+        _pendingAffirmations != null ||
+        _pendingPriorities != null ||
+        _pendingMeals != null ||
+        _pendingGratitude != null ||
+        _pendingSelfCare != null ||
+        _pendingShowerBath != null ||
+        _pendingTomorrowNotes != null ||
+        _pendingMoodScore != null ||
+        _pendingTags != null;
   }
 }
 
