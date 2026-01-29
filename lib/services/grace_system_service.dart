@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 import 'error_logging_service.dart';
 import 'data_fetch_service.dart';
 import 'database/database_manager.dart';
+import 'notification_service.dart';
 import 'sync/supabase_sync_service.dart';
 
 class GraceSystemService {
@@ -272,6 +273,22 @@ class GraceSystemService {
         dataFetchService.invalidateHabitsCache(userId, date);
         dataFetchService.invalidateStreaksCache(userId);
         dataFetchService.invalidateHomeSummaryCache(userId);
+      }
+
+      try {
+        await NotificationService.instance.rescheduleBasedOnHabits(userId);
+      } catch (e, stackTrace) {
+        await ErrorLoggingService.logMediumError(
+          errorCode: 'ERRSYS159',
+          errorMessage: 'Reschedule notifications after habits update failed: $e',
+          stackTrace: stackTrace.toString(),
+          errorContext: {
+            'user_id': userId,
+            'task_type': taskType,
+            'completed': completed,
+            'operation': 'reschedule_after_habits_update',
+          },
+        );
       }
 
       print('🔥 STREAK DEBUG: GraceSystemService.trackTaskCompletion END - success');
