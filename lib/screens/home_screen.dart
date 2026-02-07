@@ -16,6 +16,7 @@ import '../services/streak_motivation_service.dart';
 import '../services/data_sync_flag_service.dart';
 import '../services/data_prefetch_service.dart';
 import '../services/error_logging_service.dart';
+import '../widgets/debug_notification_bottom_sheet.dart';
 
 // Import aiInsightProvider from home_summary_provider
 
@@ -200,6 +201,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Home'),
+          actions: [
+            // Temporary debug button - TODO: Remove after debugging
+            IconButton(
+              icon: const Icon(Icons.bug_report),
+              tooltip: 'Debug Notifications',
+              onPressed: () {
+                showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  builder: (context) => Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).scaffoldBackgroundColor,
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(20),
+                      ),
+                    ),
+                    child: const DebugNotificationBottomSheet(),
+                  ),
+                );
+              },
+            ),
+          ],
         ),
         // drawer removed - using bottom navigation
         body: SafeArea(

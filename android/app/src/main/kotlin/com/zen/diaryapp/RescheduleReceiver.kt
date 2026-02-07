@@ -19,62 +19,63 @@ class RescheduleReceiver : BroadcastReceiver() {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val currentTime = System.currentTimeMillis()
         
-        // List of alarm IDs to check
-        val alarmIds = listOf(1001, 1002, 1003, 2001)
-        
-        for (alarmId in alarmIds) {
-            val timeKey = "flutter.alarm_${alarmId}_time"
-            val titleKey = "flutter.alarm_${alarmId}_title"
-            val bodyKey = "flutter.alarm_${alarmId}_body"
-            
-            val timeStr = prefs.getString(timeKey, null)
-            val title = prefs.getString(titleKey, null)
-            val body = prefs.getString(bodyKey, null)
-            
-            if (timeStr != null && title != null && body != null) {
-                try {
-                    // Parse ISO 8601 datetime
-                    val scheduledTimeMillis = parseIso8601(timeStr)
-                    
-                    // Only reschedule if time is in the future
-                    if (scheduledTimeMillis > currentTime) {
-                        Log.d("RescheduleReceiver", "Rescheduling alarm $alarmId for $timeStr")
-                        
-                        val notificationIntent = Intent(context, NotificationReceiver::class.java).apply {
-                            putExtra("notification_id", alarmId)
-                            putExtra("title", title)
-                            putExtra("body", body)
-                        }
-                        
-                        val pendingIntent = PendingIntent.getBroadcast(
-                            context,
-                            alarmId,
-                            notificationIntent,
-                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                        )
-                        
-                        // Schedule the alarm
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                            alarmManager.setExactAndAllowWhileIdle(
-                                AlarmManager.RTC_WAKEUP,
-                                scheduledTimeMillis,
-                                pendingIntent
-                            )
-                        } else {
-                            alarmManager.setExact(
-                                AlarmManager.RTC_WAKEUP,
-                                scheduledTimeMillis,
-                                pendingIntent
-                            )
-                        }
-                        
-                        Log.d("RescheduleReceiver", "Successfully rescheduled alarm $alarmId")
-                    } else {
-                        Log.d("RescheduleReceiver", "Alarm $alarmId time has passed, skipping")
+        val allEntries = prefs.all
+        for ((key, value) in allEntries) {
+            if (!key.startsWith("flutter.alarm_") || !key.endsWith("_time")) {
+                continue
+            }
+
+            val timeStr = value as? String ?: continue
+            val baseKey = key.removeSuffix("_time")
+            val title = prefs.getString("${baseKey}_title", null)
+            val body = prefs.getString("${baseKey}_body", null)
+            if (title == null || body == null) continue
+
+            val idPart = baseKey.removePrefix("flutter.alarm_").split("_").firstOrNull()
+            val alarmId = idPart?.toIntOrNull() ?: continue
+
+            try {
+                // Parse ISO 8601 datetime
+                val scheduledTimeMillis = parseIso8601(timeStr)
+
+                // Only reschedule if time is in the future
+                if (scheduledTimeMillis > currentTime) {
+                    Log.d("RescheduleReceiver", "Rescheduling alarm $alarmId for $timeStr")
+
+                    val notificationIntent = Intent(context, NotificationReceiver::class.java).apply {
+                        putExtra("notification_id", alarmId)
+                        putExtra("title", title)
+                        putExtra("body", body)
                     }
-                } catch (e: Exception) {
-                    Log.e("RescheduleReceiver", "Error rescheduling alarm $alarmId: ${e.message}")
+
+                    val pendingIntent = PendingIntent.getBroadcast(
+                        context,
+                        alarmId,
+                        notificationIntent,
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    )
+
+                    // Schedule the alarm
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        alarmManager.setExactAndAllowWhileIdle(
+                            AlarmManager.RTC_WAKEUP,
+                            scheduledTimeMillis,
+                            pendingIntent
+                        )
+                    } else {
+                        alarmManager.setExact(
+                            AlarmManager.RTC_WAKEUP,
+                            scheduledTimeMillis,
+                            pendingIntent
+                        )
+                    }
+
+                    Log.d("RescheduleReceiver", "Successfully rescheduled alarm $alarmId")
+                } else {
+                    Log.d("RescheduleReceiver", "Alarm $alarmId time has passed, skipping")
                 }
+            } catch (e: Exception) {
+                Log.e("RescheduleReceiver", "Error rescheduling alarm $alarmId: ${e.message}")
             }
         }
     }
