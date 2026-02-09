@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/analytics_models.dart';
+import '../models/error_models.dart';
 import '../services/analytics_service.dart';
 import '../services/error_logging_service.dart';
 import 'data_providers.dart';
@@ -56,14 +57,16 @@ class SelectedMonthNotifier extends Notifier<DateTime> {
       state = monthStart;
     } catch (e) {
       ErrorLoggingService.logError(
-        errorCode: 'ERRPROV001',
-        errorMessage: 'Failed to set selected month: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'MEDIUM',
-        errorContext: {
-          'month_start': monthStart.toIso8601String(),
-          'operation': 'set_month',
-        },
+        ErrorContext.fromException(
+          errorCode: 'ERRPROV001',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'month_start': monthStart.toIso8601String(),
+            'operation': 'set_month',
+          },
+        ),
       );
       rethrow;
     }
@@ -103,11 +106,13 @@ final monthlyInsightsListProvider =
         final userId = supabase.auth.currentUser?.id;
         if (userId == null) {
           await ErrorLoggingService.logError(
-            errorCode: 'ERRPROV002',
-            errorMessage: 'User not authenticated for monthly insights list',
-            stackTrace: StackTrace.current.toString(),
-            severity: 'MEDIUM',
-            errorContext: {'operation': 'monthly_insights_list_provider'},
+            ErrorContext.create(
+              errorCode: 'ERRPROV002',
+              errorMessage: 'User not authenticated for monthly insights list',
+              severity: ErrorSeverity.medium,
+              stackTrace: StackTrace.current.toString(),
+              errorContext: {'operation': 'monthly_insights_list_provider'},
+            ),
           );
           return [];
         }
@@ -119,22 +124,28 @@ final monthlyInsightsListProvider =
         } catch (e) {
           // Fallback to direct service if DataFetchService fails
           await ErrorLoggingService.logError(
-            errorCode: 'ERRPROV003',
-            errorMessage: 'DataFetchService unavailable, using direct service: ${e.toString()}',
-            stackTrace: StackTrace.current.toString(),
-            severity: 'MEDIUM',
-            errorContext: {'operation': 'monthly_insights_list_provider_fallback'},
+            ErrorContext.fromException(
+              errorCode: 'ERRPROV003',
+              severity: ErrorSeverity.medium,
+              exception: e,
+              stackTrace: StackTrace.current,
+              errorContext: {
+                'operation': 'monthly_insights_list_provider_fallback',
+              },
+            ),
           );
           final service = AnalyticsService();
           return await service.getMonthlyInsightsList(userId);
         }
       } catch (e) {
         await ErrorLoggingService.logError(
-          errorCode: 'ERRPROV003',
-          errorMessage: 'Monthly insights list provider failed: ${e.toString()}',
-          stackTrace: StackTrace.current.toString(),
-          severity: 'HIGH',
-          errorContext: {'operation': 'monthly_insights_list_provider'},
+          ErrorContext.fromException(
+            errorCode: 'ERRPROV003',
+            severity: ErrorSeverity.high,
+            exception: e,
+            stackTrace: StackTrace.current,
+            errorContext: {'operation': 'monthly_insights_list_provider'},
+          ),
         );
         rethrow;
       }
@@ -150,14 +161,16 @@ final monthlyAnalyticsProvider =
         
         if (userId == null) {
           await ErrorLoggingService.logError(
-            errorCode: 'ERRPROV004',
-            errorMessage: 'User not authenticated for monthly analytics',
-            stackTrace: StackTrace.current.toString(),
-            severity: 'MEDIUM',
-            errorContext: {
-              'operation': 'monthly_analytics_provider',
-              'month_start': selectedMonth.toIso8601String(),
-            },
+            ErrorContext.create(
+              errorCode: 'ERRPROV004',
+              errorMessage: 'User not authenticated for monthly analytics',
+              severity: ErrorSeverity.medium,
+              stackTrace: StackTrace.current.toString(),
+              errorContext: {
+                'operation': 'monthly_analytics_provider',
+                'month_start': selectedMonth.toIso8601String(),
+              },
+            ),
           );
           throw Exception('User not authenticated');
         }
@@ -172,28 +185,32 @@ final monthlyAnalyticsProvider =
         } catch (e) {
           // Fallback to direct service if DataFetchService fails
           await ErrorLoggingService.logError(
-            errorCode: 'ERRPROV005',
-            errorMessage: 'DataFetchService unavailable, using direct service: ${e.toString()}',
-            stackTrace: StackTrace.current.toString(),
-            severity: 'MEDIUM',
-            errorContext: {
-              'operation': 'monthly_analytics_provider_fallback',
-              'month_start': selectedMonth.toIso8601String(),
-            },
+            ErrorContext.fromException(
+              errorCode: 'ERRPROV005',
+              severity: ErrorSeverity.medium,
+              exception: e,
+              stackTrace: StackTrace.current,
+              errorContext: {
+                'operation': 'monthly_analytics_provider_fallback',
+                'month_start': selectedMonth.toIso8601String(),
+              },
+            ),
           );
           final service = AnalyticsService();
           return await service.getMonthlyAnalytics(selectedMonth);
         }
       } catch (e) {
         await ErrorLoggingService.logError(
-          errorCode: 'ERRPROV005',
-          errorMessage: 'Monthly analytics provider failed: ${e.toString()}',
-          stackTrace: StackTrace.current.toString(),
-          severity: 'HIGH',
-          errorContext: {
-            'operation': 'monthly_analytics_provider',
-            'month_start': ref.read(selectedMonthProvider).toIso8601String(),
-          },
+          ErrorContext.fromException(
+            errorCode: 'ERRPROV005',
+            severity: ErrorSeverity.high,
+            exception: e,
+            stackTrace: StackTrace.current,
+            errorContext: {
+              'operation': 'monthly_analytics_provider',
+              'month_start': ref.read(selectedMonthProvider).toIso8601String(),
+            },
+          ),
         );
         rethrow;
       }

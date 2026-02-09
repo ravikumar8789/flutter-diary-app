@@ -8,6 +8,9 @@ import '../models/history_entry_model.dart';
 import '../models/entry_models.dart';
 import '../services/history_service.dart';
 import '../providers/data_providers.dart';
+import '../ui/responsive/responsive_info.dart';
+import '../ui/responsive/responsive_tokens.dart';
+import '../ui/responsive/responsive_wrap.dart';
 
 class HistoryScreen extends ConsumerStatefulWidget {
   const HistoryScreen({super.key});
@@ -88,8 +91,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   @override
   Widget build(BuildContext context) {
     final historyState = ref.watch(historyProvider);
-    final size = MediaQuery.of(context).size;
-    final isTablet = size.width > 600;
+    final info = ResponsiveInfo.of(context);
 
     return Scaffold(
         appBar: AppBar(
@@ -125,10 +127,10 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         child: Column(
           children: [
             // Header with entry count (InnerGlow Style)
-            if (_viewMode == 'list') _buildHeader(context, historyState),
+            if (_viewMode == 'list') _buildHeader(context, historyState, info),
             
             // Mood filter chips (only in list mode)
-            if (_viewMode == 'list') _buildMoodChips(isTablet),
+            if (_viewMode == 'list') _buildMoodChips(info),
 
             // Entries list
             Expanded(
@@ -157,8 +159,8 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                       ),
                     )
                   : _viewMode == 'list'
-                  ? _buildListView(isTablet, historyState)
-                  : _buildCalendarView(isTablet, historyState),
+                  ? _buildListView(info, historyState)
+                  : _buildCalendarView(info, historyState),
             ),
           ],
         ),
@@ -173,10 +175,19 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   }
 
   /// Build header with entry count (InnerGlow Style)
-  Widget _buildHeader(BuildContext context, HistoryState historyState) {
+  Widget _buildHeader(
+    BuildContext context,
+    HistoryState historyState,
+    ResponsiveInfo info,
+  ) {
     final totalCount = historyState.entries.length;
+    final horizontalPadding = ResponsiveTokens.screenPaddingHorizontal(info);
+    final verticalPadding = ResponsiveTokens.spacingM(info);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      padding: EdgeInsets.symmetric(
+        horizontal: horizontalPadding,
+        vertical: verticalPadding,
+      ),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         border: Border(
@@ -185,8 +196,10 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           ),
         ),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: ResponsiveWrapRow(
+        info: info,
+        rowMainAxisAlignment: MainAxisAlignment.spaceBetween,
+        wrapAlignment: WrapAlignment.spaceBetween,
         children: [
           Text(
             '$totalCount ${totalCount == 1 ? 'entry' : 'entries'}',
@@ -202,7 +215,10 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
               icon: const Icon(Icons.clear, size: 16),
               label: const Text('Clear filter'),
               style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: EdgeInsets.symmetric(
+                  horizontal: ResponsiveTokens.spacingM(info),
+                  vertical: ResponsiveTokens.spacingS(info),
+                ),
               ),
             ),
         ],
@@ -211,9 +227,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   }
 
   /// Build compact mood filter chips
-  Widget _buildMoodChips(bool isTablet) {
+  Widget _buildMoodChips(ResponsiveInfo info) {
     final moodCounts = _moodCounts;
     final totalCount = ref.read(historyProvider).entries.length;
+    final spacingS = ResponsiveTokens.spacingS(info);
+    final spacingM = ResponsiveTokens.spacingM(info);
     
     // Mood emojis and colors
     final moodData = [
@@ -226,8 +244,8 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
     return Container(
       padding: EdgeInsets.symmetric(
-        vertical: isTablet ? 12 : 10,
-        horizontal: isTablet ? 20 : 16,
+        vertical: spacingM,
+        horizontal: ResponsiveTokens.screenPaddingHorizontal(info),
       ),
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -237,47 +255,78 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           ],
         ),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          // All chip
-          Expanded(
-            child: _buildMoodChip(
-              label: 'All',
-              count: totalCount,
-              isSelected: _selectedMood == null,
-              color: Colors.grey,
-              onTap: () {
-                setState(() => _selectedMood = null);
-              },
-            ),
-          ),
-          const SizedBox(width: 6),
-          // Mood chips (1-5)
-          ...moodData.map((mood) {
-            final moodNum = mood['mood'] as int;
-            final count = moodCounts[moodNum] ?? 0;
-            return Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(left: 3),
-                child: _buildMoodChip(
-                  label: mood['emoji'] as String,
-                  count: count,
-                  isSelected: _selectedMood == moodNum.toString(),
-                  color: mood['color'] as Color,
+      child: info.isCompact
+          ? Wrap(
+              spacing: spacingS,
+              runSpacing: spacingS,
+              children: [
+                _buildMoodChip(
+                  label: 'All',
+                  count: totalCount,
+                  isSelected: _selectedMood == null,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   onTap: () {
-                    setState(() {
-                      _selectedMood = count > 0 
-                          ? moodNum.toString() 
-                          : null;
-                    });
+                    setState(() => _selectedMood = null);
                   },
                 ),
-              ),
-            );
-          }),
-        ],
-      ),
+                ...moodData.map((mood) {
+                  final moodNum = mood['mood'] as int;
+                  final count = moodCounts[moodNum] ?? 0;
+                  return _buildMoodChip(
+                    label: mood['emoji'] as String,
+                    count: count,
+                    isSelected: _selectedMood == moodNum.toString(),
+                    color: mood['color'] as Color,
+                    onTap: () {
+                      setState(() {
+                        _selectedMood =
+                            count > 0 ? moodNum.toString() : null;
+                      });
+                    },
+                  );
+                }),
+              ],
+            )
+          : Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                // All chip
+                Expanded(
+                  child: _buildMoodChip(
+                    label: 'All',
+                    count: totalCount,
+                    isSelected: _selectedMood == null,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    onTap: () {
+                      setState(() => _selectedMood = null);
+                    },
+                  ),
+                ),
+                SizedBox(width: spacingS),
+                // Mood chips (1-5)
+                ...moodData.map((mood) {
+                  final moodNum = mood['mood'] as int;
+                  final count = moodCounts[moodNum] ?? 0;
+                  return Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.only(left: spacingS * 0.5),
+                      child: _buildMoodChip(
+                        label: mood['emoji'] as String,
+                        count: count,
+                        isSelected: _selectedMood == moodNum.toString(),
+                        color: mood['color'] as Color,
+                        onTap: () {
+                          setState(() {
+                            _selectedMood =
+                                count > 0 ? moodNum.toString() : null;
+                          });
+                        },
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ),
     );
   }
 
@@ -321,7 +370,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                 color: isSelected 
                     ? _darkenColorForText(color) 
-                    : Colors.grey.shade600,
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
           ],
@@ -340,14 +389,17 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     );
   }
 
-  Widget _buildListView(bool isTablet, HistoryState historyState) {
+  Widget _buildListView(ResponsiveInfo info, HistoryState historyState) {
     final grouped = _groupedEntries;
     if (grouped.isEmpty && !historyState.isLoading) {
       return _buildEmptyState();
     }
 
     return ListView.builder(
-      padding: EdgeInsets.all(isTablet ? 32 : 16),
+      padding: EdgeInsets.symmetric(
+        horizontal: ResponsiveTokens.screenPaddingHorizontal(info),
+        vertical: ResponsiveTokens.spacingM(info),
+      ),
       itemCount: grouped.length + (_availableMonths.isNotEmpty ? 1 : 0),
       itemBuilder: (context, index) {
         // Load more button at the end
@@ -362,7 +414,10 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           children: [
             // Month header with gradient
             Padding(
-              padding: EdgeInsets.only(bottom: 16, top: index == 0 ? 0 : 24),
+              padding: EdgeInsets.only(
+                bottom: ResponsiveTokens.spacingM(info),
+                top: index == 0 ? 0 : ResponsiveTokens.spacingL(info),
+              ),
               child: Row(
                 children: [
                   Container(
@@ -415,8 +470,8 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             // Entries for this month
             ...entries.map(
               (entry) => Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: _buildEntryCard(entry, isTablet),
+                padding: EdgeInsets.only(bottom: ResponsiveTokens.spacingM(info)),
+                child: _buildEntryCard(entry, info),
               ),
             ),
           ],
@@ -487,7 +542,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                             'Load more entries',
                             style: TextStyle(
                               fontSize: 12,
-                              color: Colors.grey.shade600,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                             ),
                           ),
                         ],
@@ -500,7 +555,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     );
   }
 
-  Widget _buildEntryCard(HistoryEntry entry, bool isTablet) {
+  Widget _buildEntryCard(HistoryEntry entry, ResponsiveInfo info) {
     final mood = entry.entry.moodScore ?? 3;
     final hasInsights = entry.hasInsights;
     final sentiment = entry.sentiment;
@@ -508,6 +563,10 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     final selfCareCount = entry.selfCareCount;
     final mealsCount = entry.mealsCount;
     final waterCups = entry.meals?.waterCups ?? 0;
+    final cardPadding = ResponsiveTokens.spacingM(info);
+    final previewFontSize =
+        info.value(compact: 12.0, medium: 13.0, expanded: 14.0);
+    final colorScheme = Theme.of(context).colorScheme;
 
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.0, end: 1.0),
@@ -531,13 +590,13 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  Colors.white,
-                  _getSentimentColor(sentiment).withOpacity(0.05),
+                  colorScheme.surface,
+                  _getSentimentColor(context, sentiment).withOpacity(0.05),
                 ],
               ),
             ),
             child: Padding(
-              padding: const EdgeInsets.all(14),
+              padding: EdgeInsets.all(cardPadding),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -595,8 +654,8 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                   Text(
                     entry.preview,
                     style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey.shade700,
+                      fontSize: previewFontSize,
+                      color: colorScheme.onSurfaceVariant,
                       height: 1.4,
                     ),
                     maxLines: 2,
@@ -692,21 +751,16 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     );
   }
   
-  String _getMoodEmoji(int mood) {
-    final emojis = ['😢', '😔', '😐', '😊', '😄'];
-    return emojis[mood - 1];
-  }
-
-  Color _getSentimentColor(String sentiment) {
+  Color _getSentimentColor(BuildContext context, String sentiment) {
     switch (sentiment) {
       case 'positive':
         return Colors.green;
       case 'neutral':
-        return Colors.grey;
+        return Theme.of(context).colorScheme.onSurfaceVariant;
       case 'negative':
         return Colors.red;
       default:
-        return Colors.grey;
+        return Theme.of(context).colorScheme.onSurfaceVariant;
     }
   }
 
@@ -741,7 +795,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     return icons[mood - 1];
   }
 
-  Widget _buildCalendarView(bool isTablet, HistoryState historyState) {
+  Widget _buildCalendarView(ResponsiveInfo info, HistoryState historyState) {
     final now = DateTime.now();
     final startDate = DateTime(now.year, now.month - 5, 1); // 6 months back
     final endDate = DateTime(now.year, now.month + 1, 0); // Current month end
@@ -759,24 +813,30 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
     return ListView.builder(
       padding: EdgeInsets.symmetric(
-        horizontal: isTablet ? 32 : 16,
-        vertical: 16,
+        horizontal: ResponsiveTokens.screenPaddingHorizontal(info),
+        vertical: ResponsiveTokens.spacingM(info),
       ),
       itemCount: months.length,
       itemBuilder: (context, index) {
-        return _buildMonthCalendar(months[index], isTablet);
+        return _buildMonthCalendar(months[index], info);
       },
     );
   }
 
-  Widget _buildMonthCalendar(DateTime focusedDay, bool isTablet) {
+  Widget _buildMonthCalendar(DateTime focusedDay, ResponsiveInfo info) {
     final firstDay = DateTime(focusedDay.year, focusedDay.month, 1);
     final lastDay = DateTime(focusedDay.year, focusedDay.month + 1, 0);
+    final spacingM = ResponsiveTokens.spacingM(info);
+    final spacingL = ResponsiveTokens.spacingL(info);
+    final headerFontSize = info.value(compact: 18.0, medium: 20.0, expanded: 22.0);
+    final dayFontSize = info.value(compact: 12.0, medium: 14.0, expanded: 14.0);
+    final dowFontSize = info.value(compact: 11.0, medium: 12.0, expanded: 12.0);
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 24),
+      margin: EdgeInsets.only(bottom: spacingL),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
@@ -790,7 +850,10 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         children: [
           // Month header with gradient
           Container(
-            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+            padding: EdgeInsets.symmetric(
+              vertical: spacingM,
+              horizontal: spacingL,
+            ),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [Colors.purple.shade400, Colors.pink.shade400],
@@ -805,11 +868,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(Icons.calendar_month, color: Colors.white, size: 24),
-                const SizedBox(width: 12),
+                SizedBox(width: spacingM),
                 Text(
                   DateFormat('MMMM yyyy').format(focusedDay),
-                  style: const TextStyle(
-                    fontSize: 20,
+                  style: TextStyle(
+                    fontSize: headerFontSize,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                     letterSpacing: 0.5,
@@ -840,45 +903,48 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             calendarStyle: CalendarStyle(
               outsideDaysVisible: false,
               weekendTextStyle: TextStyle(
-                color: Colors.grey.shade600,
+                color: colorScheme.onSurfaceVariant,
                 fontWeight: FontWeight.w500,
               ),
               defaultTextStyle: TextStyle(
-                color: Colors.grey.shade800,
+                color: colorScheme.onSurface,
                 fontWeight: FontWeight.w600,
-                fontSize: 14,
+                fontSize: dayFontSize,
               ),
               todayDecoration: BoxDecoration(
-                color: Colors.blue.shade100,
+                color: colorScheme.primary.withOpacity(0.12),
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.blue.shade400, width: 2),
+                border: Border.all(
+                  color: colorScheme.primary.withOpacity(0.35),
+                  width: 2,
+                ),
               ),
               todayTextStyle: TextStyle(
-                color: Colors.blue.shade700,
+                color: colorScheme.primary,
                 fontWeight: FontWeight.bold,
-                fontSize: 14,
+                fontSize: dayFontSize,
               ),
               selectedDecoration: BoxDecoration(
                 color: Colors.purple.shade300,
                 shape: BoxShape.circle,
               ),
-              selectedTextStyle: const TextStyle(
-                color: Colors.white,
+              selectedTextStyle: TextStyle(
+                color: colorScheme.onPrimary,
                 fontWeight: FontWeight.bold,
-                fontSize: 14,
+                fontSize: dayFontSize,
               ),
               markerDecoration: const BoxDecoration(shape: BoxShape.circle),
             ),
             daysOfWeekStyle: DaysOfWeekStyle(
               weekdayStyle: TextStyle(
-                color: Colors.grey.shade700,
+                color: colorScheme.onSurfaceVariant,
                 fontWeight: FontWeight.bold,
-                fontSize: 12,
+                fontSize: dowFontSize,
               ),
               weekendStyle: TextStyle(
                 color: Colors.pink.shade400,
                 fontWeight: FontWeight.bold,
-                fontSize: 12,
+                fontSize: dowFontSize,
               ),
             ),
             calendarBuilders: CalendarBuilders(
@@ -921,6 +987,12 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     bool isToday = false,
     bool isSelected = false,
   }) {
+    final info = ResponsiveInfo.of(context);
+    final cellMargin = info.value(compact: 3.0, medium: 4.0, expanded: 4.0);
+    final circleSize = info.value(compact: 30.0, medium: 36.0, expanded: 38.0);
+    final fontSize = info.value(compact: 12.0, medium: 14.0, expanded: 14.0);
+    final iconSize = info.value(compact: 8.0, medium: 10.0, expanded: 10.0);
+    final colorScheme = Theme.of(context).colorScheme;
     // Use optimized mood lookup
     final moodNullable = _getMoodByDate(date);
     final hasEntry = moodNullable != null;
@@ -930,7 +1002,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     return GestureDetector(
       onTap: () => _handleDateTap(date),
       child: Container(
-        margin: const EdgeInsets.all(4),
+        margin: EdgeInsets.all(cellMargin),
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: isSelected
@@ -945,8 +1017,8 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             // Mood background circle
             if (hasEntry)
               Container(
-                width: 36,
-                height: 36,
+                width: circleSize,
+                height: circleSize,
                 decoration: BoxDecoration(
                   gradient: RadialGradient(
                     colors: [
@@ -961,15 +1033,15 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             Text(
               '${date.day}',
               style: TextStyle(
-                fontSize: 14,
+                fontSize: fontSize,
                 fontWeight: FontWeight.w600,
                 color: isSelected
-                    ? Colors.white
+                    ? colorScheme.onPrimary
                     : isToday
-                    ? Colors.blue.shade700
+                    ? colorScheme.primary
                     : hasEntry
-                    ? Colors.grey.shade800
-                    : Colors.grey.shade500,
+                    ? colorScheme.onSurface
+                    : colorScheme.onSurfaceVariant,
               ),
             ),
             // Mood icon overlay (small, top-right)
@@ -992,7 +1064,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                   ),
                   child: Icon(
                     _getMoodIcon(mood),
-                    size: 10,
+                    size: iconSize,
                     color: Colors.white,
                   ),
                 ),
@@ -1004,33 +1076,42 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   }
 
   void _handleDateTap(DateTime date) async {
+    final info = ResponsiveInfo.of(context);
+    final loadingHeightFactor =
+        info.value(compact: 0.25, medium: 0.3, expanded: 0.35);
     // Show loading bottom sheet immediately
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.3,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.purple),
-              ),
-              SizedBox(height: 16),
-              Text(
-                'Loading entry...',
-                style: TextStyle(fontSize: 16, color: Colors.grey),
-              ),
-            ],
+      builder: (context) {
+        final colorScheme = Theme.of(context).colorScheme;
+        return Container(
+          height: MediaQuery.of(context).size.height * loadingHeightFactor,
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
-        ),
-      ),
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.purple),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Loading entry...',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
 
     // Fetch entry from provider
@@ -1050,76 +1131,84 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           isScrollControlled: true,
           backgroundColor: Colors.transparent,
           builder: (context) => DraggableScrollableSheet(
-            initialChildSize: 0.4,
-            maxChildSize: 0.6,
-            minChildSize: 0.3,
+            initialChildSize:
+                info.value(compact: 0.35, medium: 0.4, expanded: 0.45),
+            maxChildSize:
+                info.value(compact: 0.55, medium: 0.6, expanded: 0.7),
+            minChildSize:
+                info.value(compact: 0.25, medium: 0.3, expanded: 0.35),
             expand: false,
-            builder: (context, scrollController) => Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-              ),
-              child: Column(
-                children: [
-                  Container(
-                    margin: const EdgeInsets.only(top: 12),
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  Expanded(
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(24),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  Colors.grey.shade200,
-                                  Colors.grey.shade100,
-                                ],
-                              ),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.edit_note,
-                              size: 48,
-                              color: Colors.grey.shade400,
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                          Text(
-                            'No entry for this date',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.grey.shade700,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 32),
-                            child: Text(
-                              'You haven\'t written an entry for ${DateFormat('MMMM d, y').format(date)}',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                          ),
-                        ],
+            builder: (context, scrollController) {
+              final colorScheme = Theme.of(context).colorScheme;
+              return Container(
+                decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(24)),
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.only(top: 12),
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: colorScheme.outlineVariant,
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ),
+                    Expanded(
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(24),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    colorScheme.surfaceVariant,
+                                    colorScheme.surface,
+                                  ],
+                                ),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.edit_note,
+                                size: 48,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                            Text(
+                              'No entry for this date',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: colorScheme.onSurface,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 32),
+                              child: Text(
+                                'You haven\'t written an entry for ${DateFormat('MMMM d, y').format(date)}',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         );
       }
@@ -1131,7 +1220,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.history, size: 80, color: Colors.grey.shade300),
+          Icon(
+            Icons.history,
+            size: 80,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
           const SizedBox(height: 24),
           Text(
             'No entries found',
@@ -1149,37 +1242,45 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
 
   void _showEntryDetail(HistoryEntry entry) {
+    final info = ResponsiveInfo.of(context);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        maxChildSize: 0.95,
-        minChildSize: 0.5,
+        initialChildSize:
+            info.value(compact: 0.65, medium: 0.7, expanded: 0.8),
+        maxChildSize:
+            info.value(compact: 0.9, medium: 0.95, expanded: 0.98),
+        minChildSize:
+            info.value(compact: 0.45, medium: 0.5, expanded: 0.6),
         expand: false,
-        builder: (context, scrollController) => Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: Column(
-            children: [
-              // Drag handle
-              Container(
-                margin: const EdgeInsets.only(top: 12),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
+        builder: (context, scrollController) {
+          final colorScheme = Theme.of(context).colorScheme;
+          return Container(
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: Column(
+              children: [
+                // Drag handle
+                Container(
+                  margin: const EdgeInsets.only(top: 12),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: colorScheme.outlineVariant,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-              ),
 
               Expanded(
                 child: SingleChildScrollView(
                   controller: scrollController,
-                  padding: const EdgeInsets.all(24),
+                  padding: EdgeInsets.all(
+                    ResponsiveTokens.spacingL(ResponsiveInfo.of(context)),
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1249,9 +1350,10 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                   ),
                 ),
               ),
-            ],
-          ),
-        ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -1482,7 +1584,9 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         Colors.teal,
         Text(
           'Take care of yourself! Every small act of self-care matters. 💫',
-          style: TextStyle(color: Colors.grey.shade600),
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
       );
     }
@@ -1559,7 +1663,9 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       completed.isEmpty
           ? Text(
               'Take care of yourself! Every small act of self-care matters. 💫',
-              style: TextStyle(color: Colors.grey.shade600),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             )
           : Wrap(
               spacing: 12,
@@ -1637,7 +1743,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             message,
             style: TextStyle(
               fontSize: 14,
-              color: Colors.grey.shade700,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
               height: 1.6,
             ),
             textAlign: TextAlign.center,
@@ -1693,7 +1799,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
+        color: Theme.of(context).colorScheme.surfaceVariant,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -1704,18 +1810,24 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.bold,
-              color: Colors.grey.shade600,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: 8),
           Text(
             'Created: ${DateFormat('MMM d, y • h:mm a').format(entry.entry.createdAt)}',
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
           if (isEdited)
             Text(
               'Updated: ${DateFormat('MMM d, y • h:mm a').format(entry.entry.updatedAt)}',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           // Source is not stored in Entry model, skip for now
         ],
@@ -1899,7 +2011,7 @@ class _ExpandableInsightsCardState extends ConsumerState<_ExpandableInsightsCard
             'Loading insights...',
             style: TextStyle(
               fontSize: 14,
-              color: Colors.grey.shade600,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
         ],
@@ -1930,7 +2042,7 @@ class _ExpandableInsightsCardState extends ConsumerState<_ExpandableInsightsCard
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
-              color: Colors.grey.shade800,
+              color: Theme.of(context).colorScheme.onSurface,
             ),
           ),
           const SizedBox(height: 8),
@@ -1941,7 +2053,7 @@ class _ExpandableInsightsCardState extends ConsumerState<_ExpandableInsightsCard
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13,
-                color: Colors.grey.shade600,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 height: 1.5,
               ),
             ),
@@ -2145,7 +2257,7 @@ class _ExpandableInsightsCardState extends ConsumerState<_ExpandableInsightsCard
                   content,
                   style: TextStyle(
                     fontSize: 13,
-                    color: Colors.grey.shade700,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     height: 1.4,
                   ),
                 ),

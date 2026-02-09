@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/pin_auth_service.dart';
+import '../models/error_models.dart';
 import '../services/error_logging_service.dart';
 
 /// Privacy lock states
@@ -133,13 +134,16 @@ class PrivacyLockNotifier extends Notifier<PrivacyLockData> {
     } catch (e) {
 
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS079',
-        errorMessage: 'Privacy lock initialization failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'initialization_time': DateTime.now().toIso8601String(),
-          'provider': 'PrivacyLockProvider',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS079',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'initialization_time': DateTime.now().toIso8601String(),
+            'provider': 'PrivacyLockProvider',
+          },
+        ),
       );
       state = state.copyWith(
         state: PrivacyLockState.disabled,
@@ -178,13 +182,16 @@ class PrivacyLockNotifier extends Notifier<PrivacyLockData> {
     } catch (e) {
 
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS080',
-        errorMessage: 'Privacy lock enable failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'enable_time': DateTime.now().toIso8601String(),
-          'provider': 'PrivacyLockProvider',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS080',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'enable_time': DateTime.now().toIso8601String(),
+            'provider': 'PrivacyLockProvider',
+          },
+        ),
       );
       state = state.copyWith(
         pinEntryState: PinEntryState.failure,

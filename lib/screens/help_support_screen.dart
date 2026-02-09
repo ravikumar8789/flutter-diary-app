@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import '../services/support_ticket_service.dart';
 import '../utils/snackbar_utils.dart';
 import '../services/error_logging_service.dart';
+import '../models/error_models.dart';
 import 'my_tickets_screen.dart';
+import '../ui/responsive/responsive_body.dart';
+import '../ui/responsive/responsive_info.dart';
+import '../ui/responsive/responsive_tokens.dart';
 
 class HelpSupportScreen extends StatefulWidget {
   const HelpSupportScreen({super.key});
@@ -78,13 +82,16 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
       if (mounted) {
         SnackbarUtils.showError(context, 'An error occurred. Please try again.');
         await ErrorLoggingService.logHighError(
-          errorCode: 'ERRSYS124',
-          errorMessage: 'Help support screen error: ${e.toString()}',
-          stackTrace: StackTrace.current.toString(),
-          errorContext: {
-            'screen': 'HelpSupportScreen',
-            'operation': 'submit_ticket',
-          },
+          error: ErrorContext.fromException(
+            errorCode: 'ERRSYS124',
+            severity: ErrorSeverity.high,
+            exception: e,
+            stackTrace: StackTrace.current,
+            errorContext: {
+              'screen': 'HelpSupportScreen',
+              'operation': 'submit_ticket',
+            },
+          ),
         );
       }
     } finally {
@@ -132,7 +139,7 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
             Text(
               'We will respond within 24-48 hours.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Colors.grey[600],
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
           ],
@@ -152,8 +159,9 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    final isTablet = size.width > 600;
+    final info = ResponsiveInfo.of(context);
+    final spacingM = ResponsiveTokens.spacingM(info);
+    final spacingL = ResponsiveTokens.spacingL(info);
 
     return Scaffold(
       appBar: AppBar(
@@ -173,37 +181,32 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.all(isTablet ? 32 : 16),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: isTablet ? 800 : double.infinity,
-          ),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header Info
-                _buildInfoSection(context),
-                const SizedBox(height: 24),
+      body: ResponsiveBody(
+        useScrollView: true,
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header Info
+              _buildInfoSection(context),
+              SizedBox(height: spacingL),
 
-                // Category Dropdown
-                _buildCategoryDropdown(context),
-                const SizedBox(height: 20),
+              // Category Dropdown
+              _buildCategoryDropdown(context),
+              SizedBox(height: spacingM),
 
-                // Subject Input
-                _buildSubjectInput(context),
-                const SizedBox(height: 20),
+              // Subject Input
+              _buildSubjectInput(context),
+              SizedBox(height: spacingM),
 
-                // Message Input
-                _buildMessageInput(context),
-                const SizedBox(height: 24),
+              // Message Input
+              _buildMessageInput(context),
+              SizedBox(height: spacingL),
 
-                // Submit Button
-                _buildSubmitButton(context),
-              ],
-            ),
+              // Submit Button
+              _buildSubmitButton(context),
+            ],
           ),
         ),
       ),

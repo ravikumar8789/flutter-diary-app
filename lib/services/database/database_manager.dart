@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../error_logging_service.dart';
+import '../../models/error_models.dart';
 
 class DatabaseManager {
   static Database? _database;
@@ -27,14 +28,17 @@ class DatabaseManager {
     } catch (e) {
       // Log error to Supabase
       await ErrorLoggingService.logCriticalError(
-        errorCode: 'ERRSYS001',
-        errorMessage: 'Database initialization failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'database_path': join(await getDatabasesPath(), _databaseName),
-          'database_version': _version,
-          'database_name': _databaseName,
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS001',
+          severity: ErrorSeverity.critical,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'database_path': join(await getDatabasesPath(), _databaseName),
+            'database_version': _version,
+            'database_name': _databaseName,
+          },
+        ),
       );
 
       throw Exception('Database initialization failed (ERRSYS001): $e');
@@ -68,13 +72,16 @@ class DatabaseManager {
       }
     } catch (e) {
       await ErrorLoggingService.logCriticalError(
-        errorCode: 'ERRSYS003',
-        errorMessage: 'Database upgrade failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'old_version': oldVersion,
-          'new_version': newVersion,
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS003',
+          severity: ErrorSeverity.critical,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'old_version': oldVersion,
+            'new_version': newVersion,
+          },
+        ),
       );
       rethrow;
     }

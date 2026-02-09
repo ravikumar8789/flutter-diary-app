@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'error_logging_service.dart';
+import '../models/error_models.dart';
 
 class TimezoneService {
   static final SupabaseClient _supabase = Supabase.instance.client;
@@ -93,10 +94,13 @@ class TimezoneService {
       return ianaTimezone ?? 'UTC';
     } catch (e) {
       await ErrorLoggingService.logLowError(
-        errorCode: 'ERRSYS160',
-        errorMessage: 'Failed to get device timezone: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {'operation': 'get_device_timezone'},
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS160',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'operation': 'get_device_timezone'},
+        ),
       );
       return 'UTC'; // Fallback to UTC
     }
@@ -112,14 +116,17 @@ class TimezoneService {
       return true;
     } catch (e) {
       await ErrorLoggingService.logMediumError(
-        errorCode: 'ERRSYS161',
-        errorMessage: 'Failed to update user timezone: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'timezone': timezone,
-          'operation': 'update_user_timezone',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS161',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'timezone': timezone,
+            'operation': 'update_user_timezone',
+          },
+        ),
       );
       return false;
     }
@@ -154,10 +161,13 @@ class TimezoneService {
     } catch (e) {
       // Log but don't block app
       await ErrorLoggingService.logLowError(
-        errorCode: 'ERRSYS163',
-        errorMessage: 'Startup timezone check failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {'operation': 'startup_timezone_check'},
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS163',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'operation': 'startup_timezone_check'},
+        ),
       );
     }
   }

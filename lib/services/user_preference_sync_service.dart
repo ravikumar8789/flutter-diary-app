@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'error_logging_service.dart';
+import '../models/error_models.dart';
 import 'notification_service.dart';
 
 class UserPreferenceSyncService {
@@ -29,17 +30,18 @@ class UserPreferenceSyncService {
           );
     } catch (e) {
       await ErrorLoggingService.logError(
-        errorCode: 'ERRSYS134',
-        errorMessage:
-            'Settings save failed (cloud notification settings): ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'MEDIUM',
-        errorContext: {
-          'operation': 'sync_notification_settings',
-          'active_days': settings.activeDays,
-          'enabled': settings.notificationsEnabled,
-          'time': _formatTimeOfDay(settings.morningTime),
-        },
+        ErrorContext.fromException(
+          errorCode: 'ERRSYS134',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'operation': 'sync_notification_settings',
+            'active_days': settings.activeDays,
+            'enabled': settings.notificationsEnabled,
+            'time': _formatTimeOfDay(settings.morningTime),
+          },
+        ),
       );
     }
   }
@@ -78,18 +80,19 @@ class UserPreferenceSyncService {
           );
     } catch (e) {
       await ErrorLoggingService.logError(
-        errorCode: 'ERRSYS134',
-        errorMessage:
-            'Settings save failed (cloud appearance): ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'LOW',
-        errorContext: {
-          'operation': 'sync_appearance',
-          'theme': themeMode != null ? _themeModeToString(themeMode) : null,
-          'font': diaryFont,
-          'font_size': fontSize,
-          'paper_style': paperStyle,
-        },
+        ErrorContext.fromException(
+          errorCode: 'ERRSYS134',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'operation': 'sync_appearance',
+            'theme': themeMode != null ? _themeModeToString(themeMode) : null,
+            'font': diaryFont,
+            'font_size': fontSize,
+            'paper_style': paperStyle,
+          },
+        ),
       );
     }
   }

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/analytics_models.dart';
+import '../ui/responsive/responsive_body.dart';
+import '../ui/responsive/responsive_info.dart';
+import '../ui/responsive/responsive_tokens.dart';
 
 /// Full screen view of yesterday's insight
 class YesterdayInsightScreen extends StatelessWidget {
@@ -15,6 +18,10 @@ class YesterdayInsightScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final yesterday = DateTime.now().subtract(const Duration(days: 1));
     final dateLabel = DateFormat('EEEE, MMMM d, yyyy').format(yesterday);
+    final info = ResponsiveInfo.of(context);
+    final spacingM = ResponsiveTokens.spacingM(info);
+    final spacingL = ResponsiveTokens.spacingL(info);
+    final colorScheme = Theme.of(context).colorScheme;
     
     // Get sentiment color and label
     final sentimentColor = _getSentimentColor(insight.sentimentLabel);
@@ -28,14 +35,14 @@ class YesterdayInsightScreen extends StatelessWidget {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+      body: ResponsiveBody(
+        useScrollView: true,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Date header
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(spacingM),
               decoration: BoxDecoration(
                 color: sentimentColor.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
@@ -44,26 +51,32 @@ class YesterdayInsightScreen extends StatelessWidget {
                   width: 1,
                 ),
               ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.calendar_today,
-                    color: sentimentColor,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
+              child: info.isCompact
+                  ? Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          dateLabel,
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
-                        ),
-                        const SizedBox(height: 4),
                         Row(
+                          children: [
+                            Icon(
+                              Icons.calendar_today,
+                              color: sentimentColor,
+                              size: 20,
+                            ),
+                            SizedBox(width: ResponsiveTokens.spacingS(info)),
+                            Expanded(
+                              child: Text(
+                                dateLabel,
+                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: ResponsiveTokens.spacingXs(info)),
+                        Wrap(
+                          spacing: ResponsiveTokens.spacingS(info),
+                          runSpacing: ResponsiveTokens.spacingS(info),
                           children: [
                             Container(
                               padding: const EdgeInsets.symmetric(
@@ -83,23 +96,74 @@ class YesterdayInsightScreen extends StatelessWidget {
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 8),
                             Text(
                               'Processed ${_formatRelativeTime(insight.processedAt)}',
                               style: TextStyle(
-                                color: Colors.grey[600],
+                                color: colorScheme.onSurfaceVariant,
                                 fontSize: 12,
                               ),
                             ),
                           ],
                         ),
                       ],
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.calendar_today,
+                          color: sentimentColor,
+                          size: 20,
+                        ),
+                        SizedBox(width: ResponsiveTokens.spacingS(info)),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                dateLabel,
+                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                              ),
+                              SizedBox(height: ResponsiveTokens.spacingXs(info)),
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: sentimentColor.withOpacity(0.2),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      sentimentLabel,
+                                      style: TextStyle(
+                                        color: sentimentColor,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(width: ResponsiveTokens.spacingS(info)),
+                                  Text(
+                                    'Processed ${_formatRelativeTime(insight.processedAt)}',
+                                    style: TextStyle(
+                                      color: colorScheme.onSurfaceVariant,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
-              ),
             ),
-            const SizedBox(height: 24),
+            SizedBox(height: spacingL),
 
             // Main Insight
             Text(
@@ -108,11 +172,11 @@ class YesterdayInsightScreen extends StatelessWidget {
                     fontWeight: FontWeight.bold,
                   ),
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: spacingM),
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(spacingM),
               decoration: BoxDecoration(
-                color: Colors.grey[50],
+                color: colorScheme.surfaceVariant,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
@@ -122,7 +186,7 @@ class YesterdayInsightScreen extends StatelessWidget {
                     ),
               ),
             ),
-            const SizedBox(height: 24),
+            SizedBox(height: spacingL),
 
             // Structured Details
             if (insight.insightDetails != null && insight.insightDetails!.hasData) ...[
@@ -132,7 +196,7 @@ class YesterdayInsightScreen extends StatelessWidget {
                       fontWeight: FontWeight.bold,
                     ),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: spacingM),
               if (insight.insightDetails!.whatWentWell != null)
                 _buildDetailCard(
                   context,
@@ -142,7 +206,7 @@ class YesterdayInsightScreen extends StatelessWidget {
                   color: Colors.green,
                 ),
               if (insight.insightDetails!.whatWentWell != null)
-                const SizedBox(height: 12),
+                SizedBox(height: spacingM),
               if (insight.insightDetails!.progressArea != null)
                 _buildDetailCard(
                   context,
@@ -152,7 +216,7 @@ class YesterdayInsightScreen extends StatelessWidget {
                   color: Colors.blue,
                 ),
               if (insight.insightDetails!.progressArea != null)
-                const SizedBox(height: 12),
+                SizedBox(height: spacingM),
               if (insight.insightDetails!.selfCareBalance != null)
                 _buildDetailCard(
                   context,
@@ -162,7 +226,7 @@ class YesterdayInsightScreen extends StatelessWidget {
                   color: Colors.purple,
                 ),
               if (insight.insightDetails!.selfCareBalance != null)
-                const SizedBox(height: 12),
+                SizedBox(height: spacingM),
               if (insight.insightDetails!.emotionalPattern != null)
                 _buildDetailCard(
                   context,
@@ -171,7 +235,7 @@ class YesterdayInsightScreen extends StatelessWidget {
                   content: insight.insightDetails!.emotionalPattern!,
                   color: Colors.orange,
                 ),
-              const SizedBox(height: 24),
+              SizedBox(height: spacingL),
             ],
           ],
         ),

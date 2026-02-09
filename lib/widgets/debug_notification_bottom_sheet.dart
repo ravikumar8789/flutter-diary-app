@@ -235,7 +235,7 @@ class _DebugNotificationBottomSheetState
                       'Date: $date',
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.grey[600],
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                   const SizedBox(height: 8),

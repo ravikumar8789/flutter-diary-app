@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 import 'data_fetch_service.dart';
 import 'error_logging_service.dart';
+import '../models/error_models.dart';
 import 'database/database_manager.dart';
 import '../models/entry_models.dart';
 
@@ -40,15 +41,18 @@ class DataPrefetchService {
       
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS164',
-        errorMessage: 'Failed to prefetch 7 days data: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'operation': 'prefetch7DaysData',
-          'timezone': DateTime.now().timeZoneName,
-          'utc_offset': DateTime.now().timeZoneOffset.toString(),
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS164',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'operation': 'prefetch7DaysData',
+            'timezone': DateTime.now().timeZoneName,
+            'utc_offset': DateTime.now().timeZoneOffset.toString(),
+          },
+        ),
       );
       // Don't rethrow - allow app to continue even if prefetch fails
       // Data will be fetched on-demand when screens need it
@@ -88,15 +92,18 @@ class DataPrefetchService {
       
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS171',
-        errorMessage: 'Failed to prefetch today\'s data: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'operation': 'prefetchTodayData',
-          'timezone': DateTime.now().timeZoneName,
-          'utc_offset': DateTime.now().timeZoneOffset.toString(),
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS171',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'operation': 'prefetchTodayData',
+            'timezone': DateTime.now().timeZoneName,
+            'utc_offset': DateTime.now().timeZoneOffset.toString(),
+          },
+        ),
       );
       // Don't rethrow - allow app to continue even if prefetch fails
       // Data will be fetched on-demand when screens need it
@@ -125,16 +132,19 @@ class DataPrefetchService {
       
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS165',
-        errorMessage: 'Failed to prefetch entries with joins: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'start_date': startDate.toIso8601String(),
-          'end_date': endDate.toIso8601String(),
-          'timezone': DateTime.now().timeZoneName,
-          'utc_offset': DateTime.now().timeZoneOffset.toString(),
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS165',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'start_date': startDate.toIso8601String(),
+            'end_date': endDate.toIso8601String(),
+            'timezone': DateTime.now().timeZoneName,
+            'utc_offset': DateTime.now().timeZoneOffset.toString(),
+          },
+        ),
       );
       // Don't rethrow - continue with other fetches
     }
@@ -155,15 +165,17 @@ class DataPrefetchService {
       );
     } catch (e) {
       await ErrorLoggingService.logError(
-        errorCode: 'ERRSYS166',
-        errorMessage: 'Failed to prefetch habits: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'MEDIUM',
-        errorContext: {
-          'user_id': userId,
-          'start_date': startDate.toIso8601String(),
-          'end_date': endDate.toIso8601String(),
-        },
+        ErrorContext.fromException(
+          errorCode: 'ERRSYS166',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'start_date': startDate.toIso8601String(),
+            'end_date': endDate.toIso8601String(),
+          },
+        ),
       );
       // Don't rethrow - continue with other fetches
     }
@@ -178,13 +190,15 @@ class DataPrefetchService {
       await dataFetchService.fetchStreaks(userId);
     } catch (e) {
       await ErrorLoggingService.logError(
-        errorCode: 'ERRSYS167',
-        errorMessage: 'Failed to prefetch streaks: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'MEDIUM',
-        errorContext: {
-          'user_id': userId,
-        },
+        ErrorContext.fromException(
+          errorCode: 'ERRSYS167',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+          },
+        ),
       );
       // Don't rethrow - continue with other fetches
     }
@@ -212,17 +226,20 @@ class DataPrefetchService {
         } catch (e) {
           // Date parsing failed - log as HIGH severity
           await ErrorLoggingService.logHighError(
-            errorCode: 'ERRSYS181',
-            errorMessage: 'Date parsing failed in entry: ${e.toString()}',
-            stackTrace: StackTrace.current.toString(),
-            errorContext: {
-              'user_id': userId,
-              'entry_id': entryData['id'],
-              'entry_date': entryData['entry_date'],
-              'created_at': entryData['created_at'],
-              'updated_at': entryData['updated_at'],
-              'timezone': DateTime.now().timeZoneName,
-            },
+            error: ErrorContext.fromException(
+              errorCode: 'ERRSYS181',
+              severity: ErrorSeverity.high,
+              exception: e,
+              stackTrace: StackTrace.current,
+              errorContext: {
+                'user_id': userId,
+                'entry_id': entryData['id'],
+                'entry_date': entryData['entry_date'],
+                'created_at': entryData['created_at'],
+                'updated_at': entryData['updated_at'],
+                'timezone': DateTime.now().timeZoneName,
+              },
+            ),
           );
           // Skip this entry
           continue;
@@ -269,14 +286,17 @@ class DataPrefetchService {
             } catch (e) {
               // Log error but continue with other tables
               ErrorLoggingService.logHighError(
-                errorCode: 'ERRSYS173',
-                errorMessage: 'Failed to store entry_affirmations: ${e.toString()}',
-                stackTrace: StackTrace.current.toString(),
-                errorContext: {
-                  'user_id': userId,
-                  'entry_id': entryId,
-                  'table': 'entry_affirmations',
-                },
+                error: ErrorContext.fromException(
+                  errorCode: 'ERRSYS173',
+                  severity: ErrorSeverity.high,
+                  exception: e,
+                  stackTrace: StackTrace.current,
+                  errorContext: {
+                    'user_id': userId,
+                    'entry_id': entryId,
+                    'table': 'entry_affirmations',
+                  },
+                ),
               );
             }
           }
@@ -296,14 +316,17 @@ class DataPrefetchService {
               );
             } catch (e) {
               ErrorLoggingService.logHighError(
-                errorCode: 'ERRSYS174',
-                errorMessage: 'Failed to store entry_priorities: ${e.toString()}',
-                stackTrace: StackTrace.current.toString(),
-                errorContext: {
-                  'user_id': userId,
-                  'entry_id': entryId,
-                  'table': 'entry_priorities',
-                },
+                error: ErrorContext.fromException(
+                  errorCode: 'ERRSYS174',
+                  severity: ErrorSeverity.high,
+                  exception: e,
+                  stackTrace: StackTrace.current,
+                  errorContext: {
+                    'user_id': userId,
+                    'entry_id': entryId,
+                    'table': 'entry_priorities',
+                  },
+                ),
               );
             }
           }
@@ -323,14 +346,17 @@ class DataPrefetchService {
               );
             } catch (e) {
               ErrorLoggingService.logHighError(
-                errorCode: 'ERRSYS175',
-                errorMessage: 'Failed to store entry_meals: ${e.toString()}',
-                stackTrace: StackTrace.current.toString(),
-                errorContext: {
-                  'user_id': userId,
-                  'entry_id': entryId,
-                  'table': 'entry_meals',
-                },
+                error: ErrorContext.fromException(
+                  errorCode: 'ERRSYS175',
+                  severity: ErrorSeverity.high,
+                  exception: e,
+                  stackTrace: StackTrace.current,
+                  errorContext: {
+                    'user_id': userId,
+                    'entry_id': entryId,
+                    'table': 'entry_meals',
+                  },
+                ),
               );
             }
           }
@@ -350,14 +376,17 @@ class DataPrefetchService {
               );
             } catch (e) {
               ErrorLoggingService.logHighError(
-                errorCode: 'ERRSYS176',
-                errorMessage: 'Failed to store entry_gratitude: ${e.toString()}',
-                stackTrace: StackTrace.current.toString(),
-                errorContext: {
-                  'user_id': userId,
-                  'entry_id': entryId,
-                  'table': 'entry_gratitude',
-                },
+                error: ErrorContext.fromException(
+                  errorCode: 'ERRSYS176',
+                  severity: ErrorSeverity.high,
+                  exception: e,
+                  stackTrace: StackTrace.current,
+                  errorContext: {
+                    'user_id': userId,
+                    'entry_id': entryId,
+                    'table': 'entry_gratitude',
+                  },
+                ),
               );
             }
           }
@@ -377,14 +406,17 @@ class DataPrefetchService {
               );
             } catch (e) {
               ErrorLoggingService.logHighError(
-                errorCode: 'ERRSYS177',
-                errorMessage: 'Failed to store entry_self_care: ${e.toString()}',
-                stackTrace: StackTrace.current.toString(),
-                errorContext: {
-                  'user_id': userId,
-                  'entry_id': entryId,
-                  'table': 'entry_self_care',
-                },
+                error: ErrorContext.fromException(
+                  errorCode: 'ERRSYS177',
+                  severity: ErrorSeverity.high,
+                  exception: e,
+                  stackTrace: StackTrace.current,
+                  errorContext: {
+                    'user_id': userId,
+                    'entry_id': entryId,
+                    'table': 'entry_self_care',
+                  },
+                ),
               );
             }
           }
@@ -404,14 +436,17 @@ class DataPrefetchService {
               );
             } catch (e) {
               ErrorLoggingService.logHighError(
-                errorCode: 'ERRSYS178',
-                errorMessage: 'Failed to store entry_tomorrow_notes: ${e.toString()}',
-                stackTrace: StackTrace.current.toString(),
-                errorContext: {
-                  'user_id': userId,
-                  'entry_id': entryId,
-                  'table': 'entry_tomorrow_notes',
-                },
+                error: ErrorContext.fromException(
+                  errorCode: 'ERRSYS178',
+                  severity: ErrorSeverity.high,
+                  exception: e,
+                  stackTrace: StackTrace.current,
+                  errorContext: {
+                    'user_id': userId,
+                    'entry_id': entryId,
+                    'table': 'entry_tomorrow_notes',
+                  },
+                ),
               );
             }
           }
@@ -420,14 +455,17 @@ class DataPrefetchService {
       } catch (e) {
         // Log entry-level error but continue with other entries
         await ErrorLoggingService.logHighError(
-          errorCode: 'ERRSYS179',
-          errorMessage: 'Failed to parse/store entry: ${e.toString()}',
-          stackTrace: StackTrace.current.toString(),
-          errorContext: {
-            'user_id': userId,
-            'entry_id': entryData['id'],
-            'operation': 'store_entry_with_related_data',
-          },
+          error: ErrorContext.fromException(
+            errorCode: 'ERRSYS179',
+            severity: ErrorSeverity.high,
+            exception: e,
+            stackTrace: StackTrace.current,
+            errorContext: {
+              'user_id': userId,
+              'entry_id': entryData['id'],
+              'operation': 'store_entry_with_related_data',
+            },
+          ),
         );
         // Continue with next entry
       }

@@ -109,13 +109,14 @@ class PinNumberPad extends StatelessWidget {
   }
 
   Widget _buildBackspaceButton(BuildContext context, double buttonSize) {
+    final colorScheme = Theme.of(context).colorScheme;
     return _buildButton(
       context: context,
       buttonSize: buttonSize,
       child: Icon(
         Icons.backspace_outlined,
         size: buttonSize * 0.35,
-        color: isLoading ? Colors.grey : Theme.of(context).colorScheme.primary,
+        color: isLoading ? colorScheme.onSurfaceVariant : colorScheme.primary,
       ),
       onPressed: isLoading
           ? null
@@ -128,6 +129,7 @@ class PinNumberPad extends StatelessWidget {
 
   Widget _buildEnterButton(BuildContext context, double buttonSize) {
     final canEnter = onEnterPressed != null && !isLoading;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return _buildButton(
       context: context,
@@ -135,11 +137,11 @@ class PinNumberPad extends StatelessWidget {
       child: Icon(
         Icons.check,
         size: buttonSize * 0.35,
-        color: canEnter ? Colors.white : Colors.grey,
+        color: canEnter ? colorScheme.onPrimary : colorScheme.onSurfaceVariant,
       ),
       backgroundColor: canEnter
-          ? Theme.of(context).colorScheme.primary
-          : Colors.grey[300],
+          ? colorScheme.primary
+          : colorScheme.surfaceVariant,
       onPressed: canEnter
           ? () {
               HapticFeedback.lightImpact();
@@ -156,13 +158,14 @@ class PinNumberPad extends StatelessWidget {
     VoidCallback? onPressed,
     Color? backgroundColor,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       width: buttonSize,
       height: buttonSize,
       decoration: BoxDecoration(
-        color: backgroundColor ?? Colors.grey[100],
+        color: backgroundColor ?? colorScheme.surfaceVariant,
         borderRadius: BorderRadius.circular(buttonSize / 2),
-        border: Border.all(color: Colors.grey[300]!, width: 1),
+        border: Border.all(color: colorScheme.outlineVariant, width: 1),
       ),
       child: Material(
         color: Colors.transparent,

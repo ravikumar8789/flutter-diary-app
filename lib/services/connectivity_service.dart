@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'sync/sync_worker.dart';
 import 'error_logging_service.dart';
+import '../models/error_models.dart';
 
 class ConnectivityService {
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
@@ -32,13 +33,16 @@ class ConnectivityService {
       } catch (e) {
         // Log connectivity monitoring error
         ErrorLoggingService.logMediumError(
-          errorCode: 'ERRNET001',
-          errorMessage: 'Connection monitoring failed: ${e.toString()}',
-          stackTrace: StackTrace.current.toString(),
-          errorContext: {
-            'monitoring_start_time': DateTime.now().toIso8601String(),
-            'connectivity_results': results.map((r) => r.toString()).toList(),
-          },
+          error: ErrorContext.fromException(
+            errorCode: 'ERRNET001',
+            severity: ErrorSeverity.medium,
+            exception: e,
+            stackTrace: StackTrace.current,
+            errorContext: {
+              'monitoring_start_time': DateTime.now().toIso8601String(),
+              'connectivity_results': results.map((r) => r.toString()).toList(),
+            },
+          ),
         );
       }
     });

@@ -1,5 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'error_logging_service.dart';
+import '../models/error_models.dart';
 
 /// Service for managing the data fetch flag using SharedPreferences
 /// 
@@ -21,13 +22,16 @@ class DataSyncFlagService {
       return flag ?? true;
     } catch (e) {
       await ErrorLoggingService.logLowError(
-        errorCode: 'ERRSYS160',
-        errorMessage: 'Failed to read data fetch flag: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'operation': 'needsDataFetch',
-          'key': _needsDataFetchKey,
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS160',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'operation': 'needsDataFetch',
+            'key': _needsDataFetchKey,
+          },
+        ),
       );
       // Default to true on error (safe side - ensures data is fetched)
       return true;
@@ -43,14 +47,17 @@ class DataSyncFlagService {
       await prefs.setBool(_needsDataFetchKey, value);
     } catch (e) {
       await ErrorLoggingService.logLowError(
-        errorCode: 'ERRSYS161',
-        errorMessage: 'Failed to set data fetch flag: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'operation': 'setNeedsDataFetch',
-          'key': _needsDataFetchKey,
-          'value': value.toString(),
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS161',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'operation': 'setNeedsDataFetch',
+            'key': _needsDataFetchKey,
+            'value': value.toString(),
+          },
+        ),
       );
       // Don't rethrow - flag write failure shouldn't break logout flow
     }
@@ -64,12 +71,15 @@ class DataSyncFlagService {
       await setNeedsDataFetch(false);
     } catch (e) {
       await ErrorLoggingService.logLowError(
-        errorCode: 'ERRSYS162',
-        errorMessage: 'Failed to clear data fetch flag: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'operation': 'clearNeedsDataFetch',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS162',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'operation': 'clearNeedsDataFetch',
+          },
+        ),
       );
       // Don't rethrow - flag clear failure shouldn't break login flow
     }

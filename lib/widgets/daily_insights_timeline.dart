@@ -184,7 +184,11 @@ class _DailyInsightsTimelineState extends ConsumerState<DailyInsightsTimeline> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.timeline, size: 64, color: Colors.grey[400]),
+          Icon(
+            Icons.timeline,
+            size: 64,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
           const SizedBox(height: 16),
           Text(
             'No insights for this period',

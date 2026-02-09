@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/error_logging_service.dart';
+import '../models/error_models.dart';
 import '../models/analytics_models.dart';
 import 'data_fetch_service.dart';
 
@@ -70,10 +71,13 @@ class AIService {
       );
     } catch (e) {
       await ErrorLoggingService.logLowError(
-        errorCode: 'ERRAI005',
-        errorMessage: 'Failed to fetch yesterday insight: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {'user_id': userId, 'operation': 'get_yesterday_insight'},
+        error: ErrorContext.fromException(
+          errorCode: 'ERRAI005',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'user_id': userId, 'operation': 'get_yesterday_insight'},
+        ),
       );
       return null;
     }
@@ -113,11 +117,13 @@ class AIService {
       );
     } catch (e) {
       await ErrorLoggingService.logError(
-        errorCode: 'ERRAI005',
-        errorMessage: 'Failed to fetch daily insight: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'LOW',
-        errorContext: {'entry_id': entryId, 'operation': 'get_daily_insight'},
+        ErrorContext.fromException(
+          errorCode: 'ERRAI005',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'entry_id': entryId, 'operation': 'get_daily_insight'},
+        ),
       );
       return null;
     }
@@ -142,15 +148,17 @@ class AIService {
       }
     } catch (e) {
       await ErrorLoggingService.logError(
-        errorCode: 'ERRAI006',
-        errorMessage: 'Failed to trigger weekly analysis: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'MEDIUM',
-        errorContext: {
-          'user_id': userId,
-          'week_start': weekStart.toIso8601String(),
-          'operation': 'trigger_weekly_analysis',
-        },
+        ErrorContext.fromException(
+          errorCode: 'ERRAI006',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'week_start': weekStart.toIso8601String(),
+            'operation': 'trigger_weekly_analysis',
+          },
+        ),
       );
       rethrow;
     }
@@ -196,15 +204,17 @@ class AIService {
       );
     } catch (e) {
       await ErrorLoggingService.logError(
-        errorCode: 'ERRAI007',
-        errorMessage: 'Failed to fetch weekly insight: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'LOW',
-        errorContext: {
-          'user_id': userId,
-          'week_start': weekStart.toIso8601String(),
-          'operation': 'get_weekly_insight',
-        },
+        ErrorContext.fromException(
+          errorCode: 'ERRAI007',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'week_start': weekStart.toIso8601String(),
+            'operation': 'get_weekly_insight',
+          },
+        ),
       );
       return null;
     }
@@ -246,11 +256,13 @@ class AIService {
           .toList();
     } catch (e) {
       await ErrorLoggingService.logError(
-        errorCode: 'ERRAI009',
-        errorMessage: 'Failed to fetch recent insights: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'LOW',
-        errorContext: {'user_id': userId, 'limit': limit, 'operation': 'get_recent_insights'},
+        ErrorContext.fromException(
+          errorCode: 'ERRAI009',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'user_id': userId, 'limit': limit, 'operation': 'get_recent_insights'},
+        ),
       );
       return [];
     }
@@ -301,16 +313,18 @@ class AIService {
           .toList();
     } catch (e) {
       await ErrorLoggingService.logError(
-        errorCode: 'ERRAI010',
-        errorMessage: 'Failed to fetch daily insights timeline: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'LOW',
-        errorContext: {
-          'user_id': userId,
-          'start_date': startDate.toIso8601String(),
-          'end_date': endDate.toIso8601String(),
-          'operation': 'get_daily_insights_timeline',
-        },
+        ErrorContext.fromException(
+          errorCode: 'ERRAI010',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'start_date': startDate.toIso8601String(),
+            'end_date': endDate.toIso8601String(),
+            'operation': 'get_daily_insights_timeline',
+          },
+        ),
       );
       return [];
     }
@@ -327,11 +341,13 @@ class AIService {
       return response as bool? ?? false;
     } catch (e) {
       await ErrorLoggingService.logError(
-        errorCode: 'ERRAI011',
-        errorMessage: 'Failed to check entry completion: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'LOW',
-        errorContext: {'entry_id': entryId, 'operation': 'check_entry_completion'},
+        ErrorContext.fromException(
+          errorCode: 'ERRAI011',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'entry_id': entryId, 'operation': 'check_entry_completion'},
+        ),
       );
       return false;
     }
@@ -371,11 +387,13 @@ class AIService {
       );
     } catch (e) {
       await ErrorLoggingService.logError(
-        errorCode: 'ERRAI012',
-        errorMessage: 'Failed to get most recent insight: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'LOW',
-        errorContext: {'user_id': userId, 'operation': 'get_most_recent_insight'},
+        ErrorContext.fromException(
+          errorCode: 'ERRAI012',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'user_id': userId, 'operation': 'get_most_recent_insight'},
+        ),
       );
       return null;
     }
@@ -438,15 +456,17 @@ class AIService {
       );
     } catch (e) {
       await ErrorLoggingService.logError(
-        errorCode: 'ERRAI013',
-        errorMessage: 'Failed to fetch monthly insight: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'LOW',
-        errorContext: {
-          'user_id': userId,
-          'month_start': monthStart.toIso8601String(),
-          'operation': 'get_monthly_insight',
-        },
+        ErrorContext.fromException(
+          errorCode: 'ERRAI013',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'month_start': monthStart.toIso8601String(),
+            'operation': 'get_monthly_insight',
+          },
+        ),
       );
       return null;
     }

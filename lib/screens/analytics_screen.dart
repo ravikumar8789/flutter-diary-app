@@ -9,9 +9,17 @@ import '../widgets/week_chips_carousel.dart';
 import '../widgets/month_chips_carousel.dart';
 import '../widgets/mini_calendar_widget.dart';
 import '../services/error_logging_service.dart';
+import '../models/error_models.dart';
 import '../widgets/habit_correlations_card.dart';
 import '../widgets/interactive_bar_chart.dart';
 import '../widgets/day_details_bottom_sheet.dart';
+import '../ui/responsive/responsive_app_bar_actions.dart';
+import '../ui/responsive/responsive_body.dart';
+import '../ui/responsive/responsive_chart_box.dart';
+import '../ui/responsive/responsive_grid.dart';
+import '../ui/responsive/responsive_info.dart';
+import '../ui/responsive/responsive_tokens.dart';
+import '../ui/responsive/responsive_wrap.dart';
 import '../models/analytics_models.dart';
 import '../providers/analytics_provider.dart';
 import '../providers/home_summary_provider.dart';
@@ -38,8 +46,9 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    final isTablet = size.width > 600;
+    final info = ResponsiveInfo.of(context);
+    final spacingS = ResponsiveTokens.spacingS(info);
+    final spacingL = ResponsiveTokens.spacingL(info);
     final period = ref.watch(analyticsPeriodProvider);
 
     return Scaffold(
@@ -61,28 +70,68 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
           ],
         ),
         actions: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0),
-            child: SegmentedButton<AnalyticsPeriod>(
-              segments: [
-                ButtonSegment<AnalyticsPeriod>(
-                  value: AnalyticsPeriod.weekly,
-                  label: const Text('Weekly'),
-                  icon: const Icon(Icons.calendar_view_week, size: 18),
+          ResponsiveAppBarActions(
+            regularActions: [
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: spacingS),
+                child: SegmentedButton<AnalyticsPeriod>(
+                  segments: [
+                    ButtonSegment<AnalyticsPeriod>(
+                      value: AnalyticsPeriod.weekly,
+                      label: const Text('Weekly'),
+                      icon: const Icon(Icons.calendar_view_week, size: 18),
+                    ),
+                    ButtonSegment<AnalyticsPeriod>(
+                      value: AnalyticsPeriod.monthly,
+                      label: const Text('Monthly'),
+                      icon: const Icon(Icons.calendar_month, size: 18),
+                    ),
+                  ],
+                  selected: {period},
+                  onSelectionChanged: (Set<AnalyticsPeriod> newSelection) {
+                    ref
+                        .read(analyticsPeriodProvider.notifier)
+                        .setPeriod(newSelection.first);
+                  },
                 ),
-                ButtonSegment<AnalyticsPeriod>(
-                  value: AnalyticsPeriod.monthly,
-                  label: const Text('Monthly'),
-                  icon: const Icon(Icons.calendar_month, size: 18),
-                ),
-              ],
-              selected: {period},
-              onSelectionChanged: (Set<AnalyticsPeriod> newSelection) {
-                ref
-                    .read(analyticsPeriodProvider.notifier)
-                    .setPeriod(newSelection.first);
-              },
-            ),
+              ),
+            ],
+            compactActions: [
+              PopupMenuButton<AnalyticsPeriod>(
+                tooltip: 'Select period',
+                initialValue: period,
+                icon: const Icon(Icons.calendar_today),
+                onSelected: (selected) {
+                  ref
+                      .read(analyticsPeriodProvider.notifier)
+                      .setPeriod(selected);
+                },
+                itemBuilder: (context) => [
+                  CheckedPopupMenuItem(
+                    value: AnalyticsPeriod.weekly,
+                    checked: period == AnalyticsPeriod.weekly,
+                    child: const Row(
+                      children: [
+                        Icon(Icons.calendar_view_week, size: 18),
+                        SizedBox(width: 8),
+                        Text('Weekly'),
+                      ],
+                    ),
+                  ),
+                  CheckedPopupMenuItem(
+                    value: AnalyticsPeriod.monthly,
+                    checked: period == AnalyticsPeriod.monthly,
+                    child: const Row(
+                      children: [
+                        Icon(Icons.calendar_month, size: 18),
+                        SizedBox(width: 8),
+                        Text('Monthly'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ],
       ),
@@ -91,14 +140,15 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
         child: Column(
           children: [
             Expanded(
-              child: SingleChildScrollView(
-                padding: EdgeInsets.all(isTablet ? 32 : 20),
+              child: ResponsiveBody(
+                useSafeArea: false,
+                useScrollView: true,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Period header with date range (InnerGlow Style)
                     _buildPeriodHeader(context, period),
-                    const SizedBox(height: 24),
+                    SizedBox(height: spacingL),
 
                     // Week Navigation (only for weekly)
                     if (period == AnalyticsPeriod.weekly)
@@ -110,8 +160,8 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
 
                     // Summary Cards
                     period == AnalyticsPeriod.weekly
-                        ? _buildWeeklyContentWithSwipe(context, isTablet)
-                        : _buildMonthlyContent(context, isTablet),
+                        ? _buildWeeklyContentWithSwipe(context, info)
+                        : _buildMonthlyContent(context, info),
                   ],
                 ),
               ),
@@ -130,6 +180,8 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
   }
 
   Widget _buildWeekNavigation(BuildContext context) {
+    final info = ResponsiveInfo.of(context);
+    final spacingS = ResponsiveTokens.spacingS(info);
     final weeksListAsync = ref.watch(weeklyInsightsListProvider);
     final selectedWeek = ref.watch(selectedWeekProvider);
 
@@ -152,7 +204,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                 HapticFeedback.selectionClick();
               },
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: spacingS),
             // Calendar toggle button
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
@@ -184,6 +236,8 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
   }
 
   Widget _buildMonthNavigation(BuildContext context) {
+    final info = ResponsiveInfo.of(context);
+    final spacingS = ResponsiveTokens.spacingS(info);
     final monthsListAsync = ref.watch(monthlyInsightsListProvider);
     final selectedMonth = ref.watch(selectedMonthProvider);
 
@@ -192,11 +246,13 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
       error: (error, stack) {
         // Log error
         ErrorLoggingService.logError(
-          errorCode: 'ERRUI002',
-          errorMessage: 'Failed to load month navigation: ${error.toString()}',
-          stackTrace: stack.toString(),
-          severity: 'MEDIUM',
-          errorContext: {'operation': 'month_navigation'},
+          ErrorContext.fromException(
+            errorCode: 'ERRUI002',
+            severity: ErrorSeverity.medium,
+            exception: error,
+            stackTrace: stack,
+            errorContext: {'operation': 'month_navigation'},
+          ),
         );
         return const SizedBox.shrink();
       },
@@ -216,7 +272,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                 HapticFeedback.selectionClick();
               },
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: spacingS),
             // Calendar toggle button
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
@@ -397,7 +453,10 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
     }
   }
 
-  Widget _buildWeeklyContentWithSwipe(BuildContext context, bool isTablet) {
+  Widget _buildWeeklyContentWithSwipe(
+    BuildContext context,
+    ResponsiveInfo info,
+  ) {
     final weeklyAsync = ref.watch(weeklyAnalyticsProvider);
     final weeksListAsync = ref.watch(weeklyInsightsListProvider);
 
@@ -406,8 +465,8 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
       error: (e, st) => Center(child: Text('Error loading analytics: $e')),
       data: (data) {
         return weeksListAsync.when(
-          loading: () => _buildWeeklyContent(context, isTablet, data),
-          error: (_, __) => _buildWeeklyContent(context, isTablet, data),
+          loading: () => _buildWeeklyContent(context, info, data),
+          error: (_, __) => _buildWeeklyContent(context, info, data),
           data: (weeks) {
             final selectedWeek = ref.read(selectedWeekProvider);
             // Note: weeks list is sorted descending (newest first) from service
@@ -421,7 +480,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
             );
 
             if (currentIndex == -1 || weeks.length <= 1) {
-              return _buildWeeklyContent(context, isTablet, data);
+              return _buildWeeklyContent(context, info, data);
             }
 
             // Reset page controller if needed
@@ -439,12 +498,12 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
 
             // Don't use PageView if only one week or current week not found
             if (currentIndex == -1 || weeks.length <= 1) {
-              return _buildWeeklyContent(context, isTablet, data);
+              return _buildWeeklyContent(context, info, data);
             }
 
             // Don't use PageView inside SingleChildScrollView - it causes unbounded height issues
             // Just show current week content instead
-            return _buildWeeklyContent(context, isTablet, data);
+            return _buildWeeklyContent(context, info, data);
 
             // PageView removed - causes unbounded height error in SingleChildScrollView
             // If swipe between weeks is needed, consider using a different approach
@@ -466,7 +525,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
             //     itemCount: weeks.length,
             //     itemBuilder: (context, index) {
             //       if (index == currentIndex) {
-            //         return _buildWeeklyContent(context, isTablet, data);
+            //         return _buildWeeklyContent(context, info, data);
             //       } else {
             //         return const Center(child: CircularProgressIndicator());
             //       }
@@ -481,57 +540,59 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
 
   Widget _buildWeeklyContent(
     BuildContext context,
-    bool isTablet,
+    ResponsiveInfo info,
     WeeklyAnalyticsData data,
   ) {
+    final spacingM = ResponsiveTokens.spacingM(info);
+    final spacingL = ResponsiveTokens.spacingL(info);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Summary Cards
-        _buildSummaryCards(context, isTablet, data),
-        const SizedBox(height: 32),
+        _buildSummaryCards(context, info, data),
+        SizedBox(height: spacingL),
 
         // Interactive Bar Chart (replaces mood line chart)
         _buildSectionHeader(context, 'Daily Progress'),
-        const SizedBox(height: 16),
+        SizedBox(height: spacingM),
         InteractiveBarChart(
           dailyData: data.dailyProgress,
           onBarTap: (date) =>
               _showDayDetails(context, date, data.dailyProgress),
         ),
-        const SizedBox(height: 32),
+        SizedBox(height: spacingL),
 
         // AI Insights
         _buildSectionHeader(context, 'AI Insights'),
-        const SizedBox(height: 16),
+        SizedBox(height: spacingM),
         _buildAiInsightsCard(context, data),
-        const SizedBox(height: 32),
+        SizedBox(height: spacingL),
 
         // Habit Correlations
         if (data.habitCorrelations != null &&
             data.habitCorrelations!.isNotEmpty) ...[
           _buildSectionHeader(context, 'Habit Correlations'),
-          const SizedBox(height: 16),
+          SizedBox(height: spacingM),
           HabitCorrelationsCard(correlations: data.habitCorrelations),
-          const SizedBox(height: 32),
+          SizedBox(height: spacingL),
         ],
 
         // Yesterday's Insight Status
         _buildSectionHeader(context, "Yesterday's Insight"),
-        const SizedBox(height: 16),
+        SizedBox(height: spacingM),
         _buildTodayInsightStatusCard(context),
-        const SizedBox(height: 32),
+        SizedBox(height: spacingL),
 
         // Daily Insights Timeline
         _buildSectionHeader(context, 'Daily Insights Timeline'),
-        const SizedBox(height: 16),
+        SizedBox(height: spacingM),
         DailyInsightsTimeline(startDate: data.weekStart, endDate: data.weekEnd),
-        const SizedBox(height: 32),
+        SizedBox(height: spacingL),
       ],
     );
   }
 
-  Widget _buildMonthlyContent(BuildContext context, bool isTablet) {
+  Widget _buildMonthlyContent(BuildContext context, ResponsiveInfo info) {
     final monthlyAsync = ref.watch(monthlyAnalyticsProvider);
 
     return monthlyAsync.when(
@@ -539,11 +600,13 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
       error: (error, stack) {
         // Log error
         ErrorLoggingService.logError(
-          errorCode: 'ERRUI003',
-          errorMessage: 'Failed to load monthly content: ${error.toString()}',
-          stackTrace: stack.toString(),
-          severity: 'HIGH',
-          errorContext: {'operation': 'monthly_content'},
+          ErrorContext.fromException(
+            errorCode: 'ERRUI003',
+            severity: ErrorSeverity.high,
+            exception: error,
+            stackTrace: stack,
+            errorContext: {'operation': 'monthly_content'},
+          ),
         );
         return Center(
           child: Column(
@@ -566,30 +629,36 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Summary Cards
-              _buildSummaryCardsMonthly(context, isTablet, data),
-              const SizedBox(height: 32),
+              _buildSummaryCardsMonthly(context, info, data),
+              SizedBox(height: ResponsiveTokens.spacingL(info)),
 
               // Mood Trend Chart
               _buildSectionHeader(context, 'Mood Trends'),
-              const SizedBox(height: 16),
-              _buildMoodChart(context, data.moodTrendData, isWeekly: false),
-              const SizedBox(height: 32),
+              SizedBox(height: ResponsiveTokens.spacingM(info)),
+              _buildMoodChart(
+                context,
+                data.moodTrendData,
+                info: info,
+                isWeekly: false,
+              ),
+              SizedBox(height: ResponsiveTokens.spacingL(info)),
 
               // AI Insights
               _buildSectionHeader(context, 'AI Insights'),
-              const SizedBox(height: 16),
-              _buildAiInsightsCardMonthly(context, data),
-              const SizedBox(height: 32),
-
+              SizedBox(height: ResponsiveTokens.spacingM(info)),
+              _buildAiInsightsCardMonthly(context, info, data),
+              SizedBox(height: ResponsiveTokens.spacingL(info)),
             ],
           );
         } catch (e) {
           ErrorLoggingService.logError(
-            errorCode: 'ERRUI003',
-            errorMessage: 'Failed to build monthly content: ${e.toString()}',
-            stackTrace: StackTrace.current.toString(),
-            severity: 'HIGH',
-            errorContext: {'operation': 'build_monthly_content'},
+            ErrorContext.fromException(
+              errorCode: 'ERRUI003',
+              severity: ErrorSeverity.high,
+              exception: e,
+              stackTrace: StackTrace.current,
+              errorContext: {'operation': 'build_monthly_content'},
+            ),
           );
           return Center(
             child: Text(
@@ -613,10 +682,10 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
 
   Widget _buildSummaryCards(
     BuildContext context,
-    bool isTablet,
+    ResponsiveInfo info,
     WeeklyAnalyticsData data,
   ) {
-    final crossAxisCount = isTablet ? 4 : 2;
+    final aspectRatio = info.value(compact: 1.4, medium: 1.6, expanded: 1.8);
     final cards = [
       _buildSummaryCard(
         context,
@@ -652,64 +721,67 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
       ),
     ];
 
-    return GridView.count(
+    return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: crossAxisCount,
-      crossAxisSpacing: 12,
-      mainAxisSpacing: 12,
-      childAspectRatio: isTablet ? 1.8 : 1.6,
-      children: cards,
+      gridDelegate: responsiveCardGridDelegate(
+        info: info,
+        childAspectRatio: aspectRatio,
+      ),
+      itemCount: cards.length,
+      itemBuilder: (context, index) => cards[index],
     );
   }
 
   Widget _buildSummaryCardsMonthly(
     BuildContext context,
-    bool isTablet,
+    ResponsiveInfo info,
     MonthlyAnalyticsData data,
   ) {
-    final crossAxisCount = isTablet ? 4 : 2;
-    return GridView.count(
+    final aspectRatio = info.value(compact: 1.4, medium: 1.6, expanded: 1.8);
+    final cards = [
+      _buildSummaryCard(
+        context,
+        'Entries',
+        '${data.totalEntries}',
+        'Across 4 weeks',
+        Icons.edit_note,
+        Colors.blue,
+      ),
+      _buildSummaryCard(
+        context,
+        'Avg Mood',
+        data.avgMood.toStringAsFixed(1),
+        _getMoodTrendText(data.overallMoodTrend),
+        Icons.sentiment_satisfied,
+        _getMoodColor(data.avgMood),
+      ),
+      _buildSummaryCard(
+        context,
+        'Water',
+        '${data.avgCups.toStringAsFixed(1)} cups',
+        'Daily average',
+        Icons.water_drop,
+        Colors.cyan,
+      ),
+      _buildSummaryCard(
+        context,
+        'Self-Care',
+        '${(data.avgSelfCareRate * 100).toInt()}%',
+        'Completion rate',
+        Icons.spa,
+        Colors.purple,
+      ),
+    ];
+    return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: crossAxisCount,
-      crossAxisSpacing: 12,
-      mainAxisSpacing: 12,
-      childAspectRatio: isTablet ? 1.8 : 1.6,
-      children: [
-        _buildSummaryCard(
-          context,
-          'Entries',
-          '${data.totalEntries}',
-          'Across 4 weeks',
-          Icons.edit_note,
-          Colors.blue,
-        ),
-        _buildSummaryCard(
-          context,
-          'Avg Mood',
-          data.avgMood.toStringAsFixed(1),
-          _getMoodTrendText(data.overallMoodTrend),
-          Icons.sentiment_satisfied,
-          _getMoodColor(data.avgMood),
-        ),
-        _buildSummaryCard(
-          context,
-          'Water',
-          '${data.avgCups.toStringAsFixed(1)} cups',
-          'Daily average',
-          Icons.water_drop,
-          Colors.cyan,
-        ),
-        _buildSummaryCard(
-          context,
-          'Self-Care',
-          '${(data.avgSelfCareRate * 100).toInt()}%',
-          'Completion rate',
-          Icons.spa,
-          Colors.purple,
-        ),
-      ],
+      gridDelegate: responsiveCardGridDelegate(
+        info: info,
+        childAspectRatio: aspectRatio,
+      ),
+      itemCount: cards.length,
+      itemBuilder: (context, index) => cards[index],
     );
   }
 
@@ -796,6 +868,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
   Widget _buildMoodChart(
     BuildContext context,
     List<MoodDataPoint> data, {
+    required ResponsiveInfo info,
     required bool isWeekly,
   }) {
     if (data.isEmpty) {
@@ -822,8 +895,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
       elevation: 2,
       child: Padding(
         padding: const EdgeInsets.all(24),
-        child: SizedBox(
-          height: 250,
+        child: ResponsiveChartBox(
           child: LineChart(
             LineChartData(
               gridData: FlGridData(
@@ -1277,6 +1349,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
 
   Widget _buildTodayInsightStatusCard(BuildContext context) {
     final yesterdayInsightAsync = ref.watch(yesterdayInsightProvider);
+    final colorScheme = Theme.of(context).colorScheme;
 
     return yesterdayInsightAsync.when(
       data: (insight) {
@@ -1292,7 +1365,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
           message = 'Your daily insight is ready to view.';
         } else {
           icon = Icons.info_outline;
-          color = Colors.grey;
+          color = colorScheme.onSurfaceVariant;
           title = "Yesterday's Insight";
           message =
               'No insight available for yesterday. Insights are generated each morning for the previous day.';
@@ -1338,7 +1411,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                         Icon(
                           Icons.arrow_forward_ios,
                           size: 14,
-                          color: Colors.grey[600],
+                          color: colorScheme.onSurfaceVariant,
                         ),
                       ],
                     ],
@@ -1364,7 +1437,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                           Icon(
                             Icons.arrow_right,
                             size: 16,
-                            color: Colors.grey[600],
+                            color: colorScheme.onSurfaceVariant,
                           ),
                           const SizedBox(width: 8),
                           Expanded(
@@ -1383,7 +1456,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                       'Tap to view full analysis',
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.grey[600],
+                        color: colorScheme.onSurfaceVariant,
                         fontStyle: FontStyle.italic,
                       ),
                     ),
@@ -1416,6 +1489,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
 
   Widget _buildAiInsightsCardMonthly(
     BuildContext context,
+    ResponsiveInfo info,
     MonthlyAnalyticsData data,
   ) {
     // Check if AI insight is available
@@ -1585,6 +1659,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
             // Stats Row
             _buildMonthlyStatsRow(
               context,
+              info,
               moodAvg: data.avgMood,
               entriesCount: data.totalEntries,
               wordCount: wordCountTotal ?? 0,
@@ -2068,20 +2143,23 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
   }
 
   Widget _buildMonthlyStatsRow(
-    BuildContext context, {
+    BuildContext context,
+    ResponsiveInfo info, {
     required double moodAvg,
     required int entriesCount,
     required int wordCount,
     required double consistencyScore,
   }) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(ResponsiveTokens.spacingM(info)),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
+      child: ResponsiveWrapRow(
+        info: info,
+        rowMainAxisAlignment: MainAxisAlignment.spaceAround,
+        wrapAlignment: WrapAlignment.spaceAround,
         children: [
           _buildStatItem(
             context,
@@ -2175,7 +2253,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
         break;
       case 'stable':
       default:
-        color = Colors.grey;
+        color = Theme.of(context).colorScheme.onSurfaceVariant;
         label = 'Stable';
         icon = Icons.trending_flat;
         break;
@@ -2222,21 +2300,17 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
       ),
     );
 
+    final info = ResponsiveInfo.of(context);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        minChildSize: 0.4,
-        maxChildSize: 0.9,
-        builder: (context, scrollController) => DayDetailsBottomSheet(
-          day: day,
-          onViewFullEntry: () {
-            // Navigate to entry detail screen if needed
-            // This can be implemented based on your navigation structure
-          },
-        ),
+        initialChildSize: info.value(compact: 0.6, medium: 0.65, expanded: 0.7),
+        minChildSize: info.value(compact: 0.4, medium: 0.45, expanded: 0.5),
+        maxChildSize: info.value(compact: 0.9, medium: 0.95, expanded: 0.98),
+        builder: (context, scrollController) =>
+            DayDetailsBottomSheet(day: day, scrollController: scrollController),
       ),
     );
   }

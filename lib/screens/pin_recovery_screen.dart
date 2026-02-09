@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/privacy_lock_provider.dart';
 import '../services/error_logging_service.dart';
+import '../models/error_models.dart';
 import 'home_screen.dart';
+import '../ui/responsive/responsive_body.dart';
+import '../ui/responsive/responsive_info.dart';
+import '../ui/responsive/responsive_tokens.dart';
 
 class PinRecoveryScreen extends ConsumerStatefulWidget {
   const PinRecoveryScreen({super.key});
@@ -50,13 +54,16 @@ class _PinRecoveryScreenState extends ConsumerState<PinRecoveryScreen> {
       if (mounted) {
         _showError('Failed to load security questions. Please try again.');
         await ErrorLoggingService.logHighError(
-          errorCode: 'ERRSYS094',
-          errorMessage: 'Failed to load security questions: ${e.toString()}',
-          stackTrace: StackTrace.current.toString(),
-          errorContext: {
-            'load_time': DateTime.now().toIso8601String(),
-            'screen': 'PinRecoveryScreen',
-          },
+          error: ErrorContext.fromException(
+            errorCode: 'ERRSYS094',
+            severity: ErrorSeverity.high,
+            exception: e,
+            stackTrace: StackTrace.current,
+            errorContext: {
+              'load_time': DateTime.now().toIso8601String(),
+              'screen': 'PinRecoveryScreen',
+            },
+          ),
         );
       }
     }
@@ -80,6 +87,7 @@ class _PinRecoveryScreenState extends ConsumerState<PinRecoveryScreen> {
             final availableHeight = constraints.maxHeight;
             final isSmallScreen = availableHeight < 500;
             final isVerySmallScreen = availableHeight < 400;
+            final info = ResponsiveInfo.of(context);
 
             final topSpacing = isVerySmallScreen
                 ? 8.0
@@ -90,6 +98,17 @@ class _PinRecoveryScreenState extends ConsumerState<PinRecoveryScreen> {
             final bottomSpacing = isVerySmallScreen
                 ? 8.0
                 : (isSmallScreen ? 12.0 : 16.0);
+            final contentPadding = EdgeInsets.all(
+              isSmallScreen
+                  ? ResponsiveTokens.spacingM(info)
+                  : ResponsiveTokens.spacingL(info),
+            );
+            final maxWidth = info.value(
+              compact: 520.0,
+              medium: 640.0,
+              expanded: 720.0,
+            );
+            final colorScheme = Theme.of(context).colorScheme;
 
             if (!_questionsLoaded) {
               return Center(
@@ -101,7 +120,7 @@ class _PinRecoveryScreenState extends ConsumerState<PinRecoveryScreen> {
                     Text(
                       'Loading security questions...',
                       style: TextStyle(
-                        color: Colors.grey[600],
+                        color: colorScheme.onSurfaceVariant,
                         fontSize: isSmallScreen ? 13 : 14,
                       ),
                     ),
@@ -110,8 +129,12 @@ class _PinRecoveryScreenState extends ConsumerState<PinRecoveryScreen> {
               );
             }
 
-            return SingleChildScrollView(
-              padding: EdgeInsets.all(isSmallScreen ? 12.0 : 16.0),
+            return ResponsiveBody(
+              useSafeArea: false,
+              padding: contentPadding,
+              maxWidth: maxWidth,
+              useScrollView: true,
+              alignment: Alignment.topCenter,
               child: Column(
                 children: [
                   SizedBox(height: topSpacing),
@@ -128,7 +151,7 @@ class _PinRecoveryScreenState extends ConsumerState<PinRecoveryScreen> {
                           shape: BoxShape.circle,
                           color: index < _currentStep
                               ? Theme.of(context).colorScheme.primary
-                              : Colors.grey[300],
+                              : colorScheme.outlineVariant,
                         ),
                       );
                     }),
@@ -149,7 +172,7 @@ class _PinRecoveryScreenState extends ConsumerState<PinRecoveryScreen> {
                     child: Icon(
                       _currentStep <= 2 ? Icons.help_outline : Icons.lock_outline,
                       size: isVerySmallScreen ? 24 : (isSmallScreen ? 28 : 32),
-                      color: Colors.white,
+                      color: colorScheme.onPrimary,
                     ),
                   ),
 
@@ -175,7 +198,7 @@ class _PinRecoveryScreenState extends ConsumerState<PinRecoveryScreen> {
                   Text(
                     _getSubtitle(),
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.grey[600],
+                      color: colorScheme.onSurfaceVariant,
                       fontSize: isVerySmallScreen
                           ? 12
                           : (isSmallScreen ? 13 : 14),
@@ -393,6 +416,7 @@ class _PinRecoveryScreenState extends ConsumerState<PinRecoveryScreen> {
   }
 
   Widget _buildNewPinView(bool isSmallScreen, bool isVerySmallScreen) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Column(
       children: [
         // PIN Display
@@ -407,7 +431,7 @@ class _PinRecoveryScreenState extends ConsumerState<PinRecoveryScreen> {
                 shape: BoxShape.circle,
                 color: index < _newPin.length
                     ? Theme.of(context).colorScheme.primary
-                    : Colors.grey[300],
+                    : colorScheme.outlineVariant,
               ),
             );
           }),
@@ -459,6 +483,7 @@ class _PinRecoveryScreenState extends ConsumerState<PinRecoveryScreen> {
   }
 
   Widget _buildConfirmPinView(bool isSmallScreen, bool isVerySmallScreen) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Column(
       children: [
         // PIN Display
@@ -473,7 +498,7 @@ class _PinRecoveryScreenState extends ConsumerState<PinRecoveryScreen> {
                 shape: BoxShape.circle,
                 color: index < _confirmPin.length
                     ? Theme.of(context).colorScheme.primary
-                    : Colors.grey[300],
+                    : colorScheme.outlineVariant,
               ),
             );
           }),
@@ -600,13 +625,16 @@ class _PinRecoveryScreenState extends ConsumerState<PinRecoveryScreen> {
         });
         _showError('Error verifying answers: $e');
         await ErrorLoggingService.logHighError(
-          errorCode: 'ERRSYS095',
-          errorMessage: 'Security answers verification failed: ${e.toString()}',
-          stackTrace: StackTrace.current.toString(),
-          errorContext: {
-            'verify_time': DateTime.now().toIso8601String(),
-            'screen': 'PinRecoveryScreen',
-          },
+          error: ErrorContext.fromException(
+            errorCode: 'ERRSYS095',
+            severity: ErrorSeverity.high,
+            exception: e,
+            stackTrace: StackTrace.current,
+            errorContext: {
+              'verify_time': DateTime.now().toIso8601String(),
+              'screen': 'PinRecoveryScreen',
+            },
+          ),
         );
       }
     }
@@ -672,13 +700,16 @@ class _PinRecoveryScreenState extends ConsumerState<PinRecoveryScreen> {
         });
         _showError('Error: $e');
         await ErrorLoggingService.logHighError(
-          errorCode: 'ERRSYS096',
-          errorMessage: 'PIN reset failed: ${e.toString()}',
-          stackTrace: StackTrace.current.toString(),
-          errorContext: {
-            'reset_time': DateTime.now().toIso8601String(),
-            'screen': 'PinRecoveryScreen',
-          },
+          error: ErrorContext.fromException(
+            errorCode: 'ERRSYS096',
+            severity: ErrorSeverity.high,
+            exception: e,
+            stackTrace: StackTrace.current,
+            errorContext: {
+              'reset_time': DateTime.now().toIso8601String(),
+              'screen': 'PinRecoveryScreen',
+            },
+          ),
         );
       }
     }

@@ -3,6 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/privacy_lock_provider.dart';
 import '../widgets/pin_number_pad.dart';
 import '../services/error_logging_service.dart';
+import '../models/error_models.dart';
+import '../ui/responsive/responsive_body.dart';
+import '../ui/responsive/responsive_info.dart';
+import '../ui/responsive/responsive_tokens.dart';
 
 class ChangePinScreen extends ConsumerStatefulWidget {
   const ChangePinScreen({super.key});
@@ -37,6 +41,12 @@ class _ChangePinScreenState extends ConsumerState<ChangePinScreen> {
             final availableHeight = constraints.maxHeight;
             final isSmallScreen = availableHeight < 500;
             final isVerySmallScreen = availableHeight < 400;
+            final info = ResponsiveInfo.of(context);
+            final padding = EdgeInsets.all(
+              isSmallScreen
+                  ? ResponsiveTokens.spacingM(info)
+                  : ResponsiveTokens.spacingL(info),
+            );
 
             // More aggressive spacing for very small screens
             final topSpacing = isVerySmallScreen
@@ -48,9 +58,17 @@ class _ChangePinScreenState extends ConsumerState<ChangePinScreen> {
             final bottomSpacing = isVerySmallScreen
                 ? 8.0
                 : (isSmallScreen ? 12.0 : 16.0);
+            final keypadMaxWidth = info.value(
+              compact: 320.0,
+              medium: 360.0,
+              expanded: 420.0,
+            );
+            final colorScheme = Theme.of(context).colorScheme;
 
-            return Padding(
-              padding: EdgeInsets.all(isSmallScreen ? 12.0 : 16.0),
+            return ResponsiveBody(
+              useSafeArea: false,
+              padding: padding,
+              alignment: Alignment.topCenter,
               child: Column(
                 children: [
                   SizedBox(height: topSpacing),
@@ -67,7 +85,7 @@ class _ChangePinScreenState extends ConsumerState<ChangePinScreen> {
                           shape: BoxShape.circle,
                           color: index < _currentStep
                               ? Theme.of(context).colorScheme.primary
-                              : Colors.grey[300],
+                              : colorScheme.outlineVariant,
                         ),
                       );
                     }),
@@ -88,7 +106,7 @@ class _ChangePinScreenState extends ConsumerState<ChangePinScreen> {
                     child: Icon(
                       Icons.lock_outline,
                       size: isVerySmallScreen ? 24 : (isSmallScreen ? 28 : 32),
-                      color: Colors.white,
+                      color: colorScheme.onPrimary,
                     ),
                   ),
 
@@ -114,7 +132,7 @@ class _ChangePinScreenState extends ConsumerState<ChangePinScreen> {
                   Text(
                     _getSubtitle(),
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.grey[600],
+                      color: colorScheme.onSurfaceVariant,
                       fontSize: isVerySmallScreen
                           ? 12
                           : (isSmallScreen ? 13 : 14),
@@ -145,7 +163,7 @@ class _ChangePinScreenState extends ConsumerState<ChangePinScreen> {
                           shape: BoxShape.circle,
                           color: index < currentPin.length
                               ? Theme.of(context).colorScheme.primary
-                              : Colors.grey[300],
+                              : colorScheme.outlineVariant,
                         ),
                       );
                     }),
@@ -161,11 +179,17 @@ class _ChangePinScreenState extends ConsumerState<ChangePinScreen> {
                     ),
 
                   // Number Pad
-                  PinNumberPad(
-                    onNumberPressed: _onNumberPressed,
-                    onBackspacePressed: _onBackspacePressed,
-                    onEnterPressed: _canEnter() ? _onEnterPressed : null,
-                    isLoading: _isLoading,
+                  Align(
+                    alignment: Alignment.center,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: keypadMaxWidth),
+                      child: PinNumberPad(
+                        onNumberPressed: _onNumberPressed,
+                        onBackspacePressed: _onBackspacePressed,
+                        onEnterPressed: _canEnter() ? _onEnterPressed : null,
+                        isLoading: _isLoading,
+                      ),
+                    ),
                   ),
 
                   // Minimal spacing
@@ -296,14 +320,17 @@ class _ChangePinScreenState extends ConsumerState<ChangePinScreen> {
     } catch (e) {
       _showError('Error validating PIN: $e');
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS093',
-        errorMessage: 'Current PIN validation failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'validation_time': DateTime.now().toIso8601String(),
-          'screen': 'ChangePinScreen',
-          'step': _currentStep,
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS093',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'validation_time': DateTime.now().toIso8601String(),
+            'screen': 'ChangePinScreen',
+            'step': _currentStep,
+          },
+        ),
       );
       _resetCurrentPin();
     }
@@ -353,13 +380,16 @@ class _ChangePinScreenState extends ConsumerState<ChangePinScreen> {
     } catch (e) {
       _showError('Error: $e');
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS094',
-        errorMessage: 'PIN change failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'change_time': DateTime.now().toIso8601String(),
-          'screen': 'ChangePinScreen',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS094',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'change_time': DateTime.now().toIso8601String(),
+            'screen': 'ChangePinScreen',
+          },
+        ),
       );
       _resetAllSteps();
     }

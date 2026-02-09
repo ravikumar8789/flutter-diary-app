@@ -9,8 +9,10 @@ import '../providers/data_providers.dart';
 import '../services/data_sync_flag_service.dart';
 import '../services/data_prefetch_service.dart';
 import '../services/error_logging_service.dart';
+import '../models/error_models.dart';
 import '../screens/home_screen.dart';
 import '../screens/login_screen.dart';
+import '../ui/responsive/responsive_info.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -150,14 +152,16 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
         } catch (e) {
           // Log error but continue - data will be fetched on-demand
           await ErrorLoggingService.logHighError(
-            errorCode: 'ERRSYS170',
-            errorMessage:
-                'Prefetch 7 days failed in splash screen: ${e.toString()}',
-            stackTrace: StackTrace.current.toString(),
-            errorContext: {
-              'user_id': user.id,
-              'operation': 'splash_prefetch_7days',
-            },
+            error: ErrorContext.fromException(
+              errorCode: 'ERRSYS170',
+              severity: ErrorSeverity.high,
+              exception: e,
+              stackTrace: StackTrace.current,
+              errorContext: {
+                'user_id': user.id,
+                'operation': 'splash_prefetch_7days',
+              },
+            ),
           );
           // Keep flag as true so it retries next time
         }
@@ -181,14 +185,16 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
         } catch (e) {
           // Log error but continue - data will be fetched on-demand
           await ErrorLoggingService.logHighError(
-            errorCode: 'ERRSYS171',
-            errorMessage:
-                'Prefetch today\'s data failed in splash screen: ${e.toString()}',
-            stackTrace: StackTrace.current.toString(),
-            errorContext: {
-              'user_id': user.id,
-              'operation': 'splash_prefetch_today',
-            },
+            error: ErrorContext.fromException(
+              errorCode: 'ERRSYS171',
+              severity: ErrorSeverity.high,
+              exception: e,
+              stackTrace: StackTrace.current,
+              errorContext: {
+                'user_id': user.id,
+                'operation': 'splash_prefetch_today',
+              },
+            ),
           );
           // Continue - today's data will be fetched on-demand when user opens entry screen
         }
@@ -325,6 +331,21 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final colorScheme = theme.colorScheme;
+    final info = ResponsiveInfo.of(context);
+    final logoSize = info.value(compact: 110.0, medium: 130.0, expanded: 140.0);
+    final iconSize = info.value(compact: 56.0, medium: 64.0, expanded: 70.0);
+    final titleSize = info.value(compact: 28.0, medium: 32.0, expanded: 36.0);
+    final taglineSize = info.value(compact: 14.0, medium: 15.0, expanded: 16.0);
+    final loaderSize = info.value(compact: 28.0, medium: 30.0, expanded: 32.0);
+    final gapLogoToTitle =
+        info.value(compact: 28.0, medium: 34.0, expanded: 40.0);
+    final gapTitleToTagline =
+        info.value(compact: 12.0, medium: 16.0, expanded: 20.0);
+    final gapLoaderToText =
+        info.value(compact: 16.0, medium: 20.0, expanded: 24.0);
+    final bottomGap = info.value(compact: 48.0, medium: 64.0, expanded: 80.0);
+    final textMaxWidth =
+        info.value(compact: double.infinity, medium: 420.0, expanded: 480.0);
 
     return Scaffold(
       body: Container(
@@ -382,8 +403,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                                       return Transform.scale(
                                         scale: _pulseAnimation.value,
                                         child: Container(
-                                          width: 140,
-                                          height: 140,
+                                          width: logoSize,
+                                          height: logoSize,
                                           decoration: BoxDecoration(
                                             shape: BoxShape.circle,
                                             gradient: LinearGradient(
@@ -404,7 +425,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                                           ),
                                           child: Icon(
                                             Icons.menu_book_rounded,
-                                            size: 70,
+                                            size: iconSize,
                                             color: colorScheme.onPrimary,
                                           ),
                                         ),
@@ -412,41 +433,50 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                                     },
                                   ),
 
-                                  const SizedBox(height: 40),
+                                  SizedBox(height: gapLogoToTitle),
 
                                   // App Name with gentle gradient
-                                  ShaderMask(
-                                    shaderCallback: (bounds) => LinearGradient(
-                                      colors: [
-                                        colorScheme.primary,
-                                        colorScheme.secondary,
-                                      ],
-                                    ).createShader(bounds),
-                                    child: Text(
-                                      'Simple Journal',
-                                      style: TextStyle(
-                                        fontSize: 36,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.white,
-                                        letterSpacing: 1.5,
-                                        height: 1.2,
+                                  ConstrainedBox(
+                                    constraints:
+                                        BoxConstraints(maxWidth: textMaxWidth),
+                                    child: ShaderMask(
+                                      shaderCallback: (bounds) => LinearGradient(
+                                        colors: [
+                                          colorScheme.primary,
+                                          colorScheme.secondary,
+                                        ],
+                                      ).createShader(bounds),
+                                      child: Text(
+                                        'Simple Journal',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontSize: titleSize,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.white,
+                                          letterSpacing: 1.5,
+                                          height: 1.2,
+                                        ),
                                       ),
                                     ),
                                   ),
 
-                                  const SizedBox(height: 20),
+                                  SizedBox(height: gapTitleToTagline),
 
                                   // Tagline with soft styling
-                                  Text(
-                                    'Your thoughts, beautifully captured',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w400,
-                                      color: colorScheme.onSurfaceVariant,
-                                      letterSpacing: 0.5,
-                                      height: 1.4,
+                                  ConstrainedBox(
+                                    constraints:
+                                        BoxConstraints(maxWidth: textMaxWidth),
+                                    child: Text(
+                                      'Your thoughts, beautifully captured',
+                                      style: TextStyle(
+                                        fontSize: taglineSize,
+                                        fontWeight: FontWeight.w400,
+                                        color: colorScheme.onSurfaceVariant,
+                                        letterSpacing: 0.5,
+                                        height: 1.4,
+                                      ),
+                                      textAlign: TextAlign.center,
                                     ),
-                                    textAlign: TextAlign.center,
                                   ),
                                 ],
                               ),
@@ -468,8 +498,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                         child: Column(
                           children: [
                             SizedBox(
-                              width: 32,
-                              height: 32,
+                              width: loaderSize,
+                              height: loaderSize,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2.5,
                                 valueColor: AlwaysStoppedAnimation<Color>(
@@ -477,16 +507,24 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 24),
-                            Text(
-                              _loadingMessage,
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: colorScheme.onSurfaceVariant,
-                                fontWeight: FontWeight.w400,
-                                letterSpacing: 0.5,
+                            SizedBox(height: gapLoaderToText),
+                            ConstrainedBox(
+                              constraints:
+                                  BoxConstraints(maxWidth: textMaxWidth),
+                              child: Text(
+                                _loadingMessage,
+                                style: TextStyle(
+                                  fontSize: info.value(
+                                    compact: 12.0,
+                                    medium: 13.0,
+                                    expanded: 14.0,
+                                  ),
+                                  color: colorScheme.onSurfaceVariant,
+                                  fontWeight: FontWeight.w400,
+                                  letterSpacing: 0.5,
+                                ),
+                                textAlign: TextAlign.center,
                               ),
-                              textAlign: TextAlign.center,
                             ),
                           ],
                         ),
@@ -494,7 +532,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                     },
                   ),
 
-                  const SizedBox(height: 80),
+                  SizedBox(height: bottomGap),
                 ],
               ),
             ],

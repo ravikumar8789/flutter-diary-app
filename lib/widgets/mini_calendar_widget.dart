@@ -49,6 +49,7 @@ class _MiniCalendarWidgetState extends State<MiniCalendarWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
@@ -118,25 +119,25 @@ class _MiniCalendarWidgetState extends State<MiniCalendarWidget> {
                 calendarStyle: CalendarStyle(
                   outsideDaysVisible: false,
                   weekendTextStyle: TextStyle(
-                    color: Colors.grey.shade600,
+                    color: colorScheme.onSurfaceVariant,
                     fontWeight: FontWeight.w500,
                     fontSize: 12,
                   ),
                   defaultTextStyle: TextStyle(
-                    color: Colors.grey.shade800,
+                    color: colorScheme.onSurface,
                     fontWeight: FontWeight.w500,
                     fontSize: 12,
                   ),
                   todayDecoration: BoxDecoration(
-                    color: Colors.blue.shade50,
+                    color: colorScheme.primary.withOpacity(0.12),
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: Colors.blue.shade300,
+                      color: colorScheme.primary.withOpacity(0.35),
                       width: 1.5,
                     ),
                   ),
                   todayTextStyle: TextStyle(
-                    color: Colors.blue.shade700,
+                    color: colorScheme.primary,
                     fontWeight: FontWeight.bold,
                     fontSize: 12,
                   ),
@@ -144,8 +145,8 @@ class _MiniCalendarWidgetState extends State<MiniCalendarWidget> {
                     color: Theme.of(context).colorScheme.primary,
                     shape: BoxShape.circle,
                   ),
-                  selectedTextStyle: const TextStyle(
-                    color: Colors.white,
+                  selectedTextStyle: TextStyle(
+                    color: colorScheme.onPrimary,
                     fontWeight: FontWeight.bold,
                     fontSize: 12,
                   ),
@@ -155,12 +156,12 @@ class _MiniCalendarWidgetState extends State<MiniCalendarWidget> {
                 ),
                 daysOfWeekStyle: DaysOfWeekStyle(
                   weekdayStyle: TextStyle(
-                    color: Colors.grey.shade700,
+                    color: colorScheme.onSurfaceVariant,
                     fontWeight: FontWeight.w600,
                     fontSize: 10,
                   ),
                   weekendStyle: TextStyle(
-                    color: Colors.grey.shade600,
+                    color: colorScheme.onSurfaceVariant,
                     fontWeight: FontWeight.w600,
                     fontSize: 10,
                   ),
@@ -189,7 +190,7 @@ class _MiniCalendarWidgetState extends State<MiniCalendarWidget> {
                           style: TextStyle(
                             color: isSelectedWeek
                                 ? Theme.of(context).colorScheme.primary
-                                : Colors.grey.shade800,
+                                : colorScheme.onSurface,
                             fontWeight: isSelectedWeek
                                 ? FontWeight.bold
                                 : FontWeight.w500,
@@ -207,12 +208,12 @@ class _MiniCalendarWidgetState extends State<MiniCalendarWidget> {
                       decoration: BoxDecoration(
                         color: isSelectedWeek
                             ? Theme.of(context).colorScheme.primary.withOpacity(0.15)
-                            : Colors.blue.shade50,
+                            : colorScheme.primary.withOpacity(0.12),
                         borderRadius: BorderRadius.circular(5),
                         border: Border.all(
                           color: isSelectedWeek
                               ? Theme.of(context).colorScheme.primary
-                              : Colors.blue.shade300,
+                              : colorScheme.primary.withOpacity(0.35),
                           width: 1.5,
                         ),
                       ),
@@ -222,7 +223,7 @@ class _MiniCalendarWidgetState extends State<MiniCalendarWidget> {
                           style: TextStyle(
                             color: isSelectedWeek
                                 ? Theme.of(context).colorScheme.primary
-                                : Colors.blue.shade700,
+                                : colorScheme.primary,
                             fontWeight: FontWeight.bold,
                             fontSize: 12,
                           ),

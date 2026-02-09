@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/grace_system_service.dart';
+import '../models/error_models.dart';
 import '../services/error_logging_service.dart';
 import 'data_providers.dart';
 import 'streak_provider.dart';
@@ -65,12 +66,15 @@ class GraceSystemNotifier extends Notifier<GraceSystemState> {
       state = state.copyWith(isLoading: false);
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRDATA123',
-        errorMessage: 'Failed to initialize grace system: $e',
-        errorContext: {
-          'userId': userId,
-          'service': 'GraceSystemNotifier.initialize',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA123',
+          severity: ErrorSeverity.high,
+          exception: e,
+          errorContext: {
+            'userId': userId,
+            'service': 'GraceSystemNotifier.initialize',
+          },
+        ),
       );
       state = state.copyWith(
         isLoading: false,
@@ -111,14 +115,17 @@ class GraceSystemNotifier extends Notifier<GraceSystemState> {
       ref.invalidate(homeSummaryProvider);
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRDATA124',
-        errorMessage: 'Failed to track task completion: $e',
-        errorContext: {
-          'userId': _currentUserId,
-          'taskType': taskType,
-          'completed': completed,
-          'service': 'GraceSystemNotifier.trackTaskCompletion',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA124',
+          severity: ErrorSeverity.high,
+          exception: e,
+          errorContext: {
+            'userId': _currentUserId,
+            'taskType': taskType,
+            'completed': completed,
+            'service': 'GraceSystemNotifier.trackTaskCompletion',
+          },
+        ),
       );
     }
   }
@@ -142,12 +149,15 @@ class GraceSystemNotifier extends Notifier<GraceSystemState> {
       return success;
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRDATA125',
-        errorMessage: 'Failed to use grace day: $e',
-        errorContext: {
-          'userId': _currentUserId,
-          'service': 'GraceSystemNotifier.useGraceDay',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA125',
+          severity: ErrorSeverity.high,
+          exception: e,
+          errorContext: {
+            'userId': _currentUserId,
+            'service': 'GraceSystemNotifier.useGraceDay',
+          },
+        ),
       );
       return false;
     }
@@ -179,12 +189,15 @@ class GraceSystemNotifier extends Notifier<GraceSystemState> {
       }
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRDATA126',
-        errorMessage: 'Failed to refresh grace status: $e',
-        errorContext: {
-          'userId': _currentUserId,
-          'service': 'GraceSystemNotifier._refreshGraceStatus',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA126',
+          severity: ErrorSeverity.high,
+          exception: e,
+          errorContext: {
+            'userId': _currentUserId,
+            'service': 'GraceSystemNotifier._refreshGraceStatus',
+          },
+        ),
       );
     } finally {
       _isRefreshing = false;

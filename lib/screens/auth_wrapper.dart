@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'login_screen.dart';
 import 'home_screen.dart';
 import '../providers/auth_provider.dart';
+import '../ui/responsive/responsive_body.dart';
+import '../ui/responsive/responsive_info.dart';
+import '../ui/responsive/responsive_tokens.dart';
 
 class AuthWrapper extends ConsumerWidget {
   const AuthWrapper({super.key});
@@ -34,14 +37,19 @@ class AuthLoadingScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final info = ResponsiveInfo.of(context);
+    final spacingM = ResponsiveTokens.spacingM(info);
+
     return Scaffold(
-      body: Center(
+      body: ResponsiveBody(
+        alignment: Alignment.center,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('Loading...'),
+            const CircularProgressIndicator(),
+            SizedBox(height: spacingM),
+            const Text('Loading...'),
           ],
         ),
       ),

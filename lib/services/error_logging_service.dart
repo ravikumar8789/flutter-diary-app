@@ -1,55 +1,47 @@
 import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
+import '../models/error_models.dart';
 
 class ErrorLoggingService {
   static final SupabaseClient _supabase = Supabase.instance.client;
 
-  // Log error with full context
-  static Future<void> logError({
-    required String errorCode,
-    required String errorMessage,
-    String? stackTrace,
-    required String severity,
-    String? userId,
-    String? sessionId,
-    Map<String, dynamic>? screenStack,
-    Map<String, dynamic>? errorContext,
-    int retryCount = 0,
-    String? syncStatus,
-  }) async {
+  /// Primary method using ErrorContext model
+  /// This is the recommended way to log errors
+  static Future<void> logError(ErrorContext error) async {
     try {
-      // Collect comprehensive error context
-      final context = _collectErrorContext(
-        errorCode: errorCode,
-        errorMessage: errorMessage,
-        additionalContext: errorContext,
+      // Auto-populate missing fields
+      final enrichedError = error.copyWith(
+        userId: error.userId ?? _supabase.auth.currentUser?.id,
+        sessionId: error.sessionId ?? _generateSessionId(),
+        screenStack: error.screenStack ?? _getCurrentScreenStack(),
+        syncStatus: error.syncStatus ?? _getCurrentSyncStatus(),
       );
 
-      await _supabase.from('error_logs').insert({
-        'error_code': errorCode,
-        'error_message': errorMessage,
-        'stack_trace': stackTrace,
-        'error_severity': severity,
-        'user_id': userId ?? _supabase.auth.currentUser?.id,
-        'session_id': sessionId ?? _generateSessionId(),
-        'screen_stack': screenStack ?? _getCurrentScreenStack(),
-        'error_context': context,
-        'retry_count': retryCount,
-        'sync_status': syncStatus ?? _getCurrentSyncStatus(),
-      });
+      // Collect additional context
+      final additionalContext = _collectErrorContext(
+        errorCode: enrichedError.errorCode,
+        errorMessage: enrichedError.errorMessage,
+        additionalContext: enrichedError.errorContext,
+      );
 
-      if (kDebugMode) {
+      // Merge additional context into error_context field
+      final finalError = enrichedError.copyWith(
+        errorContext: {
+          ...?enrichedError.errorContext,
+          ...additionalContext,
+        },
+      );
 
-      }
+      // Insert using model's toJson
+      await _supabase.from('error_logs').insert(finalError.toJson());
     } catch (e) {
-      // Fallback: Log to console if Supabase fails
+      // CRITICAL: Never throw - error logging must never fail
       if (kDebugMode) {
-
-
-
-
+        print('ERROR: Failed to log error to Supabase: $e');
+        print('Original error: ${error.errorCode} - ${error.errorMessage}');
       }
+      // Silently fail - don't break app
     }
   }
 
@@ -115,67 +107,121 @@ class ErrorLoggingService {
     return 'unknown'; // Will be enhanced with connectivity service
   }
 
-  // Log critical errors with immediate attention
+  /// Log critical errors - backward compatible (accepts ErrorContext or parameters)
+  /// New code should use: logError(ErrorContext.create(...))
   static Future<void> logCriticalError({
-    required String errorCode,
-    required String errorMessage,
+    ErrorContext? error,
+    String? errorCode,
+    String? errorMessage,
     String? stackTrace,
     Map<String, dynamic>? errorContext,
   }) async {
-    await logError(
-      errorCode: errorCode,
-      errorMessage: errorMessage,
-      stackTrace: stackTrace,
-      severity: 'CRITICAL',
-      errorContext: errorContext,
-    );
+    if (error != null) {
+      await logError(error.copyWith(severity: ErrorSeverity.critical.value));
+    } else if (errorCode != null && errorMessage != null) {
+      await _logErrorLegacy(
+        errorCode: errorCode,
+        errorMessage: errorMessage,
+        stackTrace: stackTrace,
+        severity: 'CRITICAL',
+        errorContext: errorContext,
+      );
+    }
   }
 
-  // Log high priority errors
+  /// Log high priority errors - backward compatible (accepts ErrorContext or parameters)
+  /// New code should use: logError(ErrorContext.create(...))
   static Future<void> logHighError({
-    required String errorCode,
-    required String errorMessage,
+    ErrorContext? error,
+    String? errorCode,
+    String? errorMessage,
     String? stackTrace,
     Map<String, dynamic>? errorContext,
   }) async {
-    await logError(
-      errorCode: errorCode,
-      errorMessage: errorMessage,
-      stackTrace: stackTrace,
-      severity: 'HIGH',
-      errorContext: errorContext,
-    );
+    if (error != null) {
+      await logError(error.copyWith(severity: ErrorSeverity.high.value));
+    } else if (errorCode != null && errorMessage != null) {
+      await _logErrorLegacy(
+        errorCode: errorCode,
+        errorMessage: errorMessage,
+        stackTrace: stackTrace,
+        severity: 'HIGH',
+        errorContext: errorContext,
+      );
+    }
   }
 
-  // Log medium priority errors
+  /// Log medium priority errors - backward compatible (accepts ErrorContext or parameters)
+  /// New code should use: logError(ErrorContext.create(...))
   static Future<void> logMediumError({
-    required String errorCode,
-    required String errorMessage,
+    ErrorContext? error,
+    String? errorCode,
+    String? errorMessage,
     String? stackTrace,
     Map<String, dynamic>? errorContext,
   }) async {
-    await logError(
-      errorCode: errorCode,
-      errorMessage: errorMessage,
-      stackTrace: stackTrace,
-      severity: 'MEDIUM',
-      errorContext: errorContext,
-    );
+    if (error != null) {
+      await logError(error.copyWith(severity: ErrorSeverity.medium.value));
+    } else if (errorCode != null && errorMessage != null) {
+      await _logErrorLegacy(
+        errorCode: errorCode,
+        errorMessage: errorMessage,
+        stackTrace: stackTrace,
+        severity: 'MEDIUM',
+        errorContext: errorContext,
+      );
+    }
   }
 
-  // Log low priority errors/warnings
+  /// Log low priority errors/warnings - backward compatible (accepts ErrorContext or parameters)
+  /// New code should use: logError(ErrorContext.create(...))
   static Future<void> logLowError({
-    required String errorCode,
-    required String errorMessage,
+    ErrorContext? error,
+    String? errorCode,
+    String? errorMessage,
     String? stackTrace,
     Map<String, dynamic>? errorContext,
   }) async {
-    await logError(
+    if (error != null) {
+      await logError(error.copyWith(severity: ErrorSeverity.low.value));
+    } else if (errorCode != null && errorMessage != null) {
+      await _logErrorLegacy(
+        errorCode: errorCode,
+        errorMessage: errorMessage,
+        stackTrace: stackTrace,
+        severity: 'LOW',
+        errorContext: errorContext,
+      );
+    }
+  }
+
+  /// Internal legacy method for backward compatibility
+  static Future<void> _logErrorLegacy({
+    required String errorCode,
+    required String errorMessage,
+    String? stackTrace,
+    required String severity,
+    String? userId,
+    String? sessionId,
+    Map<String, dynamic>? screenStack,
+    Map<String, dynamic>? errorContext,
+    int retryCount = 0,
+    String? syncStatus,
+  }) async {
+    // Convert to model and call new method
+    final error = ErrorContext(
       errorCode: errorCode,
       errorMessage: errorMessage,
       stackTrace: stackTrace,
-      severity: 'LOW',
+      severity: severity,
+      timestamp: DateTime.now(),
+      userId: userId,
+      sessionId: sessionId,
+      screenStack: screenStack,
       errorContext: errorContext,
+      retryCount: retryCount,
+      syncStatus: syncStatus,
     );
+    await logError(error);
   }
 }

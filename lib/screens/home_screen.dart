@@ -16,7 +16,12 @@ import '../services/streak_motivation_service.dart';
 import '../services/data_sync_flag_service.dart';
 import '../services/data_prefetch_service.dart';
 import '../services/error_logging_service.dart';
+import '../models/error_models.dart';
 import '../widgets/debug_notification_bottom_sheet.dart';
+import '../ui/responsive/responsive_grid.dart';
+import '../ui/responsive/responsive_body.dart';
+import '../ui/responsive/responsive_info.dart';
+import '../ui/responsive/responsive_tokens.dart';
 
 // Import aiInsightProvider from home_summary_provider
 
@@ -135,34 +140,40 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         } catch (e) {
           // Log error but continue - data will be fetched on-demand
           await ErrorLoggingService.logHighError(
-            errorCode: 'ERRSYS184',
-            errorMessage: 'Prefetch failed in HomeScreen after login: ${e.toString()}',
-            stackTrace: StackTrace.current.toString(),
-            errorContext: {
-              'user_id': userId,
-              'operation': 'home_prefetch_after_login',
-            },
+            error: ErrorContext.fromException(
+              errorCode: 'ERRSYS184',
+              severity: ErrorSeverity.high,
+              exception: e,
+              stackTrace: StackTrace.current,
+              errorContext: {
+                'user_id': userId,
+                'operation': 'home_prefetch_after_login',
+              },
+            ),
           );
           // Keep flag as true so it retries next time
         }
       }
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS185',
-        errorMessage: 'Failed to check prefetch flag in HomeScreen: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'operation': 'home_check_prefetch',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS185',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'operation': 'home_check_prefetch',
+          },
+        ),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    final isTablet = size.width > 600;
+    final info = ResponsiveInfo.of(context);
+    final spacingL = ResponsiveTokens.spacingL(info);
 
     final user = supabase.Supabase.instance.client.auth.currentUser;
     final userDataState = ref.watch(userDataProvider);
@@ -231,34 +242,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           child: Column(
             children: [
               Expanded(
-                child: SingleChildScrollView(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: isTablet ? 32 : 20,
-                    vertical: 20,
-                  ),
+                child: ResponsiveBody(
+                  useSafeArea: false,
+                  useScrollView: true,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // Date and Greeting Header (InnerGlow Style)
                       _buildDateAndGreeting(context, userData, user),
-                      const SizedBox(height: 24),
-                      
+                      SizedBox(height: spacingL),
+
                       // Streak Cards (InnerGlow Style)
                       _buildStreakSection(context, userStats, user),
-                      const SizedBox(height: 24),
-                      
+                      SizedBox(height: spacingL),
+
                       // Start Today's Entry Button (InnerGlow Style)
                       _buildStartEntryButton(context),
-                      const SizedBox(height: 24),
-                      
+                      SizedBox(height: spacingL),
+
                       // Yesterday's Insight Card
                       _buildAiInsightCard(context),
-                      const SizedBox(height: 24),
-                      
+                      SizedBox(height: spacingL),
+
                       // This Week Metrics (InnerGlow Style)
                       _buildThisWeekSection(context),
-                      const SizedBox(height: 24),
-                      
+                      SizedBox(height: spacingL),
+
                       // Recent Entries Section (InnerGlow Style)
                       _buildRecentEntriesSection(context),
                     ],
@@ -807,10 +816,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 const SizedBox(height: 16),
                 LayoutBuilder(
                   builder: (context, constraints) {
-                    final cardWidth = (constraints.maxWidth - 12) / 2;
+                    final info = ResponsiveInfo.of(context);
+                    final columns = responsiveCardCrossAxisCount(info);
+                    final spacing = ResponsiveTokens.spacingM(info);
+                    final totalSpacing = spacing * (columns - 1);
+                    final cardWidth =
+                        (constraints.maxWidth - totalSpacing) / columns;
                     return Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
+                      spacing: spacing,
+                      runSpacing: spacing,
                       children: [
                         SizedBox(
                           width: cardWidth,

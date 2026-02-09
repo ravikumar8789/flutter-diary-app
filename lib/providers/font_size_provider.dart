@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/user_preference_sync_service.dart';
+import '../models/error_models.dart';
 import '../services/error_logging_service.dart';
 
 /// Font size enum
@@ -74,15 +75,16 @@ class FontSizeNotifier extends Notifier<FontSize> {
       );
     } catch (e) {
       await ErrorLoggingService.logError(
-        errorCode: 'ERRSYS134',
-        errorMessage:
-            'Settings save failed (cloud font size sync): ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'LOW',
-        errorContext: {
-          'operation': 'sync_font_size',
-          'font_size': state.value,
-        },
+        ErrorContext.fromException(
+          errorCode: 'ERRSYS134',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'operation': 'sync_font_size',
+            'font_size': state.value,
+          },
+        ),
       );
     }
   }

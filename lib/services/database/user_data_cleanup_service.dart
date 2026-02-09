@@ -1,5 +1,6 @@
 import 'database_manager.dart';
 import '../error_logging_service.dart';
+import '../../models/error_models.dart';
 
 /// Service for clearing user-specific data from local database
 /// 
@@ -92,13 +93,16 @@ class UserDataCleanupService {
       
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS163',
-        errorMessage: 'Failed to clear user data from local database: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'operation': 'clearUserData',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS163',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'operation': 'clearUserData',
+          },
+        ),
       );
       // Re-throw to handle in logout flow
       rethrow;

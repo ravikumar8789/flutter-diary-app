@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/analytics_models.dart';
+import '../models/error_models.dart';
 import '../services/error_logging_service.dart';
 
 /// Month chips carousel for month navigation
@@ -35,11 +36,13 @@ class _MonthChipsCarouselState extends State<MonthChipsCarousel> {
       _previousSelectedMonth = widget.selectedMonth;
     } catch (e) {
       ErrorLoggingService.logError(
-        errorCode: 'ERRUI001',
-        errorMessage: 'MonthChipsCarousel initState failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'MEDIUM',
-        errorContext: {'operation': 'month_chips_carousel_init'},
+        ErrorContext.fromException(
+          errorCode: 'ERRUI001',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'operation': 'month_chips_carousel_init'},
+        ),
       );
     }
   }
@@ -105,11 +108,13 @@ class _MonthChipsCarouselState extends State<MonthChipsCarousel> {
       });
     } catch (e) {
       ErrorLoggingService.logError(
-        errorCode: 'ERRUI001',
-        errorMessage: 'Scroll to selected month failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'LOW',
-        errorContext: {'operation': 'scroll_to_selected_month'},
+        ErrorContext.fromException(
+          errorCode: 'ERRUI001',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'operation': 'scroll_to_selected_month'},
+        ),
       );
     }
   }
@@ -162,11 +167,13 @@ class _MonthChipsCarouselState extends State<MonthChipsCarousel> {
       );
     } catch (e) {
       ErrorLoggingService.logError(
-        errorCode: 'ERRUI001',
-        errorMessage: 'MonthChipsCarousel build failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'MEDIUM',
-        errorContext: {'operation': 'month_chips_carousel_build'},
+        ErrorContext.fromException(
+          errorCode: 'ERRUI001',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'operation': 'month_chips_carousel_build'},
+        ),
       );
       return const SizedBox.shrink();
     }
@@ -209,11 +216,13 @@ class _MonthChipState extends State<_MonthChip>
       }
     } catch (e) {
       ErrorLoggingService.logError(
-        errorCode: 'ERRUI001',
-        errorMessage: '_MonthChip initState failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'LOW',
-        errorContext: {'operation': 'month_chip_init'},
+        ErrorContext.fromException(
+          errorCode: 'ERRUI001',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'operation': 'month_chip_init'},
+        ),
       );
     }
   }
@@ -240,7 +249,7 @@ class _MonthChipState extends State<_MonthChip>
 
   Color _getStatusColor(BuildContext context) {
     if (!widget.month.hasAnalysis) {
-      return Colors.grey;
+      return Theme.of(context).colorScheme.onSurfaceVariant;
     }
     switch (widget.month.status) {
       case 'success':
@@ -250,7 +259,7 @@ class _MonthChipState extends State<_MonthChip>
       case 'error':
         return Colors.red;
       default:
-        return Colors.grey;
+        return Theme.of(context).colorScheme.onSurfaceVariant;
     }
   }
 
@@ -325,11 +334,13 @@ class _MonthChipState extends State<_MonthChip>
       );
     } catch (e) {
       ErrorLoggingService.logError(
-        errorCode: 'ERRUI001',
-        errorMessage: '_MonthChip build failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'MEDIUM',
-        errorContext: {'operation': 'month_chip_build'},
+        ErrorContext.fromException(
+          errorCode: 'ERRUI001',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'operation': 'month_chip_build'},
+        ),
       );
       return const SizedBox.shrink();
     }

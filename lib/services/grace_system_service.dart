@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:uuid/uuid.dart';
 import 'error_logging_service.dart';
+import '../models/error_models.dart';
 import 'data_fetch_service.dart';
 import 'database/database_manager.dart';
 import 'notification_service.dart';
@@ -81,9 +82,13 @@ class GraceSystemService {
       return result;
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRDATA120',
-        errorMessage: 'Failed to get grace status: $e',
-        errorContext: {'userId': userId},
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA120',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'userId': userId},
+        ),
       );
       return null;
     }
@@ -279,15 +284,18 @@ class GraceSystemService {
         await NotificationService.instance.rescheduleBasedOnHabits(userId);
       } catch (e, stackTrace) {
         await ErrorLoggingService.logMediumError(
-          errorCode: 'ERRSYS159',
-          errorMessage: 'Reschedule notifications after habits update failed: $e',
-          stackTrace: stackTrace.toString(),
-          errorContext: {
-            'user_id': userId,
-            'task_type': taskType,
-            'completed': completed,
-            'operation': 'reschedule_after_habits_update',
-          },
+          error: ErrorContext.fromException(
+            errorCode: 'ERRSYS159',
+            severity: ErrorSeverity.medium,
+            exception: e,
+            stackTrace: stackTrace,
+            errorContext: {
+              'user_id': userId,
+              'task_type': taskType,
+              'completed': completed,
+              'operation': 'reschedule_after_habits_update',
+            },
+          ),
         );
       }
 
@@ -296,14 +304,18 @@ class GraceSystemService {
     } catch (e) {
       print('🔥 STREAK DEBUG: GraceSystemService.trackTaskCompletion ERROR: $e');
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRDATA121',
-        errorMessage: 'Failed to track task completion: $e',
-        errorContext: {
-          'userId': userId,
-          'taskType': taskType,
-          'completed': completed,
-          'errorType': e.runtimeType.toString(),
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA121',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'userId': userId,
+            'taskType': taskType,
+            'completed': completed,
+            'errorType': e.runtimeType.toString(),
+          },
+        ),
       );
       return false;
     }
@@ -352,9 +364,13 @@ class GraceSystemService {
       return true;
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRDATA122',
-        errorMessage: 'Failed to use grace day: $e',
-        errorContext: {'userId': userId},
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA122',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'userId': userId},
+        ),
       );
       return false;
     }
@@ -469,10 +485,13 @@ class GraceSystemService {
         }
       } catch (e) {
         await ErrorLoggingService.logHighError(
-          errorCode: 'ERRDATA123',
-          errorMessage: 'Failed to sync streak data via RPC: ${e.toString()}',
-          stackTrace: StackTrace.current.toString(),
-          errorContext: {'userId': userId},
+          error: ErrorContext.fromException(
+            errorCode: 'ERRDATA123',
+            severity: ErrorSeverity.high,
+            exception: e,
+            stackTrace: StackTrace.current,
+            errorContext: {'userId': userId},
+          ),
         );
       }
     });
@@ -548,9 +567,13 @@ class GraceSystemService {
       };
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRDATA127',
-        errorMessage: 'Failed to get/create today habits record: $e',
-        errorContext: {'userId': userId, 'date': date.toIso8601String()},
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA127',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'userId': userId, 'date': date.toIso8601String()},
+        ),
       );
       rethrow;
     }

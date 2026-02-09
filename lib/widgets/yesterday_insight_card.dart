@@ -28,6 +28,7 @@ class YesterdayInsightCard extends ConsumerWidget {
   Widget _buildInsightCard(BuildContext context, DailyInsight insight) {
     final yesterday = DateTime.now().subtract(const Duration(days: 1));
     final dateLabel = DateFormat('MMM d, yyyy').format(yesterday);
+    final colorScheme = Theme.of(context).colorScheme;
     
     // Get sentiment color
     final sentimentColor = _getSentimentColor(insight.sentimentLabel);
@@ -108,14 +109,14 @@ class YesterdayInsightCard extends ConsumerWidget {
                   Icon(
                     Icons.arrow_forward_ios,
                     size: 12,
-                    color: Colors.grey[600],
+                    color: colorScheme.onSurfaceVariant,
                   ),
                   const SizedBox(width: 4),
                   Text(
                     'Tap to view full analysis',
                     style: TextStyle(
                       fontSize: 12,
-                      color: Colors.grey[600],
+                      color: colorScheme.onSurfaceVariant,
                       fontStyle: FontStyle.italic,
                     ),
                   ),
@@ -129,6 +130,7 @@ class YesterdayInsightCard extends ConsumerWidget {
   }
 
   Widget _buildEmptyState(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       elevation: 2,
@@ -140,13 +142,13 @@ class YesterdayInsightCard extends ConsumerWidget {
             Icon(
               Icons.insights_outlined,
               size: 48,
-              color: Colors.grey[400],
+              color: colorScheme.onSurfaceVariant,
             ),
             const SizedBox(height: 12),
             Text(
               "Your daily insights will be ready each morning",
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.grey[600],
+                    color: colorScheme.onSurfaceVariant,
                   ),
               textAlign: TextAlign.center,
             ),
@@ -154,7 +156,7 @@ class YesterdayInsightCard extends ConsumerWidget {
             Text(
               "Yesterday's insight will appear here once your entry is analyzed.",
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Colors.grey[500],
+                    color: colorScheme.onSurfaceVariant,
                   ),
               textAlign: TextAlign.center,
             ),
@@ -179,6 +181,7 @@ class YesterdayInsightCard extends ConsumerWidget {
   }
 
   Widget _buildErrorState(BuildContext context, Object error) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       elevation: 2,
@@ -196,7 +199,7 @@ class YesterdayInsightCard extends ConsumerWidget {
             Text(
               "Unable to load insight",
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.grey[700],
+                    color: colorScheme.onSurfaceVariant,
                   ),
               textAlign: TextAlign.center,
             ),

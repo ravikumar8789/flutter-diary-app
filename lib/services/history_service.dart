@@ -4,14 +4,15 @@ import '../models/entry_models.dart';
 import '../models/history_entry_model.dart';
 import '../models/analytics_models.dart';
 import 'error_logging_service.dart';
+import '../models/error_models.dart';
 import 'data_fetch_service.dart';
 
 class HistoryService {
   final SupabaseClient _supabase = Supabase.instance.client;
   final DataFetchService? _dataFetchService;
-  
+
   HistoryService({DataFetchService? dataFetchService})
-      : _dataFetchService = dataFetchService;
+    : _dataFetchService = dataFetchService;
 
   /// Fetch entries for a month with all related data using JOIN query
   Future<List<HistoryEntry>> getEntriesForMonth(
@@ -27,7 +28,7 @@ class HistoryService {
 
       // 2. Fetch entries with all related data using JOIN query (single call)
       List<Map<String, dynamic>> response;
-      
+
       if (_dataFetchService != null) {
         // Use cached fetchEntriesWithJoins
         response = await _dataFetchService.fetchEntriesWithJoins(
@@ -65,77 +66,86 @@ class HistoryService {
         // Parse nested related data from JOIN response
         final selfCare = row['entry_self_care'] != null
             ? EntrySelfCare.fromSupabaseJson(
-                row['entry_self_care'] as Map<String, dynamic>)
+                row['entry_self_care'] as Map<String, dynamic>,
+              )
             : null;
 
         final meals = row['entry_meals'] != null
             ? EntryMeals.fromSupabaseJson(
-                row['entry_meals'] as Map<String, dynamic>)
+                row['entry_meals'] as Map<String, dynamic>,
+              )
             : null;
 
         final affirmations = row['entry_affirmations'] != null
             ? EntryAffirmations.fromSupabaseJson(
-                row['entry_affirmations'] as Map<String, dynamic>)
+                row['entry_affirmations'] as Map<String, dynamic>,
+              )
             : null;
 
         final gratitude = row['entry_gratitude'] != null
             ? EntryGratitude.fromSupabaseJson(
-                row['entry_gratitude'] as Map<String, dynamic>)
+                row['entry_gratitude'] as Map<String, dynamic>,
+              )
             : null;
 
         final priorities = row['entry_priorities'] != null
             ? EntryPriorities.fromSupabaseJson(
-                row['entry_priorities'] as Map<String, dynamic>)
+                row['entry_priorities'] as Map<String, dynamic>,
+              )
             : null;
 
         final tomorrowNotes = row['entry_tomorrow_notes'] != null
             ? EntryTomorrowNotes.fromSupabaseJson(
-                row['entry_tomorrow_notes'] as Map<String, dynamic>)
+                row['entry_tomorrow_notes'] as Map<String, dynamic>,
+              )
             : null;
 
         // Build history entry without insight (fetch on-demand)
-        historyEntries.add(HistoryEntry(
-          entry: entry,
-          insight: null, // Fetch on-demand when user clicks
-          selfCare: selfCare,
-          meals: meals,
-          affirmations: affirmations,
-          gratitude: gratitude,
-          priorities: priorities,
-          tomorrowNotes: tomorrowNotes,
-        ));
+        historyEntries.add(
+          HistoryEntry(
+            entry: entry,
+            insight: null, // Fetch on-demand when user clicks
+            selfCare: selfCare,
+            meals: meals,
+            affirmations: affirmations,
+            gratitude: gratitude,
+            priorities: priorities,
+            tomorrowNotes: tomorrowNotes,
+          ),
+        );
       }
 
       // 4. Sort by date (newest first)
-      historyEntries.sort((a, b) => b.entry.entryDate.compareTo(a.entry.entryDate));
+      historyEntries.sort(
+        (a, b) => b.entry.entryDate.compareTo(a.entry.entryDate),
+      );
 
       return historyEntries;
     } catch (e) {
       await ErrorLoggingService.logError(
-        errorCode: 'ERRHIST001',
-        errorMessage: 'Failed to fetch entries for month: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'MEDIUM',
-        errorContext: {
-          'user_id': userId,
-          'month': DateFormat('yyyy-MM').format(month),
-        },
+        ErrorContext.fromException(
+          errorCode: 'ERRHIST001',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'month': DateFormat('yyyy-MM').format(month),
+          },
+        ),
       );
       return [];
     }
   }
 
   /// Fetch entry with full details by date (for bottom sheet) using JOIN query
-  Future<HistoryEntry?> getEntryByDate(
-    String userId,
-    DateTime date,
-  ) async {
+  Future<HistoryEntry?> getEntryByDate(String userId, DateTime date) async {
     try {
       final dateStr = DateFormat('yyyy-MM-dd').format(date);
 
       // 1. Fetch entry with all related data using JOIN query (single call)
       Map<String, dynamic>? response;
-      
+
       if (_dataFetchService != null) {
         // Use cached fetchEntryByDate - but we need JOIN data, so use fetchEntriesWithJoins for single date
         final entries = await _dataFetchService.fetchEntriesWithJoins(
@@ -169,32 +179,38 @@ class HistoryService {
 
       final selfCare = response['entry_self_care'] != null
           ? EntrySelfCare.fromSupabaseJson(
-              response['entry_self_care'] as Map<String, dynamic>)
+              response['entry_self_care'] as Map<String, dynamic>,
+            )
           : null;
 
       final meals = response['entry_meals'] != null
           ? EntryMeals.fromSupabaseJson(
-              response['entry_meals'] as Map<String, dynamic>)
+              response['entry_meals'] as Map<String, dynamic>,
+            )
           : null;
 
       final affirmations = response['entry_affirmations'] != null
           ? EntryAffirmations.fromSupabaseJson(
-              response['entry_affirmations'] as Map<String, dynamic>)
+              response['entry_affirmations'] as Map<String, dynamic>,
+            )
           : null;
 
       final gratitude = response['entry_gratitude'] != null
           ? EntryGratitude.fromSupabaseJson(
-              response['entry_gratitude'] as Map<String, dynamic>)
+              response['entry_gratitude'] as Map<String, dynamic>,
+            )
           : null;
 
       final priorities = response['entry_priorities'] != null
           ? EntryPriorities.fromSupabaseJson(
-              response['entry_priorities'] as Map<String, dynamic>)
+              response['entry_priorities'] as Map<String, dynamic>,
+            )
           : null;
 
       final tomorrowNotes = response['entry_tomorrow_notes'] != null
           ? EntryTomorrowNotes.fromSupabaseJson(
-              response['entry_tomorrow_notes'] as Map<String, dynamic>)
+              response['entry_tomorrow_notes'] as Map<String, dynamic>,
+            )
           : null;
 
       // 3. Don't fetch insight here - fetch on-demand when user expands card
@@ -210,22 +226,23 @@ class HistoryService {
       );
     } catch (e) {
       await ErrorLoggingService.logError(
-        errorCode: 'ERRHIST002',
-        errorMessage: 'Failed to fetch entry by date: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'MEDIUM',
-        errorContext: {
-          'user_id': userId,
-          'date': DateFormat('yyyy-MM-dd').format(date),
-        },
+        ErrorContext.fromException(
+          errorCode: 'ERRHIST002',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'date': DateFormat('yyyy-MM-dd').format(date),
+          },
+        ),
       );
       return null;
     }
   }
 
-
   /// Fetch insight for a specific entry (public method for on-demand fetching)
-  /// 
+  ///
   /// Note: Insights are fetched on-demand, so caching is less critical.
   /// Using direct query for simplicity (insights change infrequently).
   Future<HistoryDailyInsight?> fetchInsightForEntry(String entryId) async {
@@ -269,7 +286,10 @@ class HistoryService {
       return HistoryDailyInsight(
         id: response['id'] as String,
         entryId: entryId,
-        insightText: response['insight_text'] as String? ?? response['summary'] as String? ?? '',
+        insightText:
+            response['insight_text'] as String? ??
+            response['summary'] as String? ??
+            '',
         sentimentLabel: response['sentiment_label'] as String?,
         processedAt: DateTime.parse(response['processed_at'] as String),
         insightDetails: insightDetails,
@@ -278,15 +298,17 @@ class HistoryService {
       );
     } catch (e) {
       await ErrorLoggingService.logLowError(
-        errorCode: 'ERRHIST004',
-        errorMessage: 'Failed to fetch insight for entry: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {'entry_id': entryId},
+        error: ErrorContext.fromException(
+          errorCode: 'ERRHIST004',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'entry_id': entryId},
+        ),
       );
       return null;
     }
   }
-
 
   /// Get mood map for date range (lightweight - only date + mood)
   /// Used for calendar view to show mood indicators without loading full entries
@@ -298,13 +320,15 @@ class HistoryService {
   ) async {
     try {
       List<Map<String, dynamic>> response;
-      
+
       if (_dataFetchService != null) {
         // Use cached fetchEntriesWithSelect
         final now = DateTime.now();
-        final actualStartDate = startDate ?? DateTime(now.year - 10, 1, 1); // 10 years ago if not provided
+        final actualStartDate =
+            startDate ??
+            DateTime(now.year - 10, 1, 1); // 10 years ago if not provided
         final actualEndDate = endDate ?? now;
-        
+
         response = await _dataFetchService.fetchEntriesWithSelect(
           userId: userId,
           startDate: actualStartDate,
@@ -342,14 +366,21 @@ class HistoryService {
       return moodMap;
     } catch (e) {
       await ErrorLoggingService.logLowError(
-        errorCode: 'ERRHIST008',
-        errorMessage: 'Failed to get mood map for date range: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'start_date': startDate != null ? DateFormat('yyyy-MM-dd').format(startDate) : 'all',
-          'end_date': endDate != null ? DateFormat('yyyy-MM-dd').format(endDate) : 'all',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRHIST008',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'start_date': startDate != null
+                ? DateFormat('yyyy-MM-dd').format(startDate)
+                : 'all',
+            'end_date': endDate != null
+                ? DateFormat('yyyy-MM-dd').format(endDate)
+                : 'all',
+          },
+        ),
       );
       return {};
     }
@@ -361,7 +392,7 @@ class HistoryService {
     try {
       // Fetch all entry dates from Supabase
       List<Map<String, dynamic>> response;
-      
+
       if (_dataFetchService != null) {
         // Use cached fetchEntriesWithSelect
         final now = DateTime.now();
@@ -387,20 +418,23 @@ class HistoryService {
       for (var row in response) {
         final dateStr = row['entry_date'] as String;
         final date = DateTime.parse(dateStr);
-        final monthKey = '${date.year}-${date.month.toString().padLeft(2, '0')}';
+        final monthKey =
+            '${date.year}-${date.month.toString().padLeft(2, '0')}';
         months.add(monthKey);
       }
 
       return months.toList()..sort();
     } catch (e) {
       await ErrorLoggingService.logLowError(
-        errorCode: 'ERRHIST009',
-        errorMessage: 'Failed to get months with entries: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {'user_id': userId},
+        error: ErrorContext.fromException(
+          errorCode: 'ERRHIST009',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'user_id': userId},
+        ),
       );
       return [];
     }
   }
 }
-

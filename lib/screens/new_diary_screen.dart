@@ -6,6 +6,9 @@ import '../providers/entry_provider.dart';
 import '../providers/sync_status_provider.dart';
 import '../services/entry_service.dart';
 import '../models/entry_models.dart';
+import '../ui/responsive/responsive_body.dart';
+import '../ui/responsive/responsive_info.dart';
+import '../ui/responsive/responsive_tokens.dart';
 
 class NewDiaryScreen extends ConsumerStatefulWidget {
   const NewDiaryScreen({super.key});
@@ -264,6 +267,8 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
   @override
   Widget build(BuildContext context) {
     final syncState = ref.watch(syncStatusProvider);
+    final info = ResponsiveInfo.of(context);
+    final spacingL = ResponsiveTokens.spacingL(info);
 
     // Show loading state while entry data is being fetched
     if (_isLoading) {
@@ -320,42 +325,43 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
           _buildSyncStatusIcon(syncState),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+      body: ResponsiveBody(
+        useSafeArea: false,
+        useScrollView: true,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Mood Selector (InnerGlow Style)
             _buildMoodSection(context),
-            const SizedBox(height: 24),
+            SizedBox(height: spacingL),
 
             // "What's on your mind?" Diary Text Area (InnerGlow Style)
             _buildDiaryTextSection(context),
-            const SizedBox(height: 24),
+            SizedBox(height: spacingL),
 
             // Morning Rituals Section (InnerGlow Style)
             _buildMorningRitualsSection(context),
-            const SizedBox(height: 24),
+            SizedBox(height: spacingL),
 
             // Self-Care Checklist Section (InnerGlow Style)
             _buildSelfCareSection(context),
-            const SizedBox(height: 24),
+            SizedBox(height: spacingL),
 
             // Water Intake Section (InnerGlow Style)
             _buildWaterIntakeSection(context),
-            const SizedBox(height: 24),
+            SizedBox(height: spacingL),
 
             // Meals Section (InnerGlow Style)
             _buildMealsSection(context),
-            const SizedBox(height: 24),
+            SizedBox(height: spacingL),
 
             // Gratitude Section (InnerGlow Style)
             _buildGratitudeSection(context),
-            const SizedBox(height: 24),
+            SizedBox(height: spacingL),
 
             // Notes for Tomorrow Section (InnerGlow Style)
             _buildTomorrowNotesSection(context),
-            const SizedBox(height: 24),
+            SizedBox(height: spacingL),
           ],
         ),
       ),
@@ -385,6 +391,45 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
   // InnerGlow Design Builder Methods
 
   Widget _buildMoodSection(BuildContext context) {
+    final info = ResponsiveInfo.of(context);
+    final spacingM = ResponsiveTokens.spacingM(info);
+    final spacingS = ResponsiveTokens.spacingS(info);
+    final moodSize = info.value(compact: 48.0, medium: 56.0, expanded: 60.0);
+    final emojiSize = info.value(compact: 22.0, medium: 28.0, expanded: 30.0);
+    final moodTiles = List.generate(5, (index) {
+      final mood = index + 1;
+      final emojis = ['😢', '😔', '😐', '😊', '😄'];
+      final isSelected = _selectedMood == mood;
+      return GestureDetector(
+        onTap: () {
+          setState(() => _selectedMood = mood);
+          _onMoodChanged(mood);
+        },
+        child: Container(
+          width: moodSize,
+          height: moodSize,
+          decoration: BoxDecoration(
+            color: isSelected
+                ? Theme.of(context).colorScheme.primary.withOpacity(0.1)
+                : Colors.transparent,
+            border: Border.all(
+              color: isSelected
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(context).colorScheme.outlineVariant,
+              width: isSelected ? 2 : 1,
+            ),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Center(
+            child: Text(
+              emojis[index],
+              style: TextStyle(fontSize: emojiSize),
+            ),
+          ),
+        ),
+      );
+    });
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -404,43 +449,18 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
             ),
           ],
         ),
-        const SizedBox(height: 16),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: List.generate(5, (index) {
-            final mood = index + 1;
-            final emojis = ['😢', '😔', '😐', '😊', '😄'];
-            final isSelected = _selectedMood == mood;
-            return GestureDetector(
-              onTap: () {
-                setState(() => _selectedMood = mood);
-                _onMoodChanged(mood);
-              },
-              child: Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? Theme.of(context).colorScheme.primary.withOpacity(0.1)
-                      : Colors.transparent,
-                  border: Border.all(
-                    color: isSelected
-                        ? Theme.of(context).colorScheme.primary
-                        : Colors.grey[300]!,
-                    width: isSelected ? 2 : 1,
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Center(
-                  child: Text(
-                    emojis[index],
-                    style: const TextStyle(fontSize: 28),
-                  ),
-                ),
+        SizedBox(height: spacingM),
+        info.isCompact
+            ? Wrap(
+                alignment: WrapAlignment.spaceEvenly,
+                spacing: spacingS,
+                runSpacing: spacingS,
+                children: moodTiles,
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: moodTiles,
               ),
-            );
-          }),
-        ),
       ],
     );
   }
@@ -734,7 +754,7 @@ class _NewDiaryScreenState extends ConsumerState<NewDiaryScreen>
                           : Icons.water_drop_outlined,
                       color: index < _waterCups
                           ? Colors.blue[400]
-                          : Colors.grey[300],
+                          : Theme.of(context).colorScheme.onSurfaceVariant,
                       size: 28,
                     ),
                   ),

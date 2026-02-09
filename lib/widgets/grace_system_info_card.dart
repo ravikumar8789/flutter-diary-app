@@ -8,6 +8,8 @@ class GraceSystemInfoCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final graceState = ref.watch(graceSystemProvider);
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Card(
       elevation: 8,
@@ -18,7 +20,10 @@ class GraceSystemInfoCard extends ConsumerWidget {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Colors.blue.shade50, Colors.purple.shade50],
+            colors: [
+              colorScheme.primary.withOpacity(isDark ? 0.16 : 0.08),
+              colorScheme.secondary.withOpacity(isDark ? 0.16 : 0.08),
+            ],
           ),
         ),
         padding: const EdgeInsets.all(20),
@@ -32,12 +37,12 @@ class GraceSystemInfoCard extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.blue.shade100,
+                    color: colorScheme.primary.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
                     Icons.favorite,
-                    color: Colors.blue.shade700,
+                    color: colorScheme.primary,
                     size: 24,
                   ),
                 ),
@@ -50,13 +55,13 @@ class GraceSystemInfoCard extends ConsumerWidget {
                         'Grace Days System',
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
                           fontWeight: FontWeight.bold,
-                          color: Colors.grey.shade800,
+                          color: colorScheme.onSurface,
                         ),
                       ),
                       Text(
                         'Earn protection for your streak',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.grey.shade600,
+                          color: colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ],
@@ -71,9 +76,9 @@ class GraceSystemInfoCard extends ConsumerWidget {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: colorScheme.surface,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.shade200),
+                border: Border.all(color: colorScheme.outlineVariant),
               ),
               child: Column(
                 children: [
@@ -94,7 +99,7 @@ class GraceSystemInfoCard extends ConsumerWidget {
                         decoration: BoxDecoration(
                           color: graceState.graceDaysAvailable > 0
                               ? Colors.green.shade100
-                              : Colors.grey.shade100,
+                              : colorScheme.surfaceVariant,
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
@@ -102,7 +107,7 @@ class GraceSystemInfoCard extends ConsumerWidget {
                           style: TextStyle(
                             color: graceState.graceDaysAvailable > 0
                                 ? Colors.green.shade800
-                                : Colors.grey.shade600,
+                                : colorScheme.onSurfaceVariant,
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
                           ),
@@ -118,7 +123,7 @@ class GraceSystemInfoCard extends ConsumerWidget {
                     'Today\'s Progress',
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w600,
-                      color: Colors.grey.shade700,
+                      color: colorScheme.onSurfaceVariant,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -126,7 +131,7 @@ class GraceSystemInfoCard extends ConsumerWidget {
                   // Progress Bar
                   LinearProgressIndicator(
                     value: graceState.progressPercentage / 100.0,
-                    backgroundColor: Colors.grey.shade300,
+                    backgroundColor: colorScheme.surfaceVariant,
                     valueColor: AlwaysStoppedAnimation<Color>(
                       graceState.progressPercentage >= 100
                           ? Colors.green
@@ -140,7 +145,7 @@ class GraceSystemInfoCard extends ConsumerWidget {
                   Text(
                     '${graceState.piecesToday.toStringAsFixed(1)}/2.0 pieces (${graceState.tasksCompletedToday}/4 tasks)',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.grey.shade600,
+                      color: colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ],
@@ -154,7 +159,7 @@ class GraceSystemInfoCard extends ConsumerWidget {
               'How it Works',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w600,
-                color: Colors.grey.shade800,
+                color: colorScheme.onSurface,
               ),
             ),
 
@@ -199,15 +204,15 @@ class GraceSystemInfoCard extends ConsumerWidget {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.blue.shade50,
+                color: colorScheme.primary.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.blue.shade200),
+                border: Border.all(color: colorScheme.primary.withOpacity(0.3)),
               ),
               child: Row(
                 children: [
                   Icon(
                     Icons.trending_up,
-                    color: Colors.blue.shade700,
+                    color: colorScheme.primary,
                     size: 20,
                   ),
                   const SizedBox(width: 8),
@@ -215,7 +220,7 @@ class GraceSystemInfoCard extends ConsumerWidget {
                     child: Text(
                       'Total earned: ${graceState.gracePiecesTotal.toStringAsFixed(1)} pieces',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.blue.shade700,
+                        color: colorScheme.primary,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -236,6 +241,7 @@ class GraceSystemInfoCard extends ConsumerWidget {
     String subtitle,
     Color color,
   ) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
@@ -250,14 +256,16 @@ class GraceSystemInfoCard extends ConsumerWidget {
                   title,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w500,
-                    color: Colors.grey.shade800,
+                    color: colorScheme.onSurface,
                   ),
                 ),
                 Text(
                   subtitle,
                   style: Theme.of(
                     context,
-                  ).textTheme.bodySmall?.copyWith(color: Colors.grey.shade600),
+                  ).textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                 ),
               ],
             ),
@@ -273,15 +281,20 @@ class GraceSystemInfoButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: () => _showInfoCard(context),
       child: Container(
         padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
-          color: Colors.blue.shade100,
+          color: colorScheme.primary.withOpacity(0.12),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Icon(Icons.info_outline, color: Colors.blue.shade700, size: 14),
+        child: Icon(
+          Icons.info_outline,
+          color: colorScheme.primary,
+          size: 14,
+        ),
       ),
     );
   }

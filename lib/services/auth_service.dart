@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart' as supabase;
 import 'error_logging_service.dart';
+import '../models/error_models.dart';
 import 'timezone_service.dart';
 
 class AuthService {
@@ -38,10 +39,13 @@ class AuthService {
     } catch (e) {
       // Log error
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS124',
-        errorMessage: 'Sign in failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {'email': email, 'operation': 'sign_in'},
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS124',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'email': email, 'operation': 'sign_in'},
+        ),
       );
       rethrow;
     }
@@ -69,13 +73,16 @@ class AuthService {
         ) {
           // Log but don't block signup
           ErrorLoggingService.logLowError(
-            errorCode: 'ERRSYS162',
-            errorMessage: 'Timezone init failed after signup: ${e.toString()}',
-            stackTrace: StackTrace.current.toString(),
-            errorContext: {
-              'user_id': response.user!.id,
-              'operation': 'signup_timezone_init',
-            },
+            error: ErrorContext.fromException(
+              errorCode: 'ERRSYS162',
+              severity: ErrorSeverity.low,
+              exception: e,
+              stackTrace: StackTrace.current,
+              errorContext: {
+                'user_id': response.user!.id,
+                'operation': 'signup_timezone_init',
+              },
+            ),
           );
           return 'UTC'; // Return fallback value
         });
@@ -85,15 +92,18 @@ class AuthService {
     } catch (e) {
       // Log error
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS125',
-        errorMessage: 'Sign up failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'email': email,
-          'display_name': displayName,
-          'gender': gender,
-          'operation': 'sign_up',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS125',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'email': email,
+            'display_name': displayName,
+            'gender': gender,
+            'operation': 'sign_up',
+          },
+        ),
       );
       rethrow;
     }
@@ -106,10 +116,13 @@ class AuthService {
     } catch (e) {
       // Log error
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS126',
-        errorMessage: 'Sign out failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {'operation': 'sign_out'},
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS126',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'operation': 'sign_out'},
+        ),
       );
       rethrow;
     }
@@ -122,10 +135,13 @@ class AuthService {
     } catch (e) {
       // Log error
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS127',
-        errorMessage: 'Password reset failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {'email': email, 'operation': 'reset_password'},
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS127',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'email': email, 'operation': 'reset_password'},
+        ),
       );
       rethrow;
     }
@@ -138,10 +154,13 @@ class AuthService {
     } catch (e) {
       // Log error
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS127',
-        errorMessage: 'Resend verification failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {'email': email, 'operation': 'resend_verification'},
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS127',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'email': email, 'operation': 'resend_verification'},
+        ),
       );
       rethrow;
     }

@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/history_entry_model.dart';
+import '../models/error_models.dart';
 import '../services/history_service.dart';
 import '../services/error_logging_service.dart';
 import 'data_providers.dart';
@@ -45,12 +46,15 @@ final recentEntriesProvider = FutureProvider<List<HistoryEntry>>((ref) async {
     );
   } catch (e) {
     await ErrorLoggingService.logHighError(
-      errorCode: 'ERRDATA207',
-      errorMessage: 'Recent entries provider failed: ${e.toString()}',
-      stackTrace: StackTrace.current.toString(),
-      errorContext: {
-        'operation': 'recent_entries_provider',
-      },
+      error: ErrorContext.fromException(
+        errorCode: 'ERRDATA207',
+        severity: ErrorSeverity.high,
+        exception: e,
+        stackTrace: StackTrace.current,
+        errorContext: {
+          'operation': 'recent_entries_provider',
+        },
+      ),
     );
     return [];
   }

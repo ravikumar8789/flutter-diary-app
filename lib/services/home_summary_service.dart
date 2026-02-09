@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/home_summary_models.dart';
 import '../services/error_logging_service.dart';
+import '../models/error_models.dart';
 import 'ai_service.dart';
 import '../services/database/local_entry_service.dart';
 import '../models/entry_models.dart';
@@ -44,11 +45,13 @@ class HomeSummaryService {
       );
     } catch (e) {
       await ErrorLoggingService.logError(
-        errorCode: 'ERRSYS151',
-        errorMessage: 'Home summary fetch failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'LOW',
-        errorContext: {'operation': 'home_summary_fetchAll', 'user_id': userId},
+        ErrorContext.fromException(
+          errorCode: 'ERRSYS151',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'operation': 'home_summary_fetchAll', 'user_id': userId},
+        ),
       );
       rethrow;
     }
@@ -91,14 +94,16 @@ class HomeSummaryService {
       );
     } catch (e) {
       await ErrorLoggingService.logError(
-        errorCode: 'ERRSYS152',
-        errorMessage: 'Streak fetch failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'LOW',
-        errorContext: {
-          'operation': 'home_summary_fetchStreak',
-          'user_id': userId,
-        },
+        ErrorContext.fromException(
+          errorCode: 'ERRSYS152',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'operation': 'home_summary_fetchStreak',
+            'user_id': userId,
+          },
+        ),
       );
       rethrow;
     }
@@ -204,14 +209,16 @@ class HomeSummaryService {
       );
     } catch (e) {
       await ErrorLoggingService.logError(
-        errorCode: 'ERRSYS153',
-        errorMessage: 'Today progress fetch failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'LOW',
-        errorContext: {
-          'operation': 'home_summary_fetchToday',
-          'user_id': userId,
-        },
+        ErrorContext.fromException(
+          errorCode: 'ERRSYS153',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'operation': 'home_summary_fetchToday',
+            'user_id': userId,
+          },
+        ),
       );
       rethrow;
     }
@@ -227,14 +234,16 @@ class HomeSummaryService {
       return await _calculateCurrentWeekFromLocal(userId, thisWeekStart);
     } catch (e, stackTrace) {
       await ErrorLoggingService.logError(
-        errorCode: 'ERRSYS154',
-        errorMessage: 'Weekly snapshot fetch failed: ${e.toString()}',
-        stackTrace: stackTrace.toString(),
-        severity: 'MEDIUM',
-        errorContext: {
-          'operation': 'home_summary_fetchWeekly',
-          'user_id': userId,
-        },
+        ErrorContext.fromException(
+          errorCode: 'ERRSYS154',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: stackTrace,
+          errorContext: {
+            'operation': 'home_summary_fetchWeekly',
+            'user_id': userId,
+          },
+        ),
       );
       return null; // Graceful degradation - show no data
     }
@@ -320,16 +329,17 @@ class HomeSummaryService {
       );
     } catch (e, stackTrace) {
       await ErrorLoggingService.logError(
-        errorCode: 'ERRSYS155',
-        errorMessage:
-            'Current week calculation from local DB failed: ${e.toString()}',
-        stackTrace: stackTrace.toString(),
-        severity: 'MEDIUM',
-        errorContext: {
-          'operation': 'home_summary_calculateCurrentWeek',
-          'user_id': userId,
-          'week_start': weekStart.toIso8601String(),
-        },
+        ErrorContext.fromException(
+          errorCode: 'ERRSYS155',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: stackTrace,
+          errorContext: {
+            'operation': 'home_summary_calculateCurrentWeek',
+            'user_id': userId,
+            'week_start': weekStart.toIso8601String(),
+          },
+        ),
       );
       return null; // Graceful degradation - show no data
     }
@@ -427,14 +437,16 @@ class HomeSummaryService {
       );
     } catch (e) {
       await ErrorLoggingService.logError(
-        errorCode: 'ERRSYS155',
-        errorMessage: 'Prompt/motivation fetch failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'LOW',
-        errorContext: {
-          'operation': 'home_summary_fetchPrompt',
-          'user_id': userId,
-        },
+        ErrorContext.fromException(
+          errorCode: 'ERRSYS155',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'operation': 'home_summary_fetchPrompt',
+            'user_id': userId,
+          },
+        ),
       );
       rethrow;
     }
@@ -448,14 +460,16 @@ class HomeSummaryService {
       return insight?.insightText;
     } catch (e) {
       await ErrorLoggingService.logError(
-        errorCode: 'ERRSYS156',
-        errorMessage: 'AI insight fetch failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'LOW',
-        errorContext: {
-          'operation': 'home_summary_fetchAiInsight',
-          'user_id': userId,
-        },
+        ErrorContext.fromException(
+          errorCode: 'ERRSYS156',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'operation': 'home_summary_fetchAiInsight',
+            'user_id': userId,
+          },
+        ),
       );
       return null;
     }

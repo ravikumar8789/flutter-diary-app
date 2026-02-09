@@ -5,6 +5,7 @@ import '../database/local_entry_service.dart';
 import 'supabase_sync_service.dart';
 import '../../models/entry_models.dart';
 import '../error_logging_service.dart';
+import '../../models/error_models.dart';
 
 class SyncWorker {
   final SupabaseSyncService _syncService = SupabaseSyncService();
@@ -66,14 +67,17 @@ class SyncWorker {
         } catch (e) {
           // Log sync error to Supabase
           await ErrorLoggingService.logHighError(
-            errorCode: 'ERRDATA021',
-            errorMessage: 'Sync queue processing failed: ${e.toString()}',
-            stackTrace: StackTrace.current.toString(),
-            errorContext: {
-              'entry_id': entry.id,
-              'entry_date': entry.entryDate.toIso8601String(),
-              'sync_attempt': 'background_sync',
-            },
+            error: ErrorContext.fromException(
+              errorCode: 'ERRDATA021',
+              severity: ErrorSeverity.high,
+              exception: e,
+              stackTrace: StackTrace.current,
+              errorContext: {
+                'entry_id': entry.id,
+                'entry_date': entry.entryDate.toIso8601String(),
+                'sync_attempt': 'background_sync',
+              },
+            ),
           );
         }
       }

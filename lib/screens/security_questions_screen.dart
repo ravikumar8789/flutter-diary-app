@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/privacy_lock_provider.dart';
 import '../services/error_logging_service.dart';
+import '../models/error_models.dart';
 import 'home_screen.dart';
+import '../ui/responsive/responsive_body.dart';
+import '../ui/responsive/responsive_info.dart';
+import '../ui/responsive/responsive_tokens.dart';
 
 class SecurityQuestionsScreen extends ConsumerStatefulWidget {
   final bool isFromSetup;
@@ -81,6 +85,7 @@ class _SecurityQuestionsScreenState
             final availableHeight = constraints.maxHeight;
             final isSmallScreen = availableHeight < 600;
             final isVerySmallScreen = availableHeight < 500;
+            final info = ResponsiveInfo.of(context);
 
             final topSpacing = isVerySmallScreen
                 ? 8.0
@@ -88,9 +93,22 @@ class _SecurityQuestionsScreenState
             final sectionSpacing = isVerySmallScreen
                 ? 12.0
                 : (isSmallScreen ? 16.0 : 24.0);
+            final contentPadding = EdgeInsets.all(
+              isSmallScreen
+                  ? ResponsiveTokens.spacingM(info)
+                  : ResponsiveTokens.spacingL(info),
+            );
+            final maxWidth = info.value(
+              compact: 520.0,
+              medium: 640.0,
+              expanded: 720.0,
+            );
 
-            return SingleChildScrollView(
-              padding: EdgeInsets.all(isSmallScreen ? 12.0 : 16.0),
+            return ResponsiveBody(
+              useSafeArea: false,
+              useScrollView: true,
+              padding: contentPadding,
+              maxWidth: maxWidth,
               child: Form(
                 key: _formKey,
                 child: Column(
@@ -383,14 +401,17 @@ class _SecurityQuestionsScreenState
       if (mounted) {
         _showError('Error: $e');
         await ErrorLoggingService.logHighError(
-          errorCode: 'ERRSYS093',
-          errorMessage: 'Security questions save failed: ${e.toString()}',
-          stackTrace: StackTrace.current.toString(),
-          errorContext: {
-            'save_time': DateTime.now().toIso8601String(),
-            'screen': 'SecurityQuestionsScreen',
-            'is_from_setup': widget.isFromSetup.toString(),
-          },
+          error: ErrorContext.fromException(
+            errorCode: 'ERRSYS093',
+            severity: ErrorSeverity.high,
+            exception: e,
+            stackTrace: StackTrace.current,
+            errorContext: {
+              'save_time': DateTime.now().toIso8601String(),
+              'screen': 'SecurityQuestionsScreen',
+              'is_from_setup': widget.isFromSetup.toString(),
+            },
+          ),
         );
       }
     } finally {

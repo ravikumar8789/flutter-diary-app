@@ -4,12 +4,13 @@ import '../repositories/data_repository.dart';
 import '../models/entry_models.dart';
 import '../models/analytics_models.dart';
 import 'error_logging_service.dart';
+import '../models/error_models.dart';
 import 'analytics_service.dart';
 import 'database/database_manager.dart';
 import 'user_data_service.dart';
 
 /// Centralized data fetching service
-/// 
+///
 /// All data fetching operations go through this service.
 /// Uses DataRepository for caching and deduplication.
 class DataFetchService {
@@ -19,11 +20,11 @@ class DataFetchService {
   DataFetchService({
     required DataRepository repository,
     SupabaseClient? supabase,
-  })  : _repository = repository,
-        _supabase = supabase ?? Supabase.instance.client;
+  }) : _repository = repository,
+       _supabase = supabase ?? Supabase.instance.client;
 
   /// Fetch entries with date range
-  /// 
+  ///
   /// Returns cached data if available, otherwise fetches from DB.
   /// Automatically handles deduplication if same query is in-flight.
   Future<List<Entry>> fetchEntries({
@@ -56,16 +57,19 @@ class DataFetchService {
             return entries;
           } catch (e) {
             await ErrorLoggingService.logHighError(
-              errorCode: 'ERRDATA200',
-              errorMessage: 'DB query failed (entries): ${e.toString()}',
-              stackTrace: StackTrace.current.toString(),
-              errorContext: {
-                'user_id': userId,
-                'start_date': startDateStr,
-                'end_date': endDateStr,
-                'table': 'entries',
-                'operation': 'fetch_entries',
-              },
+              error: ErrorContext.fromException(
+                errorCode: 'ERRDATA200',
+                severity: ErrorSeverity.high,
+                exception: e,
+                stackTrace: StackTrace.current,
+                errorContext: {
+                  'user_id': userId,
+                  'start_date': startDateStr,
+                  'end_date': endDateStr,
+                  'table': 'entries',
+                  'operation': 'fetch_entries',
+                },
+              ),
             );
             rethrow;
           }
@@ -73,27 +77,32 @@ class DataFetchService {
       );
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRDATA201',
-        errorMessage: 'Fetch entries failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'cache_key': key,
-          'operation': 'fetch_entries',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA201',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'cache_key': key,
+            'operation': 'fetch_entries',
+          },
+        ),
       );
       rethrow;
     }
   }
 
   /// Fetch habits_daily with date range
-  /// 
+  ///
   /// DEPRECATED: This method is deprecated. habits_daily table removed from Supabase.
   /// Use streaks.today_* fields instead. This method now only returns today's data from local DB.
-  /// 
+  ///
   /// Returns today's data from local SQLite only (if available).
   /// No longer fetches from Supabase or historical data.
-  @Deprecated('Use streaks.today_* fields instead. This method only returns today\'s local data.')
+  @Deprecated(
+    'Use streaks.today_* fields instead. This method only returns today\'s local data.',
+  )
   Future<List<HabitsDaily>> fetchHabitsDaily({
     required String userId,
     required DateTime startDate,
@@ -104,7 +113,7 @@ class DataFetchService {
     try {
       final today = DateTime.now().toIso8601String().split('T')[0];
       final db = await DatabaseManager().database;
-      
+
       // Only return today's data from local DB
       final todayHabits = await db.query(
         'habits_daily',
@@ -126,25 +135,29 @@ class DataFetchService {
           filledAffirmations: (h['filled_affirmations'] as int? ?? 0) == 1,
           filledGratitude: (h['filled_gratitude'] as int? ?? 0) == 1,
           selfCareCompletedCount: h['self_care_completed_count'] as int? ?? 0,
-          gracePiecesEarned: (h['grace_pieces_earned'] as num? ?? 0.0).toDouble(),
+          gracePiecesEarned: (h['grace_pieces_earned'] as num? ?? 0.0)
+              .toDouble(),
         );
       }).toList();
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRDATA211',
-        errorMessage: 'Fetch habits daily failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'operation': 'fetch_habits_daily_deprecated',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA211',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'operation': 'fetch_habits_daily_deprecated',
+          },
+        ),
       );
       return <HabitsDaily>[];
     }
   }
 
   /// Batch fetch multiple data types in parallel
-  /// 
+  ///
   /// Fetches entries and habits_daily simultaneously.
   /// Uses Future.wait for parallel execution.
   Future<BatchData> fetchBatch({
@@ -154,11 +167,7 @@ class DataFetchService {
   }) async {
     try {
       final results = await Future.wait([
-        fetchEntries(
-          userId: userId,
-          startDate: startDate,
-          endDate: endDate,
-        ),
+        fetchEntries(userId: userId, startDate: startDate, endDate: endDate),
         fetchHabitsDaily(
           userId: userId,
           startDate: startDate,
@@ -172,22 +181,25 @@ class DataFetchService {
       );
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRDATA203',
-        errorMessage: 'Batch fetch failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'start_date': startDate.toIso8601String(),
-          'end_date': endDate.toIso8601String(),
-          'operation': 'fetch_batch',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA203',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'start_date': startDate.toIso8601String(),
+            'end_date': endDate.toIso8601String(),
+            'operation': 'fetch_batch',
+          },
+        ),
       );
       rethrow;
     }
   }
 
   /// Fetch monthly insights list with caching
-  /// 
+  ///
   /// Returns cached data if available, otherwise fetches from DB.
   /// Automatically handles deduplication if same query is in-flight.
   Future<List<MonthMetadata>> fetchMonthlyInsightsList({
@@ -204,14 +216,17 @@ class DataFetchService {
             return await service.getMonthlyInsightsList(userId);
           } catch (e) {
             await ErrorLoggingService.logHighError(
-              errorCode: 'ERRDATA205',
-              errorMessage: 'DB query failed (monthly insights list): ${e.toString()}',
-              stackTrace: StackTrace.current.toString(),
-              errorContext: {
-                'user_id': userId,
-                'table': 'monthly_insights',
-                'operation': 'fetch_monthly_insights_list',
-              },
+              error: ErrorContext.fromException(
+                errorCode: 'ERRDATA205',
+                severity: ErrorSeverity.high,
+                exception: e,
+                stackTrace: StackTrace.current,
+                errorContext: {
+                  'user_id': userId,
+                  'table': 'monthly_insights',
+                  'operation': 'fetch_monthly_insights_list',
+                },
+              ),
             );
             rethrow;
           }
@@ -219,21 +234,24 @@ class DataFetchService {
       );
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRDATA206',
-        errorMessage: 'Fetch monthly insights list failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'cache_key': key,
-          'operation': 'fetch_monthly_insights_list',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA206',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'cache_key': key,
+            'operation': 'fetch_monthly_insights_list',
+          },
+        ),
       );
       rethrow;
     }
   }
 
   /// Fetch monthly analytics with caching
-  /// 
+  ///
   /// Returns cached data if available, otherwise fetches from DB.
   /// Automatically handles deduplication if same query is in-flight.
   Future<MonthlyAnalyticsData> fetchMonthlyAnalytics({
@@ -252,14 +270,17 @@ class DataFetchService {
             return await service.getMonthlyAnalytics(monthStart);
           } catch (e) {
             await ErrorLoggingService.logHighError(
-              errorCode: 'ERRDATA207',
-              errorMessage: 'DB query failed (monthly analytics): ${e.toString()}',
-              stackTrace: StackTrace.current.toString(),
-              errorContext: {
-                'user_id': userId,
-                'month_start': monthStart.toIso8601String(),
-                'operation': 'fetch_monthly_analytics',
-              },
+              error: ErrorContext.fromException(
+                errorCode: 'ERRDATA207',
+                severity: ErrorSeverity.high,
+                exception: e,
+                stackTrace: StackTrace.current,
+                errorContext: {
+                  'user_id': userId,
+                  'month_start': monthStart.toIso8601String(),
+                  'operation': 'fetch_monthly_analytics',
+                },
+              ),
             );
             rethrow;
           }
@@ -267,15 +288,18 @@ class DataFetchService {
       );
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRDATA208',
-        errorMessage: 'Fetch monthly analytics failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'month_start': monthStart.toIso8601String(),
-          'cache_key': key,
-          'operation': 'fetch_monthly_analytics',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA208',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'month_start': monthStart.toIso8601String(),
+            'cache_key': key,
+            'operation': 'fetch_monthly_analytics',
+          },
+        ),
       );
       rethrow;
     }
@@ -286,7 +310,7 @@ class DataFetchService {
   // ============================================================================
 
   /// Fetch user profile from users table
-  /// 
+  ///
   /// Returns cached data if available, otherwise fetches from DB.
   Future<Map<String, dynamic>?> fetchUserProfile(String userId) async {
     final key = 'user_profile_$userId';
@@ -305,14 +329,17 @@ class DataFetchService {
             return response;
           } catch (e) {
             await ErrorLoggingService.logHighError(
-              errorCode: 'ERRDATA220',
-              errorMessage: 'DB query failed (user profile): ${e.toString()}',
-              stackTrace: StackTrace.current.toString(),
-              errorContext: {
-                'user_id': userId,
-                'table': 'users',
-                'operation': 'fetch_user_profile',
-              },
+              error: ErrorContext.fromException(
+                errorCode: 'ERRDATA220',
+                severity: ErrorSeverity.high,
+                exception: e,
+                stackTrace: StackTrace.current,
+                errorContext: {
+                  'user_id': userId,
+                  'table': 'users',
+                  'operation': 'fetch_user_profile',
+                },
+              ),
             );
             rethrow;
           }
@@ -320,21 +347,24 @@ class DataFetchService {
       );
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRDATA221',
-        errorMessage: 'Fetch user profile failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'cache_key': key,
-          'operation': 'fetch_user_profile',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA221',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'cache_key': key,
+            'operation': 'fetch_user_profile',
+          },
+        ),
       );
       rethrow;
     }
   }
 
   /// Fetch user settings
-  /// 
+  ///
   /// Returns cached data if available, otherwise fetches from DB.
   Future<Map<String, dynamic>?> fetchUserSettings(String userId) async {
     final key = 'user_settings_$userId';
@@ -353,14 +383,17 @@ class DataFetchService {
             return response;
           } catch (e) {
             await ErrorLoggingService.logHighError(
-              errorCode: 'ERRDATA222',
-              errorMessage: 'DB query failed (user settings): ${e.toString()}',
-              stackTrace: StackTrace.current.toString(),
-              errorContext: {
-                'user_id': userId,
-                'table': 'user_settings',
-                'operation': 'fetch_user_settings',
-              },
+              error: ErrorContext.fromException(
+                errorCode: 'ERRDATA222',
+                severity: ErrorSeverity.high,
+                exception: e,
+                stackTrace: StackTrace.current,
+                errorContext: {
+                  'user_id': userId,
+                  'table': 'user_settings',
+                  'operation': 'fetch_user_settings',
+                },
+              ),
             );
             rethrow;
           }
@@ -368,21 +401,24 @@ class DataFetchService {
       );
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRDATA223',
-        errorMessage: 'Fetch user settings failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'cache_key': key,
-          'operation': 'fetch_user_settings',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA223',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'cache_key': key,
+            'operation': 'fetch_user_settings',
+          },
+        ),
       );
       rethrow;
     }
   }
 
   /// Fetch streaks data
-  /// 
+  ///
   /// Returns cached data if available, otherwise fetches from DB.
   /// Uses local-first approach: reads from local SQLite first, then Supabase if missing/stale.
   Future<Map<String, dynamic>?> fetchStreaks(String userId) async {
@@ -404,18 +440,26 @@ class DataFetchService {
 
             if (localStreak.isNotEmpty) {
               final streak = localStreak.first;
-              
+
               // CRITICAL: Check if date changed (more important than time-based staleness)
               final lastEntryDateStr = streak['last_entry_date'] as String?;
               bool dateChanged = false;
-              
+
               if (lastEntryDateStr != null) {
                 try {
                   final lastEntryDate = DateTime.parse(lastEntryDateStr);
                   final today = DateTime.now();
-                  final todayDateOnly = DateTime(today.year, today.month, today.day);
-                  final lastDateOnly = DateTime(lastEntryDate.year, lastEntryDate.month, lastEntryDate.day);
-                  
+                  final todayDateOnly = DateTime(
+                    today.year,
+                    today.month,
+                    today.day,
+                  );
+                  final lastDateOnly = DateTime(
+                    lastEntryDate.year,
+                    lastEntryDate.month,
+                    lastEntryDate.day,
+                  );
+
                   // If date changed, need recalculation (don't return cached data)
                   dateChanged = lastDateOnly.isBefore(todayDateOnly);
                 } catch (e) {
@@ -423,7 +467,7 @@ class DataFetchService {
                   dateChanged = true;
                 }
               }
-              
+
               // If date changed, skip cache and trigger recalculation
               if (!dateChanged) {
                 // Same day, check time-based staleness (15 minutes)
@@ -455,49 +499,64 @@ class DataFetchService {
             }
 
             // If missing or stale, fetch from Supabase
-            print('🔥 STREAK DEBUG: fetchStreaks - Fetching from Supabase with select(*)');
+            print(
+              '🔥 STREAK DEBUG: fetchStreaks - Fetching from Supabase with select(*)',
+            );
             final response = await _supabase
                 .from('streaks')
                 .select('*')
                 .eq('user_id', userId)
                 .maybeSingle();
-            print('🔥 STREAK DEBUG: fetchStreaks - Supabase raw response: $response');
+            print(
+              '🔥 STREAK DEBUG: fetchStreaks - Supabase raw response: $response',
+            );
 
             if (response != null) {
               // Cache in local SQLite
-              print('🔥 STREAK DEBUG: fetchStreaks - Caching Supabase response to local DB');
-              await db.insert(
-                'streaks',
-                {
-                  'user_id': response['user_id'],
-                  'current': response['current'] ?? 0,
-                  'longest': response['longest'] ?? 0,
-                  'last_entry_date': response['last_entry_date'],
-                  'freeze_credits': response['freeze_credits'] ?? 0,
-                  'grace_pieces_total': response['grace_pieces_total'] ?? 0.0,
-                  'today_date': response['today_date'],
-                  'today_diary': (response['today_diary'] ?? false) ? 1 : 0,
-                  'today_affirmations': (response['today_affirmations'] ?? false) ? 1 : 0,
-                  'today_gratitude': (response['today_gratitude'] ?? false) ? 1 : 0,
-                  'today_self_care_count': response['today_self_care_count'] ?? 0,
-                  'today_grace_pieces': response['today_grace_pieces'] ?? 0.0,
-                  'updated_at': response['updated_at'] ?? DateTime.now().toIso8601String(),
-                  'is_synced': 1,
-                  'last_sync_at': DateTime.now().toIso8601String(),
-                },
-                conflictAlgorithm: ConflictAlgorithm.replace,
+              print(
+                '🔥 STREAK DEBUG: fetchStreaks - Caching Supabase response to local DB',
               );
+              await db.insert('streaks', {
+                'user_id': response['user_id'],
+                'current': response['current'] ?? 0,
+                'longest': response['longest'] ?? 0,
+                'last_entry_date': response['last_entry_date'],
+                'freeze_credits': response['freeze_credits'] ?? 0,
+                'grace_pieces_total': response['grace_pieces_total'] ?? 0.0,
+                'today_date': response['today_date'],
+                'today_diary': (response['today_diary'] ?? false) ? 1 : 0,
+                'today_affirmations': (response['today_affirmations'] ?? false)
+                    ? 1
+                    : 0,
+                'today_gratitude': (response['today_gratitude'] ?? false)
+                    ? 1
+                    : 0,
+                'today_self_care_count': response['today_self_care_count'] ?? 0,
+                'today_grace_pieces': response['today_grace_pieces'] ?? 0.0,
+                'updated_at':
+                    response['updated_at'] ?? DateTime.now().toIso8601String(),
+                'is_synced': 1,
+                'last_sync_at': DateTime.now().toIso8601String(),
+              }, conflictAlgorithm: ConflictAlgorithm.replace);
               print('🔥 STREAK DEBUG: fetchStreaks - Cached to local DB');
-              
+
               // Check if date changed and trigger recalculation if needed
               final lastEntryDateStr = response['last_entry_date'] as String?;
               if (lastEntryDateStr != null) {
                 try {
                   final lastEntryDate = DateTime.parse(lastEntryDateStr);
                   final today = DateTime.now();
-                  final todayDateOnly = DateTime(today.year, today.month, today.day);
-                  final lastDateOnly = DateTime(lastEntryDate.year, lastEntryDate.month, lastEntryDate.day);
-                  
+                  final todayDateOnly = DateTime(
+                    today.year,
+                    today.month,
+                    today.day,
+                  );
+                  final lastDateOnly = DateTime(
+                    lastEntryDate.year,
+                    lastEntryDate.month,
+                    lastEntryDate.day,
+                  );
+
                   // If date changed, trigger recalculation (async, non-blocking)
                   if (lastDateOnly.isBefore(todayDateOnly)) {
                     // Date changed, recalculate streak in background
@@ -505,16 +564,19 @@ class DataFetchService {
                       userId,
                       dataFetchService: this,
                     ).catchError((e) {
-                    // Log error but don't fail the fetch
-                    ErrorLoggingService.logLowError(
-                      errorCode: 'ERRDATA225',
-                      errorMessage: 'Background streak recalculation failed: ${e.toString()}',
-                      stackTrace: StackTrace.current.toString(),
-                      errorContext: {
-                        'user_id': userId,
-                        'operation': 'fetch_streaks_recalculate',
-                      },
-                    );
+                      // Log error but don't fail the fetch
+                      ErrorLoggingService.logLowError(
+                        error: ErrorContext.fromException(
+                          errorCode: 'ERRDATA225',
+                          severity: ErrorSeverity.low,
+                          exception: e,
+                          stackTrace: StackTrace.current,
+                          errorContext: {
+                            'user_id': userId,
+                            'operation': 'fetch_streaks_recalculate',
+                          },
+                        ),
+                      );
                     });
                   }
                 } catch (e) {
@@ -523,34 +585,33 @@ class DataFetchService {
               }
             } else {
               // Create default record in local SQLite if doesn't exist
-              await db.insert(
-                'streaks',
-                {
-                  'user_id': userId,
-                  'current': 0,
-                  'longest': 0,
-                  'last_entry_date': null,
-                  'freeze_credits': 0,
-                  'grace_pieces_total': 0.0,
-                  'updated_at': DateTime.now().toIso8601String(),
-                  'is_synced': 1,
-                  'last_sync_at': DateTime.now().toIso8601String(),
-                },
-                conflictAlgorithm: ConflictAlgorithm.replace,
-              );
+              await db.insert('streaks', {
+                'user_id': userId,
+                'current': 0,
+                'longest': 0,
+                'last_entry_date': null,
+                'freeze_credits': 0,
+                'grace_pieces_total': 0.0,
+                'updated_at': DateTime.now().toIso8601String(),
+                'is_synced': 1,
+                'last_sync_at': DateTime.now().toIso8601String(),
+              }, conflictAlgorithm: ConflictAlgorithm.replace);
             }
 
             return response;
           } catch (e) {
             await ErrorLoggingService.logHighError(
-              errorCode: 'ERRDATA224',
-              errorMessage: 'DB query failed (streaks): ${e.toString()}',
-              stackTrace: StackTrace.current.toString(),
-              errorContext: {
-                'user_id': userId,
-                'table': 'streaks',
-                'operation': 'fetch_streaks',
-              },
+              error: ErrorContext.fromException(
+                errorCode: 'ERRDATA224',
+                severity: ErrorSeverity.high,
+                exception: e,
+                stackTrace: StackTrace.current,
+                errorContext: {
+                  'user_id': userId,
+                  'table': 'streaks',
+                  'operation': 'fetch_streaks',
+                },
+              ),
             );
             rethrow;
           }
@@ -558,14 +619,17 @@ class DataFetchService {
       );
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRDATA225',
-        errorMessage: 'Fetch streaks failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'cache_key': key,
-          'operation': 'fetch_streaks',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA225',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'cache_key': key,
+            'operation': 'fetch_streaks',
+          },
+        ),
       );
       rethrow;
     }
@@ -576,7 +640,7 @@ class DataFetchService {
   // ============================================================================
 
   /// Fetch single entry by date
-  /// 
+  ///
   /// Returns cached data if available, otherwise fetches from DB.
   Future<Entry?> fetchEntryByDate(String userId, DateTime date) async {
     final dateStr = date.toIso8601String().split('T')[0];
@@ -598,15 +662,18 @@ class DataFetchService {
             return Entry.fromSupabaseJson(response);
           } catch (e) {
             await ErrorLoggingService.logHighError(
-              errorCode: 'ERRDATA226',
-              errorMessage: 'DB query failed (entry by date): ${e.toString()}',
-              stackTrace: StackTrace.current.toString(),
-              errorContext: {
-                'user_id': userId,
-                'date': dateStr,
-                'table': 'entries',
-                'operation': 'fetch_entry_by_date',
-              },
+              error: ErrorContext.fromException(
+                errorCode: 'ERRDATA226',
+                severity: ErrorSeverity.high,
+                exception: e,
+                stackTrace: StackTrace.current,
+                errorContext: {
+                  'user_id': userId,
+                  'date': dateStr,
+                  'table': 'entries',
+                  'operation': 'fetch_entry_by_date',
+                },
+              ),
             );
             rethrow;
           }
@@ -614,22 +681,25 @@ class DataFetchService {
       );
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRDATA227',
-        errorMessage: 'Fetch entry by date failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'date': dateStr,
-          'cache_key': key,
-          'operation': 'fetch_entry_by_date',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA227',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'date': dateStr,
+            'cache_key': key,
+            'operation': 'fetch_entry_by_date',
+          },
+        ),
       );
       rethrow;
     }
   }
 
   /// Fetch entries with JOINs (for HistoryService)
-  /// 
+  ///
   /// Returns entries with all related data using JOIN query.
   /// Returns cached data if available, otherwise fetches from DB.
   Future<List<Map<String, dynamic>>> fetchEntriesWithJoins({
@@ -667,16 +737,19 @@ class DataFetchService {
                 .toList();
           } catch (e) {
             await ErrorLoggingService.logHighError(
-              errorCode: 'ERRDATA228',
-              errorMessage: 'DB query failed (entries with JOINs): ${e.toString()}',
-              stackTrace: StackTrace.current.toString(),
-              errorContext: {
-                'user_id': userId,
-                'start_date': startDateStr,
-                'end_date': endDateStr,
-                'table': 'entries',
-                'operation': 'fetch_entries_with_joins',
-              },
+              error: ErrorContext.fromException(
+                errorCode: 'ERRDATA228',
+                severity: ErrorSeverity.high,
+                exception: e,
+                stackTrace: StackTrace.current,
+                errorContext: {
+                  'user_id': userId,
+                  'start_date': startDateStr,
+                  'end_date': endDateStr,
+                  'table': 'entries',
+                  'operation': 'fetch_entries_with_joins',
+                },
+              ),
             );
             rethrow;
           }
@@ -684,23 +757,26 @@ class DataFetchService {
       );
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRDATA229',
-        errorMessage: 'Fetch entries with JOINs failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'start_date': startDateStr,
-          'end_date': endDateStr,
-          'cache_key': key,
-          'operation': 'fetch_entries_with_joins',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA229',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'start_date': startDateStr,
+            'end_date': endDateStr,
+            'cache_key': key,
+            'operation': 'fetch_entries_with_joins',
+          },
+        ),
       );
       rethrow;
     }
   }
 
   /// Fetch entries with specific select columns
-  /// 
+  ///
   /// Returns cached data if available, otherwise fetches from DB.
   Future<List<Map<String, dynamic>>> fetchEntriesWithSelect({
     required String userId,
@@ -710,7 +786,8 @@ class DataFetchService {
   }) async {
     final startDateStr = startDate.toIso8601String().split('T')[0];
     final endDateStr = endDate.toIso8601String().split('T')[0];
-    final key = 'entries_select_${userId}_${startDateStr}_${endDateStr}_${select.hashCode}';
+    final key =
+        'entries_select_${userId}_${startDateStr}_${endDateStr}_${select.hashCode}';
 
     try {
       return await _repository.fetch<List<Map<String, dynamic>>>(
@@ -730,17 +807,20 @@ class DataFetchService {
                 .toList();
           } catch (e) {
             await ErrorLoggingService.logHighError(
-              errorCode: 'ERRDATA230',
-              errorMessage: 'DB query failed (entries with select): ${e.toString()}',
-              stackTrace: StackTrace.current.toString(),
-              errorContext: {
-                'user_id': userId,
-                'start_date': startDateStr,
-                'end_date': endDateStr,
-                'select': select,
-                'table': 'entries',
-                'operation': 'fetch_entries_with_select',
-              },
+              error: ErrorContext.fromException(
+                errorCode: 'ERRDATA230',
+                severity: ErrorSeverity.high,
+                exception: e,
+                stackTrace: StackTrace.current,
+                errorContext: {
+                  'user_id': userId,
+                  'start_date': startDateStr,
+                  'end_date': endDateStr,
+                  'select': select,
+                  'table': 'entries',
+                  'operation': 'fetch_entries_with_select',
+                },
+              ),
             );
             rethrow;
           }
@@ -748,17 +828,20 @@ class DataFetchService {
       );
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRDATA231',
-        errorMessage: 'Fetch entries with select failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'start_date': startDateStr,
-          'end_date': endDateStr,
-          'select': select,
-          'cache_key': key,
-          'operation': 'fetch_entries_with_select',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA231',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'start_date': startDateStr,
+            'end_date': endDateStr,
+            'select': select,
+            'cache_key': key,
+            'operation': 'fetch_entries_with_select',
+          },
+        ),
       );
       rethrow;
     }
@@ -769,11 +852,13 @@ class DataFetchService {
   // ============================================================================
 
   /// Fetch ALL habits_daily for user
-  /// 
+  ///
   /// DEPRECATED: This method is expensive (fetches 365+ records).
   /// Not needed for Enhanced Option 1 (we use incremental updates).
   /// Use fetchHabitsDaily() with date range instead.
-  @Deprecated('Use fetchHabitsDaily() with date range instead. This method is expensive.')
+  @Deprecated(
+    'Use fetchHabitsDaily() with date range instead. This method is expensive.',
+  )
   Future<List<HabitsDaily>> fetchAllHabitsDaily(String userId) async {
     // Return empty list - this method should not be used
     // If needed, use fetchHabitsDaily() with appropriate date range
@@ -781,7 +866,7 @@ class DataFetchService {
   }
 
   /// Fetch single day habits
-  /// 
+  ///
   /// Returns cached data if available, otherwise fetches from DB.
   /// Uses local-first approach: reads from local SQLite first, then Supabase if missing.
   Future<HabitsDaily?> fetchHabitsForDate(String userId, DateTime date) async {
@@ -809,10 +894,13 @@ class DataFetchService {
                 userId: habit['user_id'] as String,
                 date: DateTime.parse(habit['date'] as String),
                 wroteEntry: (habit['wrote_entry'] as int? ?? 0) == 1,
-                filledAffirmations: (habit['filled_affirmations'] as int? ?? 0) == 1,
+                filledAffirmations:
+                    (habit['filled_affirmations'] as int? ?? 0) == 1,
                 filledGratitude: (habit['filled_gratitude'] as int? ?? 0) == 1,
-                selfCareCompletedCount: habit['self_care_completed_count'] as int? ?? 0,
-                gracePiecesEarned: (habit['grace_pieces_earned'] as num? ?? 0.0).toDouble(),
+                selfCareCompletedCount:
+                    habit['self_care_completed_count'] as int? ?? 0,
+                gracePiecesEarned: (habit['grace_pieces_earned'] as num? ?? 0.0)
+                    .toDouble(),
               );
             }
 
@@ -829,35 +917,34 @@ class DataFetchService {
             final habit = HabitsDaily.fromJson(response);
 
             // Cache in local SQLite
-            await db.insert(
-              'habits_daily',
-              {
-                'id': habit.id,
-                'user_id': habit.userId,
-                'date': habit.date.toIso8601String().split('T')[0],
-                'wrote_entry': habit.wroteEntry ? 1 : 0,
-                'filled_affirmations': habit.filledAffirmations ? 1 : 0,
-                'filled_gratitude': habit.filledGratitude ? 1 : 0,
-                'self_care_completed_count': habit.selfCareCompletedCount,
-                'grace_pieces_earned': habit.gracePiecesEarned,
-                'is_synced': 1,
-                'last_sync_at': DateTime.now().toIso8601String(),
-              },
-              conflictAlgorithm: ConflictAlgorithm.replace,
-            );
+            await db.insert('habits_daily', {
+              'id': habit.id,
+              'user_id': habit.userId,
+              'date': habit.date.toIso8601String().split('T')[0],
+              'wrote_entry': habit.wroteEntry ? 1 : 0,
+              'filled_affirmations': habit.filledAffirmations ? 1 : 0,
+              'filled_gratitude': habit.filledGratitude ? 1 : 0,
+              'self_care_completed_count': habit.selfCareCompletedCount,
+              'grace_pieces_earned': habit.gracePiecesEarned,
+              'is_synced': 1,
+              'last_sync_at': DateTime.now().toIso8601String(),
+            }, conflictAlgorithm: ConflictAlgorithm.replace);
 
             return habit;
           } catch (e) {
             await ErrorLoggingService.logHighError(
-              errorCode: 'ERRDATA234',
-              errorMessage: 'DB query failed (habits for date): ${e.toString()}',
-              stackTrace: StackTrace.current.toString(),
-              errorContext: {
-                'user_id': userId,
-                'date': dateStr,
-                'table': 'habits_daily',
-                'operation': 'fetch_habits_for_date',
-              },
+              error: ErrorContext.fromException(
+                errorCode: 'ERRDATA234',
+                severity: ErrorSeverity.high,
+                exception: e,
+                stackTrace: StackTrace.current,
+                errorContext: {
+                  'user_id': userId,
+                  'date': dateStr,
+                  'table': 'habits_daily',
+                  'operation': 'fetch_habits_for_date',
+                },
+              ),
             );
             rethrow;
           }
@@ -865,14 +952,17 @@ class DataFetchService {
       );
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRDATA235',
-        errorMessage: 'Fetch habits for date failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'cache_key': key,
-          'operation': 'fetch_habits_for_date',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA235',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'cache_key': key,
+            'operation': 'fetch_habits_for_date',
+          },
+        ),
       );
       rethrow;
     }
@@ -883,7 +973,7 @@ class DataFetchService {
   // ============================================================================
 
   /// Fetch weekly analytics
-  /// 
+  ///
   /// Returns cached data if available, otherwise fetches from DB.
   Future<WeeklyAnalyticsData> fetchWeeklyAnalytics({
     required String userId,
@@ -901,14 +991,17 @@ class DataFetchService {
             return await service.getWeeklyAnalytics(weekStart);
           } catch (e) {
             await ErrorLoggingService.logHighError(
-              errorCode: 'ERRDATA236',
-              errorMessage: 'DB query failed (weekly analytics): ${e.toString()}',
-              stackTrace: StackTrace.current.toString(),
-              errorContext: {
-                'user_id': userId,
-                'week_start': weekStart.toIso8601String(),
-                'operation': 'fetch_weekly_analytics',
-              },
+              error: ErrorContext.fromException(
+                errorCode: 'ERRDATA236',
+                severity: ErrorSeverity.high,
+                exception: e,
+                stackTrace: StackTrace.current,
+                errorContext: {
+                  'user_id': userId,
+                  'week_start': weekStart.toIso8601String(),
+                  'operation': 'fetch_weekly_analytics',
+                },
+              ),
             );
             rethrow;
           }
@@ -916,22 +1009,25 @@ class DataFetchService {
       );
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRDATA237',
-        errorMessage: 'Fetch weekly analytics failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'week_start': weekStart.toIso8601String(),
-          'cache_key': key,
-          'operation': 'fetch_weekly_analytics',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA237',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'week_start': weekStart.toIso8601String(),
+            'cache_key': key,
+            'operation': 'fetch_weekly_analytics',
+          },
+        ),
       );
       rethrow;
     }
   }
 
   /// Fetch entry insights
-  /// 
+  ///
   /// Returns cached data if available, otherwise fetches from DB.
   Future<List<EntryInsights>> fetchEntryInsights({
     required String userId,
@@ -984,27 +1080,31 @@ class DataFetchService {
                   .lte('entries.entry_date', endStr);
             }
 
-            final response = await query.order('processed_at', ascending: false);
+            final response = await query.order(
+              'processed_at',
+              ascending: false,
+            );
 
-            return (response as List)
-                .map((e) {
-                  final json = e as Map<String, dynamic>;
-                  return EntryInsights.fromJson(json);
-                })
-                .toList();
+            return (response as List).map((e) {
+              final json = e as Map<String, dynamic>;
+              return EntryInsights.fromJson(json);
+            }).toList();
           } catch (e) {
             await ErrorLoggingService.logHighError(
-              errorCode: 'ERRDATA238',
-              errorMessage: 'DB query failed (entry insights): ${e.toString()}',
-              stackTrace: StackTrace.current.toString(),
-              errorContext: {
-                'user_id': userId,
-                'entry_id': entryId,
-                'start_date': startDate?.toIso8601String(),
-                'end_date': endDate?.toIso8601String(),
-                'table': 'entry_insights',
-                'operation': 'fetch_entry_insights',
-              },
+              error: ErrorContext.fromException(
+                errorCode: 'ERRDATA238',
+                severity: ErrorSeverity.high,
+                exception: e,
+                stackTrace: StackTrace.current,
+                errorContext: {
+                  'user_id': userId,
+                  'entry_id': entryId,
+                  'start_date': startDate?.toIso8601String(),
+                  'end_date': endDate?.toIso8601String(),
+                  'table': 'entry_insights',
+                  'operation': 'fetch_entry_insights',
+                },
+              ),
             );
             rethrow;
           }
@@ -1012,17 +1112,20 @@ class DataFetchService {
       );
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRDATA239',
-        errorMessage: 'Fetch entry insights failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'entry_id': entryId,
-          'start_date': startDate?.toIso8601String(),
-          'end_date': endDate?.toIso8601String(),
-          'cache_key': key,
-          'operation': 'fetch_entry_insights',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA239',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'entry_id': entryId,
+            'start_date': startDate?.toIso8601String(),
+            'end_date': endDate?.toIso8601String(),
+            'cache_key': key,
+            'operation': 'fetch_entry_insights',
+          },
+        ),
       );
       rethrow;
     }
@@ -1033,16 +1136,16 @@ class DataFetchService {
   // ============================================================================
 
   /// Invalidate entries cache for a user
-  /// 
+  ///
   /// Call this when entries are created/updated/deleted.
   void invalidateEntriesCache(String userId, DateTime? date) {
     _repository.invalidateEntries(userId, date);
   }
 
   /// Invalidate habits cache for a user
-  /// 
+  ///
   /// Call this when habits are created/updated/deleted.
-  /// 
+  ///
   /// NOTE: Removed auto-invalidation of home summary to prevent cascade.
   /// Home summary will be invalidated separately if needed.
   void invalidateHabitsCache(String userId, DateTime? date) {
@@ -1052,21 +1155,21 @@ class DataFetchService {
   }
 
   /// Invalidate home summary cache for a user
-  /// 
+  ///
   /// Call this when data affecting home summary changes.
   void invalidateHomeSummaryCache(String userId) {
     _repository.invalidateHomeSummary(userId);
   }
 
   /// Invalidate monthly cache for a user
-  /// 
+  ///
   /// Call this when monthly data changes (entry saved, monthly insight generated).
   void invalidateMonthlyCache(String userId, DateTime? monthStart) {
     _repository.invalidateMonthly(userId, monthStart);
   }
 
   /// Invalidate user settings cache
-  /// 
+  ///
   /// Call this when user settings are updated.
   void invalidateUserSettingsCache(String userId) {
     try {
@@ -1074,21 +1177,24 @@ class DataFetchService {
       _repository.invalidate(key);
     } catch (e) {
       ErrorLoggingService.logLowError(
-        errorCode: 'ERRDATA240',
-        errorMessage: 'Invalidate user settings cache failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'operation': 'invalidate_user_settings_cache',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA240',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'operation': 'invalidate_user_settings_cache',
+          },
+        ),
       );
     }
   }
 
   /// Invalidate streaks cache
-  /// 
+  ///
   /// Call this when streaks are updated.
-  /// 
+  ///
   /// NOTE: Removed auto-invalidation of home summary to prevent cascade.
   /// Home summary will be invalidated separately if needed.
   void invalidateStreaksCache(String userId) {
@@ -1099,19 +1205,22 @@ class DataFetchService {
       // Call invalidateHomeSummaryCache() separately if needed
     } catch (e) {
       ErrorLoggingService.logLowError(
-        errorCode: 'ERRDATA241',
-        errorMessage: 'Invalidate streaks cache failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'operation': 'invalidate_streaks_cache',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA241',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'operation': 'invalidate_streaks_cache',
+          },
+        ),
       );
     }
   }
 
   /// Invalidate all user data cache
-  /// 
+  ///
   /// Call this when user logs out or major data changes occur.
   void invalidateAllUserCache(String userId) {
     try {
@@ -1122,19 +1231,22 @@ class DataFetchService {
       invalidateUserSettingsCache(userId);
       invalidateHomeSummaryCache(userId);
       invalidateMonthlyCache(userId, null);
-      
+
       // Also invalidate all habits cache (for fetchAllHabitsDaily)
       final allHabitsKey = 'habits_all_$userId';
       _repository.invalidate(allHabitsKey);
     } catch (e) {
       ErrorLoggingService.logLowError(
-        errorCode: 'ERRDATA242',
-        errorMessage: 'Invalidate all user cache failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'operation': 'invalidate_all_user_cache',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA242',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'operation': 'invalidate_all_user_cache',
+          },
+        ),
       );
     }
   }
@@ -1145,9 +1257,5 @@ class BatchData {
   final List<Entry> entries;
   final List<HabitsDaily> habits;
 
-  BatchData({
-    required this.entries,
-    required this.habits,
-  });
+  BatchData({required this.entries, required this.habits});
 }
-

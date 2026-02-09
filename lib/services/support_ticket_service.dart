@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/utility_models.dart';
 import 'error_logging_service.dart';
+import '../models/error_models.dart';
 
 class SupportTicketService {
   static final SupabaseClient _supabase = Supabase.instance.client;
@@ -101,14 +102,17 @@ class SupportTicketService {
     } catch (e) {
       // Log error
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS122',
-        errorMessage: 'Support ticket submission failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': _supabase.auth.currentUser?.id,
-          'operation': 'submit_ticket',
-          'category': category,
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS122',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': _supabase.auth.currentUser?.id,
+            'operation': 'submit_ticket',
+            'category': category,
+          },
+        ),
       );
 
       return SupportTicketResult(
@@ -136,13 +140,16 @@ class SupportTicketService {
       return (response as List).map((json) => SupportTicket.fromJson(json)).toList();
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS123',
-        errorMessage: 'Fetch user tickets failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': _supabase.auth.currentUser?.id,
-          'operation': 'fetch_user_tickets',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS123',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': _supabase.auth.currentUser?.id,
+            'operation': 'fetch_user_tickets',
+          },
+        ),
       );
       return [];
     }

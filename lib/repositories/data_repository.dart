@@ -1,5 +1,6 @@
 import 'dart:async';
 import '../services/error_logging_service.dart';
+import '../models/error_models.dart';
 
 /// Cached data wrapper with expiration
 class CachedData {
@@ -116,15 +117,18 @@ class DataRepository {
       return await future;
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRDATA202',
-        errorMessage: 'DataRepository fetch failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'cache_key': key,
-          'operation': 'fetch',
-          'cache_size': _cache.length,
-          'in_flight_count': _inFlightRequests.length,
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA202',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'cache_key': key,
+            'operation': 'fetch',
+            'cache_size': _cache.length,
+            'in_flight_count': _inFlightRequests.length,
+          },
+        ),
       );
       rethrow;
     }
@@ -148,13 +152,16 @@ class DataRepository {
     }).catchError((e) {
       // Silently fail background refetch - stale data is still valid
       ErrorLoggingService.logLowError(
-        errorCode: 'ERRDATA250',
-        errorMessage: 'Background refetch failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'cache_key': key,
-          'operation': 'background_refetch',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA250',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'cache_key': key,
+            'operation': 'background_refetch',
+          },
+        ),
       );
     }).whenComplete(() {
       _backgroundFetches.remove(key);
@@ -173,13 +180,16 @@ class DataRepository {
       _scheduleDebouncedInvalidation();
     } catch (e) {
       ErrorLoggingService.logLowError(
-        errorCode: 'ERRDATA203',
-        errorMessage: 'Cache invalidation failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'cache_key': key,
-          'operation': 'invalidate',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA203',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'cache_key': key,
+            'operation': 'invalidate',
+          },
+        ),
       );
     }
   }
@@ -213,12 +223,15 @@ class DataRepository {
       }
     } catch (e) {
       ErrorLoggingService.logLowError(
-        errorCode: 'ERRDATA251',
-        errorMessage: 'Execute pending invalidations failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'operation': 'execute_pending_invalidations',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA251',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'operation': 'execute_pending_invalidations',
+          },
+        ),
       );
     }
   }
@@ -230,13 +243,16 @@ class DataRepository {
       _pendingInvalidations.remove(key);
     } catch (e) {
       ErrorLoggingService.logLowError(
-        errorCode: 'ERRDATA252',
-        errorMessage: 'Immediate cache invalidation failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'cache_key': key,
-          'operation': 'invalidate_immediate',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA252',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'cache_key': key,
+            'operation': 'invalidate_immediate',
+          },
+        ),
       );
     }
   }
@@ -263,14 +279,17 @@ class DataRepository {
       }
     } catch (e) {
       ErrorLoggingService.logLowError(
-        errorCode: 'ERRDATA204',
-        errorMessage: 'Entries cache invalidation failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'date': date?.toIso8601String(),
-          'operation': 'invalidate_entries',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA204',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'date': date?.toIso8601String(),
+            'operation': 'invalidate_entries',
+          },
+        ),
       );
     }
   }
@@ -282,13 +301,16 @@ class DataRepository {
       invalidateImmediate(key); // Use immediate invalidation to prevent race condition
     } catch (e) {
       ErrorLoggingService.logLowError(
-        errorCode: 'ERRDATA209',
-        errorMessage: 'Home summary cache invalidation failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'operation': 'invalidate_home_summary',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA209',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'operation': 'invalidate_home_summary',
+          },
+        ),
       );
     }
   }
@@ -315,14 +337,17 @@ class DataRepository {
       }
     } catch (e) {
       ErrorLoggingService.logLowError(
-        errorCode: 'ERRDATA205',
-        errorMessage: 'Habits cache invalidation failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'date': date?.toIso8601String(),
-          'operation': 'invalidate_habits',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA205',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'date': date?.toIso8601String(),
+            'operation': 'invalidate_habits',
+          },
+        ),
       );
     }
   }
@@ -341,14 +366,17 @@ class DataRepository {
       _cache.remove(listKey);
     } catch (e) {
       ErrorLoggingService.logLowError(
-        errorCode: 'ERRCACHE001',
-        errorMessage: 'Monthly cache invalidation failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'month_start': monthStart?.toIso8601String(),
-          'operation': 'invalidate_monthly',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRCACHE001',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'month_start': monthStart?.toIso8601String(),
+            'operation': 'invalidate_monthly',
+          },
+        ),
       );
     }
   }
@@ -359,12 +387,15 @@ class DataRepository {
       _cache.clear();
     } catch (e) {
       ErrorLoggingService.logLowError(
-        errorCode: 'ERRDATA206',
-        errorMessage: 'Clear cache failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'operation': 'clear_cache',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA206',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'operation': 'clear_cache',
+          },
+        ),
       );
     }
   }
@@ -382,12 +413,15 @@ class DataRepository {
       }
     } catch (e) {
       ErrorLoggingService.logLowError(
-        errorCode: 'ERRDATA207',
-        errorMessage: 'Cache cleanup failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'operation': 'cleanup_expired_cache',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA207',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'operation': 'cleanup_expired_cache',
+          },
+        ),
       );
     }
   }
@@ -414,12 +448,15 @@ class DataRepository {
       _cache.clear();
     } catch (e) {
       ErrorLoggingService.logLowError(
-        errorCode: 'ERRDATA208',
-        errorMessage: 'DataRepository dispose failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'operation': 'dispose',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA208',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'operation': 'dispose',
+          },
+        ),
       );
     }
   }

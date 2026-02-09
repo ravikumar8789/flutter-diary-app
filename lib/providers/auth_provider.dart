@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../models/error_models.dart';
 import '../services/error_logging_service.dart';
 import '../services/timezone_service.dart';
 
@@ -90,13 +91,16 @@ class AuthController {
         ) {
           // Log but don't block signup
           ErrorLoggingService.logLowError(
-            errorCode: 'ERRSYS162',
-            errorMessage: 'Timezone init failed after signup: ${e.toString()}',
-            stackTrace: StackTrace.current.toString(),
-            errorContext: {
-              'user_id': response.user!.id,
-              'operation': 'signup_timezone_init',
-            },
+            error: ErrorContext.fromException(
+              errorCode: 'ERRSYS162',
+              severity: ErrorSeverity.low,
+              exception: e,
+              stackTrace: StackTrace.current,
+              errorContext: {
+                'user_id': response.user!.id,
+                'operation': 'signup_timezone_init',
+              },
+            ),
           );
           return 'UTC'; // Return fallback value
         });
@@ -104,15 +108,18 @@ class AuthController {
     } catch (e) {
       // Log error
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS130',
-        errorMessage: 'Auth provider sign up failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'email': email,
-          'display_name': displayName,
-          'gender': gender,
-          'operation': 'auth_provider_sign_up',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS130',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'email': email,
+            'display_name': displayName,
+            'gender': gender,
+            'operation': 'auth_provider_sign_up',
+          },
+        ),
       );
       rethrow;
     }
@@ -127,10 +134,13 @@ class AuthController {
     } catch (e) {
       // Log error
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS131',
-        errorMessage: 'Auth provider sign in failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {'email': email, 'operation': 'auth_provider_sign_in'},
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS131',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'email': email, 'operation': 'auth_provider_sign_in'},
+        ),
       );
       rethrow;
     }
@@ -142,10 +152,13 @@ class AuthController {
     } catch (e) {
       // Log error
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS132',
-        errorMessage: 'Auth provider sign out failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {'operation': 'auth_provider_sign_out'},
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS132',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'operation': 'auth_provider_sign_out'},
+        ),
       );
       rethrow;
     }

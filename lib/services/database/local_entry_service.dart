@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../database/database_manager.dart';
 import '../../models/entry_models.dart';
 import '../error_logging_service.dart';
+import '../../models/error_models.dart';
 
 class LocalEntryService {
   final DatabaseManager _dbManager = DatabaseManager();
@@ -40,15 +41,18 @@ class LocalEntryService {
       await _addToSyncQueue(entry.id, 'entries', 'upsert', entry.toJson());
     } catch (e) {
       await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRDB010',
-        errorMessage: 'Local entry upsert failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {
           'entry_id': entry.id,
           'user_id': entry.userId,
           'entry_date': entry.entryDate.toIso8601String(),
           'operation': 'upsert_entry_local',
         },
+        ),
       );
       rethrow;
     }
@@ -72,14 +76,17 @@ class LocalEntryService {
       );
     } catch (e) {
       await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRDB011',
-        errorMessage: 'Local affirmations upsert failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {
           'entry_id': affirmations.entryId,
           'affirmations_count': affirmations.affirmations.length,
           'operation': 'upsert_affirmations_local',
         },
+        ),
       );
       rethrow;
     }
@@ -103,14 +110,17 @@ class LocalEntryService {
       );
     } catch (e) {
       await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRDB012',
-        errorMessage: 'Local priorities upsert failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {
           'entry_id': priorities.entryId,
           'priorities_count': priorities.priorities.length,
           'operation': 'upsert_priorities_local',
         },
+        ),
       );
       rethrow;
     }
@@ -134,9 +144,11 @@ class LocalEntryService {
       );
     } catch (e) {
       await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRDB013',
-        errorMessage: 'Local meals upsert failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+        severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {
           'entry_id': meals.entryId,
           'water_cups': meals.waterCups,
@@ -145,6 +157,7 @@ class LocalEntryService {
           'has_dinner': meals.dinner != null,
           'operation': 'upsert_meals_local',
         },
+        ),
       );
       rethrow;
     }
@@ -168,14 +181,17 @@ class LocalEntryService {
       );
     } catch (e) {
       await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRDB014',
-        errorMessage: 'Local gratitude upsert failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {
           'entry_id': gratitude.entryId,
           'grateful_items_count': gratitude.gratefulItems.length,
           'operation': 'upsert_gratitude_local',
         },
+        ),
       );
       rethrow;
     }
@@ -199,9 +215,11 @@ class LocalEntryService {
       );
     } catch (e) {
       await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRDB015',
-        errorMessage: 'Local self-care upsert failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {
           'entry_id': selfCare.entryId,
           'self_care_data': {
@@ -218,6 +236,7 @@ class LocalEntryService {
           },
           'operation': 'upsert_self_care_local',
         },
+        ),
       );
       rethrow;
     }
@@ -241,15 +260,18 @@ class LocalEntryService {
       );
     } catch (e) {
       await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRDB016',
-        errorMessage: 'Local shower bath upsert failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {
           'entry_id': showerBath.entryId,
           'took_shower': showerBath.tookShower,
           'has_note': showerBath.note != null,
           'operation': 'upsert_shower_bath_local',
         },
+        ),
       );
       rethrow;
     }
@@ -273,14 +295,17 @@ class LocalEntryService {
       );
     } catch (e) {
       await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRDB017',
-        errorMessage: 'Local tomorrow notes upsert failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {
           'entry_id': tomorrowNotes.entryId,
           'tomorrow_notes_count': tomorrowNotes.tomorrowNotes.length,
           'operation': 'upsert_tomorrow_notes_local',
         },
+        ),
       );
       rethrow;
     }
@@ -469,13 +494,16 @@ class LocalEntryService {
       );
     } catch (e) {
       await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRDB018',
-        errorMessage: 'Local mark as synced failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {
           'entry_id': entryId,
           'operation': 'mark_as_synced_local',
         },
+        ),
       );
       rethrow;
     }

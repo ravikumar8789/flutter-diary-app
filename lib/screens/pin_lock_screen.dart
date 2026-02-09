@@ -4,8 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/privacy_lock_provider.dart';
 import '../widgets/pin_number_pad.dart';
 import '../services/error_logging_service.dart';
+import '../models/error_models.dart';
 import 'home_screen.dart';
 import 'pin_recovery_screen.dart';
+import '../ui/responsive/responsive_body.dart';
+import '../ui/responsive/responsive_info.dart';
+import '../ui/responsive/responsive_tokens.dart';
 
 class PinLockScreen extends ConsumerStatefulWidget {
   const PinLockScreen({super.key});
@@ -173,13 +177,16 @@ class _PinLockScreenState extends ConsumerState<PinLockScreen> {
         _isLoading = false;
       });
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS091',
-        errorMessage: 'PIN entry processing failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'entry_time': DateTime.now().toIso8601String(),
-          'screen': 'PinLockScreen',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS091',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'entry_time': DateTime.now().toIso8601String(),
+            'screen': 'PinLockScreen',
+          },
+        ),
       );
 
       if (mounted) {
@@ -205,6 +212,7 @@ class _PinLockScreenState extends ConsumerState<PinLockScreen> {
             final screenHeight = constraints.maxHeight;
             final isSmallScreen = screenHeight < 500;
             final isVerySmallScreen = screenHeight < 400;
+            final info = ResponsiveInfo.of(context);
 
             // More aggressive spacing for very small screens
             final topSpacing = isVerySmallScreen
@@ -216,9 +224,28 @@ class _PinLockScreenState extends ConsumerState<PinLockScreen> {
             final bottomSpacing = isVerySmallScreen
                 ? 12.0
                 : (isSmallScreen ? 16.0 : 20.0);
+            final contentPadding = EdgeInsets.all(
+              isSmallScreen
+                  ? ResponsiveTokens.spacingM(info)
+                  : ResponsiveTokens.spacingL(info),
+            );
+            final dotSize = isVerySmallScreen
+                ? 10.0
+                : (isSmallScreen
+                    ? 12.0
+                    : info.value(compact: 12.0, medium: 14.0, expanded: 16.0));
+            final dotMargin = info.value(compact: 4.0, medium: 6.0, expanded: 6.0);
+            final keypadMaxWidth = info.value(
+              compact: 320.0,
+              medium: 360.0,
+              expanded: 420.0,
+            );
+            final colorScheme = Theme.of(context).colorScheme;
 
-            return Padding(
-              padding: EdgeInsets.all(isSmallScreen ? 12.0 : 16.0),
+            return ResponsiveBody(
+              useSafeArea: false,
+              padding: contentPadding,
+              alignment: Alignment.topCenter,
               child: Column(
                 children: [
                   SizedBox(height: topSpacing),
@@ -236,7 +263,7 @@ class _PinLockScreenState extends ConsumerState<PinLockScreen> {
                     child: Icon(
                       Icons.lock_outline,
                       size: isVerySmallScreen ? 24 : (isSmallScreen ? 28 : 32),
-                      color: Colors.white,
+                      color: colorScheme.onPrimary,
                     ),
                   ),
 
@@ -261,7 +288,7 @@ class _PinLockScreenState extends ConsumerState<PinLockScreen> {
                   Text(
                     'Enter your 4-digit PIN to access your diary',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.grey[600],
+                      color: colorScheme.onSurfaceVariant,
                       fontSize: isVerySmallScreen
                           ? 12
                           : (isSmallScreen ? 13 : 14),
@@ -276,14 +303,14 @@ class _PinLockScreenState extends ConsumerState<PinLockScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: List.generate(4, (index) {
                       return Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 6),
-                        width: 14,
-                        height: 14,
+                        margin: EdgeInsets.symmetric(horizontal: dotMargin),
+                        width: dotSize,
+                        height: dotSize,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: index < _enteredPin.length
                               ? Theme.of(context).colorScheme.primary
-                              : Colors.grey[300],
+                              : colorScheme.outlineVariant,
                         ),
                       );
                     }),
@@ -299,13 +326,19 @@ class _PinLockScreenState extends ConsumerState<PinLockScreen> {
                     ),
 
                   // Number Pad
-                  PinNumberPad(
-                    onNumberPressed: _onNumberPressed,
-                    onBackspacePressed: _onBackspacePressed,
-                    onEnterPressed: _enteredPin.length == 4
-                        ? _validatePin
-                        : null,
-                    isLoading: _isLoading,
+                  Align(
+                    alignment: Alignment.center,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: keypadMaxWidth),
+                      child: PinNumberPad(
+                        onNumberPressed: _onNumberPressed,
+                        onBackspacePressed: _onBackspacePressed,
+                        onEnterPressed: _enteredPin.length == 4
+                            ? _validatePin
+                            : null,
+                        isLoading: _isLoading,
+                      ),
+                    ),
                   ),
 
                   SizedBox(

@@ -4,8 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/privacy_lock_provider.dart';
 import '../widgets/pin_number_pad.dart';
 import '../services/error_logging_service.dart';
+import '../models/error_models.dart';
 import 'home_screen.dart';
 import 'security_questions_screen.dart';
+import '../ui/responsive/responsive_body.dart';
+import '../ui/responsive/responsive_info.dart';
+import '../ui/responsive/responsive_tokens.dart';
 
 class PinSetupScreen extends ConsumerStatefulWidget {
   const PinSetupScreen({super.key});
@@ -40,6 +44,7 @@ class _PinSetupScreenState extends ConsumerState<PinSetupScreen> {
             final availableHeight = constraints.maxHeight;
             final isSmallScreen = availableHeight < 500;
             final isVerySmallScreen = availableHeight < 400;
+            final info = ResponsiveInfo.of(context);
 
             // More aggressive spacing for very small screens
             final topSpacing = isVerySmallScreen
@@ -51,9 +56,36 @@ class _PinSetupScreenState extends ConsumerState<PinSetupScreen> {
             final bottomSpacing = isVerySmallScreen
                 ? 8.0
                 : (isSmallScreen ? 12.0 : 16.0);
+            final contentPadding = EdgeInsets.all(
+              isSmallScreen
+                  ? ResponsiveTokens.spacingM(info)
+                  : ResponsiveTokens.spacingL(info),
+            );
+            final dotSize = isVerySmallScreen
+                ? 10.0
+                : (isSmallScreen
+                      ? 12.0
+                      : info.value(
+                          compact: 12.0,
+                          medium: 14.0,
+                          expanded: 16.0,
+                        ));
+            final dotMargin = info.value(
+              compact: 4.0,
+              medium: 6.0,
+              expanded: 6.0,
+            );
+            final keypadMaxWidth = info.value(
+              compact: 320.0,
+              medium: 360.0,
+              expanded: 420.0,
+            );
+            final colorScheme = Theme.of(context).colorScheme;
 
-            return Padding(
-              padding: EdgeInsets.all(isSmallScreen ? 12.0 : 16.0),
+            return ResponsiveBody(
+              useSafeArea: false,
+              padding: contentPadding,
+              alignment: Alignment.topCenter,
               child: Column(
                 children: [
                   SizedBox(height: topSpacing),
@@ -70,7 +102,7 @@ class _PinSetupScreenState extends ConsumerState<PinSetupScreen> {
                           shape: BoxShape.circle,
                           color: index < _currentStep
                               ? Theme.of(context).colorScheme.primary
-                              : Colors.grey[300],
+                              : colorScheme.outlineVariant,
                         ),
                       );
                     }),
@@ -91,7 +123,7 @@ class _PinSetupScreenState extends ConsumerState<PinSetupScreen> {
                     child: Icon(
                       Icons.lock_outline,
                       size: isVerySmallScreen ? 24 : (isSmallScreen ? 28 : 32),
-                      color: Colors.white,
+                      color: colorScheme.onPrimary,
                     ),
                   ),
 
@@ -117,7 +149,7 @@ class _PinSetupScreenState extends ConsumerState<PinSetupScreen> {
                   Text(
                     _getSubtitle(),
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.grey[600],
+                      color: colorScheme.onSurfaceVariant,
                       fontSize: isVerySmallScreen
                           ? 12
                           : (isSmallScreen ? 13 : 14),
@@ -135,14 +167,14 @@ class _PinSetupScreenState extends ConsumerState<PinSetupScreen> {
                           ? _confirmPin
                           : _enteredPin;
                       return Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 6),
-                        width: 14,
-                        height: 14,
+                        margin: EdgeInsets.symmetric(horizontal: dotMargin),
+                        width: dotSize,
+                        height: dotSize,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: index < currentPin.length
                               ? Theme.of(context).colorScheme.primary
-                              : Colors.grey[300],
+                              : colorScheme.outlineVariant,
                         ),
                       );
                     }),
@@ -158,11 +190,17 @@ class _PinSetupScreenState extends ConsumerState<PinSetupScreen> {
                     ),
 
                   // Number Pad
-                  PinNumberPad(
-                    onNumberPressed: _onNumberPressed,
-                    onBackspacePressed: _onBackspacePressed,
-                    onEnterPressed: _canEnter() ? _onEnterPressed : null,
-                    isLoading: _isLoading,
+                  Align(
+                    alignment: Alignment.center,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: keypadMaxWidth),
+                      child: PinNumberPad(
+                        onNumberPressed: _onNumberPressed,
+                        onBackspacePressed: _onBackspacePressed,
+                        onEnterPressed: _canEnter() ? _onEnterPressed : null,
+                        isLoading: _isLoading,
+                      ),
+                    ),
                   ),
 
                   // Minimal spacing
@@ -177,7 +215,7 @@ class _PinSetupScreenState extends ConsumerState<PinSetupScreen> {
                       child: Text(
                         'Skip for now',
                         style: TextStyle(
-                          color: Colors.grey[600],
+                          color: colorScheme.onSurfaceVariant,
                           fontSize: isVerySmallScreen
                               ? 12
                               : (isSmallScreen ? 13 : 14),
@@ -308,14 +346,17 @@ class _PinSetupScreenState extends ConsumerState<PinSetupScreen> {
     } catch (e) {
       _showError('Error: $e');
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS092',
-        errorMessage: 'PIN confirmation validation failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'validation_time': DateTime.now().toIso8601String(),
-          'screen': 'PinSetupScreen',
-          'step': _currentStep,
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS092',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'validation_time': DateTime.now().toIso8601String(),
+            'screen': 'PinSetupScreen',
+            'step': _currentStep,
+          },
+        ),
       );
       _resetToFirstStep();
     }

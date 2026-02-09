@@ -4,6 +4,11 @@ import '../models/utility_models.dart';
 import '../services/support_ticket_service.dart';
 import '../utils/snackbar_utils.dart';
 import '../services/error_logging_service.dart';
+import '../models/error_models.dart';
+import '../ui/responsive/responsive_body.dart';
+import '../ui/responsive/responsive_info.dart';
+import '../ui/responsive/responsive_tokens.dart';
+import '../ui/responsive/responsive_wrap.dart';
 
 class MyTicketsScreen extends StatefulWidget {
   const MyTicketsScreen({super.key});
@@ -44,13 +49,16 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
           _isLoading = false;
         });
         await ErrorLoggingService.logHighError(
-          errorCode: 'ERRSYS125',
-          errorMessage: 'Load user tickets failed: ${e.toString()}',
-          stackTrace: StackTrace.current.toString(),
-          errorContext: {
-            'screen': 'MyTicketsScreen',
-            'operation': 'load_tickets',
-          },
+          error: ErrorContext.fromException(
+            errorCode: 'ERRSYS125',
+            severity: ErrorSeverity.high,
+            exception: e,
+            stackTrace: StackTrace.current,
+            errorContext: {
+              'screen': 'MyTicketsScreen',
+              'operation': 'load_tickets',
+            },
+          ),
         );
         SnackbarUtils.showError(context, 'Failed to load tickets');
       }
@@ -74,7 +82,7 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
     }
   }
 
-  Color _getCategoryColor(String? category) {
+  Color _getCategoryColor(BuildContext context, String? category) {
     switch (category) {
       case 'bug':
         return Colors.red;
@@ -85,9 +93,9 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
       case 'feedback':
         return Colors.green;
       case 'other':
-        return Colors.grey;
+        return Theme.of(context).colorScheme.onSurfaceVariant;
       default:
-        return Colors.grey;
+        return Theme.of(context).colorScheme.onSurfaceVariant;
     }
   }
 
@@ -107,15 +115,18 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
   }
 
   void _showTicketDetails(SupportTicket ticket) {
+    final info = ResponsiveInfo.of(context);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        minChildSize: 0.5,
-        maxChildSize: 0.95,
-        builder: (context, scrollController) => Container(
+        initialChildSize: info.value(compact: 0.65, medium: 0.7, expanded: 0.8),
+        minChildSize: info.value(compact: 0.45, medium: 0.5, expanded: 0.6),
+        maxChildSize: info.value(compact: 0.9, medium: 0.95, expanded: 0.98),
+      builder: (context, scrollController) {
+        final colorScheme = Theme.of(context).colorScheme;
+        return Container(
           decoration: BoxDecoration(
             color: Theme.of(context).scaffoldBackgroundColor,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -128,14 +139,20 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.grey[300],
+                  color: colorScheme.outlineVariant,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
               // Header
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                child: Row(
+                padding: EdgeInsets.symmetric(
+                  horizontal: ResponsiveTokens.spacingL(info),
+                  vertical: ResponsiveTokens.spacingM(info),
+                ),
+                child: ResponsiveWrapRow(
+                  info: info,
+                  rowMainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  wrapAlignment: WrapAlignment.spaceBetween,
                   children: [
                     Expanded(
                       child: Column(
@@ -144,15 +161,15 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
                           Text(
                             'Ticket Details',
                             style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
+                                  fontWeight: FontWeight.bold,
+                                ),
                           ),
                           const SizedBox(height: 4),
                           Text(
                             ticket.ticketNumber ?? 'N/A',
                             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Colors.grey[600],
-                            ),
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
                           ),
                         ],
                       ),
@@ -163,7 +180,7 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
                       decoration: BoxDecoration(
                         color: ticket.status == TicketStatus.open
                             ? Colors.green[100]
-                            : Colors.grey[200],
+                            : colorScheme.surfaceVariant,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
@@ -171,7 +188,7 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
                         style: TextStyle(
                           color: ticket.status == TicketStatus.open
                               ? Colors.green[800]
-                              : Colors.grey[800],
+                              : colorScheme.onSurface,
                           fontWeight: FontWeight.w600,
                           fontSize: 12,
                         ),
@@ -185,7 +202,7 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
               Expanded(
                 child: SingleChildScrollView(
                   controller: scrollController,
-                  padding: const EdgeInsets.all(20),
+                  padding: EdgeInsets.all(ResponsiveTokens.spacingL(info)),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -195,7 +212,7 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
                         'Category',
                         _getCategoryLabel(ticket.category),
                         icon: Icons.category,
-                        color: _getCategoryColor(ticket.category),
+                        color: _getCategoryColor(context, ticket.category),
                       ),
                       const SizedBox(height: 16),
                       // Subject
@@ -248,8 +265,9 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
               ),
             ],
           ),
-        ),
-      ),
+        );
+      },
+    ),
     );
   }
 
@@ -260,6 +278,7 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
     IconData? icon,
     Color? color,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -267,7 +286,7 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
           Icon(
             icon,
             size: 20,
-            color: color ?? Colors.grey[600],
+            color: color ?? colorScheme.onSurfaceVariant,
           ),
           const SizedBox(width: 12),
         ],
@@ -279,7 +298,7 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
                 label,
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w600,
-                  color: Colors.grey[700],
+                  color: colorScheme.onSurfaceVariant,
                 ),
               ),
               const SizedBox(height: 4),
@@ -301,6 +320,7 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
     IconData? icon,
     bool isResponse = false,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -310,7 +330,8 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
               Icon(
                 icon,
                 size: 20,
-                color: isResponse ? Colors.green[700] : Colors.grey[600],
+                color:
+                    isResponse ? Colors.green[700] : colorScheme.onSurfaceVariant,
               ),
               const SizedBox(width: 12),
             ],
@@ -318,7 +339,7 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
               label,
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w600,
-                color: Colors.grey[700],
+                color: colorScheme.onSurfaceVariant,
               ),
             ),
           ],
@@ -328,10 +349,10 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
           width: double.infinity,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: isResponse ? Colors.green[50] : Colors.grey[50],
+            color: isResponse ? Colors.green[50] : colorScheme.surfaceVariant,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isResponse ? Colors.green[200]! : Colors.grey[200]!,
+              color: isResponse ? Colors.green[200]! : colorScheme.outlineVariant,
             ),
           ),
           child: Text(
@@ -347,6 +368,7 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: const Text('My Tickets'),
@@ -358,12 +380,16 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.error_outline, size: 64, color: Colors.grey[400]),
+                      Icon(
+                        Icons.error_outline,
+                        size: 64,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                       const SizedBox(height: 16),
                       Text(
                         _error!,
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: Colors.grey[600],
+                          color: colorScheme.onSurfaceVariant,
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -379,19 +405,23 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.inbox_outlined, size: 64, color: Colors.grey[400]),
+                          Icon(
+                            Icons.inbox_outlined,
+                            size: 64,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
                           const SizedBox(height: 16),
                           Text(
                             'No tickets yet',
                             style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              color: Colors.grey[600],
+                              color: colorScheme.onSurfaceVariant,
                             ),
                           ),
                           const SizedBox(height: 8),
                           Text(
                             'Submit a ticket from Help & Support',
                             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Colors.grey[500],
+                              color: colorScheme.onSurfaceVariant,
                             ),
                           ),
                         ],
@@ -399,127 +429,170 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
                     )
                   : RefreshIndicator(
                       onRefresh: _loadTickets,
-                      child: ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _tickets.length,
-                        itemBuilder: (context, index) {
-                          final ticket = _tickets[index];
-                          return Card(
-                            elevation: 1,
-                            margin: const EdgeInsets.only(bottom: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                      child: ResponsiveBody(
+                        useSafeArea: false,
+                        useScrollView: false,
+                        child: ListView.builder(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: ResponsiveTokens.screenPaddingHorizontal(
+                              ResponsiveInfo.of(context),
                             ),
-                            child: InkWell(
-                              onTap: () => _showTicketDetails(ticket),
-                              borderRadius: BorderRadius.circular(12),
-                              child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    // Header row
-                                    Row(
-                                      children: [
-                                        // Category badge
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 10,
-                                            vertical: 4,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: _getCategoryColor(ticket.category)
-                                                .withOpacity(0.1),
-                                            borderRadius: BorderRadius.circular(8),
-                                          ),
-                                          child: Text(
-                                            _getCategoryLabel(ticket.category),
-                                            style: TextStyle(
-                                              color: _getCategoryColor(ticket.category),
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ),
-                                        const Spacer(),
-                                        // Status badge
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 10,
-                                            vertical: 4,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: ticket.status == TicketStatus.open
-                                                ? Colors.green[100]
-                                                : Colors.grey[200],
-                                            borderRadius: BorderRadius.circular(8),
-                                          ),
-                                          child: Text(
-                                            ticket.status == TicketStatus.open
-                                                ? 'Open'
-                                                : 'Closed',
-                                            style: TextStyle(
-                                              color: ticket.status == TicketStatus.open
-                                                  ? Colors.green[800]
-                                                  : Colors.grey[800],
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-                                    // Subject
-                                    Text(
-                                      ticket.subject ?? 'No subject',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleMedium
-                                          ?.copyWith(
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    const SizedBox(height: 8),
-                                    // Footer row
-                                    Row(
-                                      children: [
-                                        Icon(
-                                          Icons.access_time,
-                                          size: 14,
-                                          color: Colors.grey[600],
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          _formatDate(ticket.createdAt),
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .bodySmall
-                                              ?.copyWith(
-                                            color: Colors.grey[600],
-                                          ),
-                                        ),
-                                        const Spacer(),
-                                        Text(
-                                          ticket.ticketNumber ?? 'N/A',
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .bodySmall
-                                              ?.copyWith(
-                                            color: Colors.grey[600],
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
+                            vertical: ResponsiveTokens.spacingM(
+                              ResponsiveInfo.of(context),
+                            ),
+                          ),
+                          itemCount: _tickets.length,
+                          itemBuilder: (context, index) {
+                            final ticket = _tickets[index];
+                            return Card(
+                              elevation: 1,
+                              margin: EdgeInsets.only(
+                                bottom: ResponsiveTokens.spacingM(
+                                  ResponsiveInfo.of(context),
                                 ),
                               ),
-                            ),
-                          );
-                        },
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: InkWell(
+                                onTap: () => _showTicketDetails(ticket),
+                                borderRadius: BorderRadius.circular(12),
+                                child: Padding(
+                                  padding: EdgeInsets.all(
+                                    ResponsiveTokens.spacingM(
+                                      ResponsiveInfo.of(context),
+                                    ),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      // Header row
+                                      ResponsiveWrapRow(
+                                        info: ResponsiveInfo.of(context),
+                                        rowMainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        wrapAlignment: WrapAlignment.spaceBetween,
+                                        children: [
+                                          // Category badge
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 10,
+                                              vertical: 4,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: _getCategoryColor(
+                                                context,
+                                                ticket.category,
+                                              ).withOpacity(0.1),
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: Text(
+                                              _getCategoryLabel(ticket.category),
+                                              style: TextStyle(
+                                                color: _getCategoryColor(
+                                                  context,
+                                                  ticket.category,
+                                                ),
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                          // Status badge
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 10,
+                                              vertical: 4,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: ticket.status == TicketStatus.open
+                                                  ? Colors.green[100]
+                                                  : colorScheme.surfaceVariant,
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: Text(
+                                              ticket.status == TicketStatus.open
+                                                  ? 'Open'
+                                                  : 'Closed',
+                                              style: TextStyle(
+                                                color: ticket.status == TicketStatus.open
+                                                    ? Colors.green[800]
+                                                    : colorScheme.onSurface,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      SizedBox(
+                                        height: ResponsiveTokens.spacingS(
+                                          ResponsiveInfo.of(context),
+                                        ),
+                                      ),
+                                      // Subject
+                                      Text(
+                                        ticket.subject ?? 'No subject',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleMedium
+                                            ?.copyWith(
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      SizedBox(
+                                        height: ResponsiveTokens.spacingS(
+                                          ResponsiveInfo.of(context),
+                                        ),
+                                      ),
+                                      // Footer row
+                                      ResponsiveWrapRow(
+                                        info: ResponsiveInfo.of(context),
+                                        rowMainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        wrapAlignment: WrapAlignment.spaceBetween,
+                                        children: [
+                                          Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                Icons.access_time,
+                                                size: 14,
+                                                color: colorScheme.onSurfaceVariant,
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                _formatDate(ticket.createdAt),
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .bodySmall
+                                                    ?.copyWith(
+                                                  color: colorScheme.onSurfaceVariant,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          Text(
+                                            ticket.ticketNumber ?? 'N/A',
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodySmall
+                                                ?.copyWith(
+                                              color: colorScheme.onSurfaceVariant,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                       ),
                     ),
     );

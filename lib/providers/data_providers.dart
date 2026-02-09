@@ -5,6 +5,7 @@ import '../services/data_fetch_service.dart';
 import '../models/entry_models.dart';
 import '../models/analytics_models.dart';
 import '../models/home_summary_models.dart';
+import '../models/error_models.dart';
 import '../services/error_logging_service.dart';
 import '../services/home_summary_service.dart';
 
@@ -92,15 +93,18 @@ final entriesProvider = FutureProvider.family<List<Entry>, EntryQueryParams>(
       );
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRDATA204',
-        errorMessage: 'Provider fetch entries failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': params.userId,
-          'start_date': params.startDate.toIso8601String(),
-          'end_date': params.endDate.toIso8601String(),
-          'operation': 'entries_provider',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA204',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': params.userId,
+            'start_date': params.startDate.toIso8601String(),
+            'end_date': params.endDate.toIso8601String(),
+            'operation': 'entries_provider',
+          },
+        ),
       );
       rethrow;
     }
@@ -123,15 +127,18 @@ final habitsProvider = FutureProvider.family<List<HabitsDaily>, HabitsQueryParam
       );
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRDATA205',
-        errorMessage: 'Provider fetch habits failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': params.userId,
-          'start_date': params.startDate.toIso8601String(),
-          'end_date': params.endDate.toIso8601String(),
-          'operation': 'habits_provider',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA205',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': params.userId,
+            'start_date': params.startDate.toIso8601String(),
+            'end_date': params.endDate.toIso8601String(),
+            'operation': 'habits_provider',
+          },
+        ),
       );
       rethrow;
     }
@@ -173,12 +180,15 @@ final homeSummaryProvider = FutureProvider.autoDispose<HomeSummary>((ref) async 
     );
   } catch (e) {
     await ErrorLoggingService.logHighError(
-      errorCode: 'ERRDATA206',
-      errorMessage: 'Home summary provider failed: ${e.toString()}',
-      stackTrace: StackTrace.current.toString(),
-      errorContext: {
-        'operation': 'home_summary_provider',
-      },
+      error: ErrorContext.fromException(
+        errorCode: 'ERRDATA206',
+        severity: ErrorSeverity.high,
+        exception: e,
+        stackTrace: StackTrace.current,
+        errorContext: {
+          'operation': 'home_summary_provider',
+        },
+      ),
     );
     // Return empty summary on error
     return const HomeSummary();

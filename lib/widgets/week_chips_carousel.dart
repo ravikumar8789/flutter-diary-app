@@ -213,7 +213,7 @@ class _WeekChipState extends State<_WeekChip>
       case 'error':
         return Colors.red;
       default:
-        return Colors.grey;
+        return Theme.of(context).colorScheme.onSurfaceVariant;
     }
   }
 

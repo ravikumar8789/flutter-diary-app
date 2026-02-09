@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/user_data_service.dart';
+import '../models/error_models.dart';
 import '../services/error_logging_service.dart';
 import 'data_providers.dart';
 
@@ -67,14 +68,17 @@ class UserDataNotifier extends Notifier<UserDataState> {
     } catch (e) {
       // Log error to Supabase
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS011',
-        errorMessage: 'User data fetch failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': state.userData?.id,
-          'fetch_time': DateTime.now().toIso8601String(),
-          'fetch_method': 'loadUserData',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS011',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': state.userData?.id,
+            'fetch_time': DateTime.now().toIso8601String(),
+            'fetch_method': 'loadUserData',
+          },
+        ),
       );
 
       state = state.copyWith(

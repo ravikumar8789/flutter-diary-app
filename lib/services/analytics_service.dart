@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/analytics_models.dart';
 import '../services/error_logging_service.dart';
+import '../models/error_models.dart';
 import 'ai_service.dart';
 import 'data_fetch_service.dart';
 
@@ -337,14 +338,16 @@ class AnalyticsService {
       );
     } catch (e) {
       await ErrorLoggingService.logError(
+        ErrorContext.fromException(
         errorCode: 'ERRANA001',
-        errorMessage: 'Failed to get weekly analytics: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'MEDIUM',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {
           'week_start': weekStart.toIso8601String(),
           'operation': 'get_weekly_analytics',
         },
+        ),
       );
       rethrow;
     }
@@ -565,14 +568,16 @@ class AnalyticsService {
       );
     } catch (e) {
       await ErrorLoggingService.logError(
+        ErrorContext.fromException(
         errorCode: 'ERRANA002',
-        errorMessage: 'Failed to get monthly analytics: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'MEDIUM',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {
           'month_start': monthStart.toIso8601String(),
           'operation': 'get_monthly_analytics',
         },
+        ),
       );
       rethrow;
     }
@@ -709,14 +714,16 @@ class AnalyticsService {
       return weeksList;
     } catch (e) {
       await ErrorLoggingService.logError(
+        ErrorContext.fromException(
         errorCode: 'ERRANA002',
-        errorMessage: 'Failed to get weekly insights list: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'MEDIUM',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {
           'user_id': userId,
           'operation': 'get_weekly_insights_list',
         },
+        ),
       );
       return [];
     }
@@ -741,15 +748,17 @@ class AnalyticsService {
           monthsList.add(MonthMetadata.fromJson(insight));
         } catch (e) {
           await ErrorLoggingService.logError(
+            ErrorContext.fromException(
             errorCode: 'ERRMODEL001',
-            errorMessage: 'Failed to parse MonthMetadata: ${e.toString()}',
-            stackTrace: StackTrace.current.toString(),
-            severity: 'MEDIUM',
+              severity: ErrorSeverity.medium,
+              exception: e,
+              stackTrace: StackTrace.current,
             errorContext: {
               'user_id': userId,
               'insight_data': insight.toString(),
               'operation': 'month_metadata_fromJson',
             },
+            ),
           );
           // Continue processing other months
         }
@@ -832,14 +841,16 @@ class AnalyticsService {
       return monthsList;
     } catch (e) {
       await ErrorLoggingService.logError(
+        ErrorContext.fromException(
         errorCode: 'ERRANA004',
-        errorMessage: 'Failed to get monthly insights list: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'MEDIUM',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {
           'user_id': userId,
           'operation': 'get_monthly_insights_list',
         },
+        ),
       );
       return [];
     }
@@ -976,15 +987,17 @@ class AnalyticsService {
       return dailyProgressList;
     } catch (e) {
       await ErrorLoggingService.logError(
+        ErrorContext.fromException(
         errorCode: 'ERRANA003',
-        errorMessage: 'Failed to get daily progress: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'MEDIUM',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {
           'user_id': userId,
           'week_start': weekStart.toIso8601String(),
           'operation': 'get_daily_progress',
         },
+        ),
       );
       return [];
     }

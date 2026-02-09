@@ -6,6 +6,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/error_logging_service.dart';
+import '../models/error_models.dart';
 import 'database/database_manager.dart';
 import 'native_alarm_manager.dart';
 import 'user_preference_sync_service.dart';
@@ -380,14 +381,16 @@ class NotificationService {
       await scheduleFutureWindow();
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS031',
-        errorMessage:
-            'Notification service initialization failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'initialization_time': DateTime.now().toIso8601String(),
-          'service': 'NotificationService',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS031',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'initialization_time': DateTime.now().toIso8601String(),
+            'service': 'NotificationService',
+          },
+        ),
       );
     }
   }
@@ -417,13 +420,16 @@ class NotificationService {
           ?.createNotificationChannel(channel);
     } catch (e) {
       await ErrorLoggingService.logMediumError(
-        errorCode: 'ERRSYS059',
-        errorMessage: 'Failed to create notification channel: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'channel_id': 'diary_reminders',
-          'creation_time': DateTime.now().toIso8601String(),
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS059',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'channel_id': 'diary_reminders',
+            'creation_time': DateTime.now().toIso8601String(),
+          },
+        ),
       );
     }
   }
@@ -441,26 +447,32 @@ class NotificationService {
       } else {
         print('🔔 DEBUG: Notification permission denied!');
         await ErrorLoggingService.logMediumError(
-          errorCode: 'ERRSYS032',
-          errorMessage: 'Notification permission denied by user',
-          stackTrace: StackTrace.current.toString(),
-          errorContext: {
-            'permission_status': status.toString(),
-            'request_time': DateTime.now().toIso8601String(),
-          },
+          error: ErrorContext.create(
+            errorCode: 'ERRSYS032',
+            errorMessage: 'Notification permission denied by user',
+            severity: ErrorSeverity.medium,
+            stackTrace: StackTrace.current.toString(),
+            errorContext: {
+              'permission_status': status.toString(),
+              'request_time': DateTime.now().toIso8601String(),
+            },
+          ),
         );
         return false;
       }
     } catch (e) {
       print('🔔 DEBUG: Permission request failed: $e');
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS033',
-        errorMessage: 'Permission request failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'permission_type': 'notification',
-          'request_time': DateTime.now().toIso8601String(),
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS033',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'permission_type': 'notification',
+            'request_time': DateTime.now().toIso8601String(),
+          },
+        ),
       );
       return false;
     }
@@ -527,12 +539,13 @@ class NotificationService {
       await UserPreferenceSyncService.syncNotificationSettingsToCloud(settings);
     } catch (e) {
       await ErrorLoggingService.logError(
-        errorCode: 'ERRSYS134',
-        errorMessage:
-            'Settings save failed (syncNotificationSettingsToCloud call): ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'LOW',
-        errorContext: {'operation': 'notification_settings_sync_call'},
+        ErrorContext.fromException(
+          errorCode: 'ERRSYS134',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'operation': 'notification_settings_sync_call'},
+        ),
       );
     }
   }
@@ -578,13 +591,16 @@ class NotificationService {
 
     if (titles.length != bodies.length) {
       ErrorLoggingService.logMediumError(
-        errorCode: 'ERRSYS162',
-        errorMessage: 'Notification titles/bodies length mismatch',
-        errorContext: {
-          'context': context,
-          'titles_length': titles.length,
-          'bodies_length': bodies.length,
-        },
+        error: ErrorContext.create(
+          errorCode: 'ERRSYS162',
+          errorMessage: 'Notification titles/bodies length mismatch',
+          severity: ErrorSeverity.medium,
+          errorContext: {
+            'context': context,
+            'titles_length': titles.length,
+            'bodies_length': bodies.length,
+          },
+        ),
       );
     }
 
@@ -618,13 +634,16 @@ class NotificationService {
       return false;
     } catch (e, stackTrace) {
       await ErrorLoggingService.logMediumError(
-        errorCode: 'ERRSYS150',
-        errorMessage: 'Failed to read diary completion status: $e',
-        stackTrace: stackTrace.toString(),
-        errorContext: {
-          'user_id': userId,
-          'operation': 'read_habits_daily_diary_status',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS150',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: stackTrace,
+          errorContext: {
+            'user_id': userId,
+            'operation': 'read_habits_daily_diary_status',
+          },
+        ),
       );
       return false;
     }
@@ -648,8 +667,27 @@ class NotificationService {
 
       if (scheduled != true) {
         await ErrorLoggingService.logMediumError(
-          errorCode: 'ERRSYS151',
-          errorMessage: 'Native alarm scheduling returned false',
+          error: ErrorContext.create(
+            errorCode: 'ERRSYS151',
+            errorMessage: 'Native alarm scheduling returned false',
+            severity: ErrorSeverity.medium,
+            errorContext: {
+              'notification_id': notificationId,
+              'scheduled_time': scheduledTime.toIso8601String(),
+              'title': title,
+              'context': context,
+              'user_id': userId,
+            },
+          ),
+        );
+      }
+    } catch (e, stackTrace) {
+      await ErrorLoggingService.logMediumError(
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS152',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: stackTrace,
           errorContext: {
             'notification_id': notificationId,
             'scheduled_time': scheduledTime.toIso8601String(),
@@ -657,20 +695,7 @@ class NotificationService {
             'context': context,
             'user_id': userId,
           },
-        );
-      }
-    } catch (e, stackTrace) {
-      await ErrorLoggingService.logMediumError(
-        errorCode: 'ERRSYS152',
-        errorMessage: 'Native alarm scheduling failed: $e',
-        stackTrace: stackTrace.toString(),
-        errorContext: {
-          'notification_id': notificationId,
-          'scheduled_time': scheduledTime.toIso8601String(),
-          'title': title,
-          'context': context,
-          'user_id': userId,
-        },
+        ),
       );
     }
   }
@@ -696,27 +721,33 @@ class NotificationService {
 
       if (timeSaved == false || titleSaved == false || bodySaved == false) {
         await ErrorLoggingService.logMediumError(
-          errorCode: 'ERRSYS153',
-          errorMessage: 'Failed to persist alarm metadata',
-          errorContext: {
-            'notification_id': notificationId,
-            'scheduled_time': scheduledTime.toIso8601String(),
-            'date_key': dateKey,
-            'time_saved': timeSaved,
-            'title_saved': titleSaved,
-            'body_saved': bodySaved,
-          },
+          error: ErrorContext.create(
+            errorCode: 'ERRSYS153',
+            errorMessage: 'Failed to persist alarm metadata',
+            severity: ErrorSeverity.medium,
+            errorContext: {
+              'notification_id': notificationId,
+              'scheduled_time': scheduledTime.toIso8601String(),
+              'date_key': dateKey,
+              'time_saved': timeSaved,
+              'title_saved': titleSaved,
+              'body_saved': bodySaved,
+            },
+          ),
         );
       }
     } catch (e, stackTrace) {
       await ErrorLoggingService.logMediumError(
-        errorCode: 'ERRSYS154',
-        errorMessage: 'Error saving alarm metadata: $e',
-        stackTrace: stackTrace.toString(),
-        errorContext: {
-          'notification_id': notificationId,
-          'scheduled_time': scheduledTime.toIso8601String(),
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS154',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: stackTrace,
+          errorContext: {
+            'notification_id': notificationId,
+            'scheduled_time': scheduledTime.toIso8601String(),
+          },
+        ),
       );
     }
   }
@@ -750,23 +781,32 @@ class NotificationService {
 
       if (!timeRemoved || !titleRemoved || !bodyRemoved) {
         await ErrorLoggingService.logMediumError(
-          errorCode: 'ERRSYS160',
-          errorMessage: 'Failed to clear alarm metadata',
-          errorContext: {
-            'notification_id': notificationId,
-            'date_key': dateKey,
-            'time_removed': timeRemoved,
-            'title_removed': titleRemoved,
-            'body_removed': bodyRemoved,
-          },
+          error: ErrorContext.create(
+            errorCode: 'ERRSYS160',
+            errorMessage: 'Failed to clear alarm metadata',
+            severity: ErrorSeverity.medium,
+            errorContext: {
+              'notification_id': notificationId,
+              'date_key': dateKey,
+              'time_removed': timeRemoved,
+              'title_removed': titleRemoved,
+              'body_removed': bodyRemoved,
+            },
+          ),
         );
       }
     } catch (e, stackTrace) {
       await ErrorLoggingService.logMediumError(
-        errorCode: 'ERRSYS161',
-        errorMessage: 'Error clearing alarm metadata: $e',
-        stackTrace: stackTrace.toString(),
-        errorContext: {'notification_id': notificationId, 'date_key': dateKey},
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS161',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: stackTrace,
+          errorContext: {
+            'notification_id': notificationId,
+            'date_key': dateKey,
+          },
+        ),
       );
     }
   }
@@ -780,25 +820,31 @@ class NotificationService {
       final cancelled = await NativeAlarmManager.cancelAlarm(notificationId);
       if (cancelled != true) {
         await ErrorLoggingService.logMediumError(
-          errorCode: 'ERRSYS155',
-          errorMessage: 'Native alarm cancel returned false',
+          error: ErrorContext.create(
+            errorCode: 'ERRSYS155',
+            errorMessage: 'Native alarm cancel returned false',
+            severity: ErrorSeverity.medium,
+            errorContext: {
+              'notification_id': notificationId,
+              'context': context,
+              'user_id': userId,
+            },
+          ),
+        );
+      }
+    } catch (e, stackTrace) {
+      await ErrorLoggingService.logMediumError(
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS156',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: stackTrace,
           errorContext: {
             'notification_id': notificationId,
             'context': context,
             'user_id': userId,
           },
-        );
-      }
-    } catch (e, stackTrace) {
-      await ErrorLoggingService.logMediumError(
-        errorCode: 'ERRSYS156',
-        errorMessage: 'Native alarm cancel failed: $e',
-        stackTrace: stackTrace.toString(),
-        errorContext: {
-          'notification_id': notificationId,
-          'context': context,
-          'user_id': userId,
-        },
+        ),
       );
     }
   }
@@ -808,13 +854,16 @@ class NotificationService {
       await _rescheduleTodayNotifications(userId: userId);
     } catch (e, stackTrace) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS157',
-        errorMessage: 'Reschedule based on habits failed: $e',
-        stackTrace: stackTrace.toString(),
-        errorContext: {
-          'user_id': userId,
-          'operation': 'reschedule_based_on_habits',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS157',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: stackTrace,
+          errorContext: {
+            'user_id': userId,
+            'operation': 'reschedule_based_on_habits',
+          },
+        ),
       );
     }
   }
@@ -845,9 +894,12 @@ class NotificationService {
       final resolvedUserId = userId ?? _getCurrentUserId();
       if (resolvedUserId == null) {
         await ErrorLoggingService.logLowError(
-          errorCode: 'ERRSYS158',
-          errorMessage: 'User ID missing while scheduling notifications',
-          errorContext: {'operation': 'schedule_future_window'},
+          error: ErrorContext.create(
+            errorCode: 'ERRSYS158',
+            errorMessage: 'User ID missing while scheduling notifications',
+            severity: ErrorSeverity.low,
+            errorContext: {'operation': 'schedule_future_window'},
+          ),
         );
       }
 
@@ -889,13 +941,16 @@ class NotificationService {
       print('🔔 DEBUG: Future window scheduled successfully!');
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS034',
-        errorMessage: 'Failed to schedule future window: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'scheduling_time': DateTime.now().toIso8601String(),
-          'settings': (await getNotificationSettings()).toJson(),
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS034',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'scheduling_time': DateTime.now().toIso8601String(),
+            'settings': (await getNotificationSettings()).toJson(),
+          },
+        ),
       );
     }
   }
@@ -913,10 +968,13 @@ class NotificationService {
       }
     } catch (e, stackTrace) {
       await ErrorLoggingService.logMediumError(
-        errorCode: 'ERRSYS171',
-        errorMessage: 'Failed to cancel future window: ${e.toString()}',
-        stackTrace: stackTrace.toString(),
-        errorContext: {'cancel_time': DateTime.now().toIso8601String()},
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS171',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: stackTrace,
+          errorContext: {'cancel_time': DateTime.now().toIso8601String()},
+        ),
       );
     }
   }
@@ -1268,14 +1326,16 @@ class NotificationService {
     } catch (e) {
       print('🔔 DEBUG: Error sending immediate notification: $e');
       await ErrorLoggingService.logMediumError(
-        errorCode: 'ERRSYS061',
-        errorMessage:
-            'Failed to send immediate test notification: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'test_type': 'immediate',
-          'test_time': DateTime.now().toIso8601String(),
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS061',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'test_type': 'immediate',
+            'test_time': DateTime.now().toIso8601String(),
+          },
+        ),
       );
     }
   }
@@ -1310,15 +1370,17 @@ class NotificationService {
       print('🔔 DEBUG: Error scheduling with AlarmManager: $e');
       print('🔔 DEBUG: Stack trace: ${StackTrace.current}');
       await ErrorLoggingService.logMediumError(
-        errorCode: 'ERRSYS062',
-        errorMessage:
-            'Failed to schedule test notification with AlarmManager: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'test_type': 'hardcoded_1min',
-          'test_time': DateTime.now().toIso8601String(),
-          'scheduled_time': scheduledTime.toIso8601String(),
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS062',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'test_type': 'hardcoded_1min',
+            'test_time': DateTime.now().toIso8601String(),
+            'scheduled_time': scheduledTime.toIso8601String(),
+          },
+        ),
       );
     }
   }
@@ -1370,13 +1432,16 @@ class NotificationService {
       print('🔔 DEBUG: Morning reminders cancelled successfully');
     } catch (e) {
       await ErrorLoggingService.logMediumError(
-        errorCode: 'ERRSYS036',
-        errorMessage: 'Failed to cancel morning reminders: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'cancellation_time': DateTime.now().toIso8601String(),
-          'reminder_ids': [reminder1Id, reminder2Id, reminder3Id],
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS036',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'cancellation_time': DateTime.now().toIso8601String(),
+            'reminder_ids': [reminder1Id, reminder2Id, reminder3Id],
+          },
+        ),
       );
     }
   }
@@ -1412,13 +1477,16 @@ class NotificationService {
       print('🔔 DEBUG: Bedtime reminder cancelled successfully');
     } catch (e) {
       await ErrorLoggingService.logMediumError(
-        errorCode: 'ERRSYS037',
-        errorMessage: 'Failed to cancel bedtime reminder: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'cancellation_time': DateTime.now().toIso8601String(),
-          'reminder_id': bedtimeId,
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS037',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'cancellation_time': DateTime.now().toIso8601String(),
+            'reminder_id': bedtimeId,
+          },
+        ),
       );
     }
   }
@@ -1467,15 +1535,18 @@ class NotificationService {
       }
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS038',
-        errorMessage: 'Daily reset failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'reset_time': DateTime.now().toIso8601String(),
-          'last_reset': _prefs?.getString(
-            NotificationStorageKeys.lastResetDate,
-          ),
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS038',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'reset_time': DateTime.now().toIso8601String(),
+            'last_reset': _prefs?.getString(
+              NotificationStorageKeys.lastResetDate,
+            ),
+          },
+        ),
       );
     }
   }

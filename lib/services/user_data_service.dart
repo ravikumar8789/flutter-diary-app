@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:async';
 import 'error_logging_service.dart';
+import '../models/error_models.dart';
 import 'timezone_service.dart';
 import 'grace_system_service.dart';
 import 'data_fetch_service.dart';
@@ -74,10 +75,13 @@ class UserDataService {
     } catch (e) {
       // Log error
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS117',
-        errorMessage: 'User data fetch failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {'operation': 'fetch_user_data'},
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS117',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'operation': 'fetch_user_data'},
+        ),
       );
       return UserDataResult(
         success: false,
@@ -114,14 +118,16 @@ class UserDataService {
           // Update timezone in background (don't await)
           TimezoneService.initializeUserTimezone(userId).catchError((e) {
             ErrorLoggingService.logLowError(
-              errorCode: 'ERRSYS165',
-              errorMessage:
-                  'Timezone update failed for existing user: ${e.toString()}',
-              stackTrace: StackTrace.current.toString(),
-              errorContext: {
-                'user_id': userId,
-                'operation': 'update_existing_user_timezone',
-              },
+              error: ErrorContext.fromException(
+                errorCode: 'ERRSYS165',
+                severity: ErrorSeverity.low,
+                exception: e,
+                stackTrace: StackTrace.current,
+                errorContext: {
+                  'user_id': userId,
+                  'operation': 'update_existing_user_timezone',
+                },
+              ),
             );
             return 'UTC';
           });
@@ -214,13 +220,15 @@ class UserDataService {
       }
       // Still null after retry - log as warning
       await ErrorLoggingService.logMediumError(
-        errorCode: 'ERRSYS119',
-        errorMessage: 'User not found after duplicate key retry',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'operation': 'retry_fetch_after_duplicate',
-        },
+        error: ErrorContext.create(
+          errorCode: 'ERRSYS119',
+          errorMessage: 'User not found after duplicate key retry',
+          severity: ErrorSeverity.medium,
+          errorContext: {
+            'user_id': userId,
+            'operation': 'retry_fetch_after_duplicate',
+          },
+        ),
       );
       return DataResult(success: false, error: 'User not found', data: null);
     } catch (retryError) {
@@ -257,21 +265,23 @@ class UserDataService {
         : 'User profile fetch failed: $errorString';
 
     await ErrorLoggingService.logHighError(
-      errorCode: errorCode,
-      errorMessage: errorMessage,
-      stackTrace: StackTrace.current.toString(),
-      errorContext: {
-        'user_id': userId,
-        'operation': operation,
-        'error_type': isNetworkError
-            ? 'network'
-            : (isDbError ? 'database' : 'unknown'),
-        'error_details': {
-          'error_string': errorString,
-          'error_runtime_type': error.runtimeType.toString(),
-          'timestamp': DateTime.now().toIso8601String(),
+      error: ErrorContext.create(
+        errorCode: errorCode,
+        errorMessage: errorMessage,
+        severity: ErrorSeverity.high,
+        errorContext: {
+          'user_id': userId,
+          'operation': operation,
+          'error_type': isNetworkError
+              ? 'network'
+              : (isDbError ? 'database' : 'unknown'),
+          'error_details': {
+            'error_string': errorString,
+            'error_runtime_type': error.runtimeType.toString(),
+            'timestamp': DateTime.now().toIso8601String(),
+          },
         },
-      },
+      ),
     );
   }
 
@@ -285,20 +295,23 @@ class UserDataService {
     final isDuplicateKey = _isDuplicateKeyError(error);
 
     await ErrorLoggingService.logHighError(
-      errorCode: isDuplicateKey ? 'ERRSYS119' : 'ERRSYS120',
-      errorMessage: 'User creation failed: $errorString',
-      stackTrace: StackTrace.current.toString(),
-      errorContext: {
-        'user_id': userId,
-        'operation': operation,
-        'error_type': isDuplicateKey ? 'duplicate_key' : 'insert_error',
-        'error_code': isDuplicateKey ? '23505' : 'unknown',
-        'error_details': {
-          'error_string': errorString,
-          'error_runtime_type': error.runtimeType.toString(),
-          'timestamp': DateTime.now().toIso8601String(),
+      error: ErrorContext.fromException(
+        errorCode: isDuplicateKey ? 'ERRSYS119' : 'ERRSYS120',
+        severity: ErrorSeverity.high,
+        exception: error,
+        stackTrace: StackTrace.current,
+        errorContext: {
+          'user_id': userId,
+          'operation': operation,
+          'error_type': isDuplicateKey ? 'duplicate_key' : 'insert_error',
+          'error_code': isDuplicateKey ? '23505' : 'unknown',
+          'error_details': {
+            'error_string': errorString,
+            'error_runtime_type': error.runtimeType.toString(),
+            'timestamp': DateTime.now().toIso8601String(),
+          },
         },
-      },
+      ),
     );
   }
 
@@ -395,10 +408,13 @@ class UserDataService {
     } catch (e) {
       // Log error
       await ErrorLoggingService.logMediumError(
-        errorCode: 'ERRSYS119',
-        errorMessage: 'User stats fetch failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {'user_id': userId, 'operation': 'fetch_user_stats'},
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS119',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'user_id': userId, 'operation': 'fetch_user_stats'},
+        ),
       );
       // Return default stats if there's an error
       return DataResult(
@@ -514,11 +530,13 @@ class UserDataService {
     } catch (e) {
       print('🔥 STREAK DEBUG: _calculateStreakFromTodayHabits ERROR: $e');
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS160',
-        errorMessage:
-            'Calculate streak from today habits failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {'user_id': userId},
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS160',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'user_id': userId},
+        ),
       );
       return 0;
     }
@@ -617,14 +635,17 @@ class UserDataService {
     } catch (e) {
       print('🔥 STREAK DEBUG: _persistStreak ERROR: $e');
       await ErrorLoggingService.logLowError(
-        errorCode: 'ERRSYS156',
-        errorMessage: 'Persist streak failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'operation': 'persist_streak',
-          'computed': computedStreak,
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS156',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'operation': 'persist_streak',
+            'computed': computedStreak,
+          },
+        ),
       );
     }
   }
@@ -675,9 +696,13 @@ class UserDataService {
       } catch (e) {
         print('🔥 STREAK DEBUG: _scheduleStreakSync ERROR: $e');
         await ErrorLoggingService.logHighError(
-          errorCode: 'ERRSYS158',
-          errorMessage: 'Failed to sync streak via RPC: $e',
-          errorContext: {'userId': userId},
+          error: ErrorContext.fromException(
+            errorCode: 'ERRSYS158',
+            severity: ErrorSeverity.high,
+            exception: e,
+            stackTrace: StackTrace.current,
+            errorContext: {'userId': userId},
+          ),
         );
       }
     });
@@ -844,10 +869,13 @@ class UserDataService {
       print('🔥 STREAK DEBUG: calculateStreakWithGrace ERROR: $e');
       // Log error
       await ErrorLoggingService.logMediumError(
-        errorCode: 'ERRSYS119',
-        errorMessage: 'Streak calculation with grace failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {'operation': 'calculate_streak_with_grace'},
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS119',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'operation': 'calculate_streak_with_grace'},
+        ),
       );
       // Fallback to today's streak calculation
       print('🔥 STREAK DEBUG: Falling back to _calculateStreakFromTodayHabits');
@@ -1245,10 +1273,13 @@ class UserDataService {
     } catch (e) {
       print('🔥 STREAK DEBUG: calculateStreakOnAppLaunch ERROR: $e');
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS162',
-        errorMessage: 'App launch streak calculation failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {'user_id': userId},
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS162',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'user_id': userId},
+        ),
       );
     }
   }
@@ -1349,15 +1380,17 @@ class UserDataService {
             print('🔥 STREAK DEBUG: Date parsing error: $e');
             // Date parsing failed, continue to recalculate to be safe
             await ErrorLoggingService.logLowError(
-              errorCode: 'ERRSYS159',
-              errorMessage:
-                  'Date parsing failed in recalculateStreak: ${e.toString()}',
-              stackTrace: StackTrace.current.toString(),
-              errorContext: {
-                'user_id': userId,
-                'last_entry_date': lastEntryDateStr,
-                'operation': 'recalculate_streak_date_check',
-              },
+              error: ErrorContext.fromException(
+                errorCode: 'ERRSYS159',
+                severity: ErrorSeverity.low,
+                exception: e,
+                stackTrace: StackTrace.current,
+                errorContext: {
+                  'user_id': userId,
+                  'last_entry_date': lastEntryDateStr,
+                  'operation': 'recalculate_streak_date_check',
+                },
+              ),
             );
             // Continue to recalculate if date parsing fails
           }
@@ -1374,10 +1407,13 @@ class UserDataService {
     } catch (e) {
       print('🔥 STREAK DEBUG: recalculateStreak ERROR: $e');
       await ErrorLoggingService.logLowError(
-        errorCode: 'ERRSYS157',
-        errorMessage: 'Streak recalculation failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {'user_id': userId, 'operation': 'recalculate_streak'},
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS157',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'user_id': userId, 'operation': 'recalculate_streak'},
+        ),
       );
     } finally {
       _recalcInProgress.remove(userId);
@@ -1429,10 +1465,13 @@ class UserDataService {
     } catch (e) {
       // Log error
       await ErrorLoggingService.logMediumError(
-        errorCode: 'ERRSYS121',
-        errorMessage: 'Failed to use grace day: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {'user_id': userId, 'operation': 'use_grace_day'},
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS121',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'user_id': userId, 'operation': 'use_grace_day'},
+        ),
       );
     }
   }
@@ -1508,13 +1547,16 @@ class UserDataService {
     } catch (e) {
       // Log error
       await ErrorLoggingService.logMediumError(
-        errorCode: 'ERRSYS120',
-        errorMessage: 'User preferences fetch failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'operation': 'fetch_user_preferences',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS120',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'operation': 'fetch_user_preferences',
+          },
+        ),
       );
       // Return default preferences if none exist
       return DataResult(

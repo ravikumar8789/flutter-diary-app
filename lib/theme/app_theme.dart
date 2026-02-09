@@ -45,6 +45,54 @@ class AppTheme {
   ); // Medium warm light text
 
   static ThemeData get lightTheme {
+    final baseTextTheme = GoogleFonts.nunitoTextTheme();
+    final lightTextTheme = baseTextTheme
+        .apply(
+          bodyColor: textPrimaryColor,
+          displayColor: textPrimaryColor,
+        )
+        .copyWith(
+          displayLarge: GoogleFonts.nunito(
+            fontSize: 32,
+            fontWeight: FontWeight.w600,
+            color: textPrimaryColor,
+          ),
+          headlineLarge: GoogleFonts.nunito(
+            fontSize: 28,
+            fontWeight: FontWeight.w600,
+            color: textPrimaryColor,
+          ),
+          headlineMedium: GoogleFonts.nunito(
+            fontSize: 24,
+            fontWeight: FontWeight.w500,
+            color: textPrimaryColor,
+          ),
+          titleLarge: GoogleFonts.nunito(
+            fontSize: 20,
+            fontWeight: FontWeight.w500,
+            color: textPrimaryColor,
+          ),
+          bodyLarge: GoogleFonts.nunito(
+            fontSize: 16,
+            color: textPrimaryColor,
+          ),
+          bodyMedium: GoogleFonts.nunito(
+            fontSize: 14,
+            color: textSecondaryColor,
+          ),
+          bodySmall: baseTextTheme.bodySmall?.copyWith(
+            color: textSecondaryColor,
+          ),
+          labelLarge: baseTextTheme.labelLarge?.copyWith(
+            color: textSecondaryColor,
+          ),
+          labelMedium: baseTextTheme.labelMedium?.copyWith(
+            color: textSecondaryColor,
+          ),
+          labelSmall: baseTextTheme.labelSmall?.copyWith(
+            color: textSecondaryColor,
+          ),
+        );
     return ThemeData(
       useMaterial3: true,
       colorScheme: ColorScheme.light(
@@ -62,30 +110,7 @@ class AppTheme {
         onSurfaceVariant: textPrimaryColor.withOpacity(0.7), // Muted text
       ),
       scaffoldBackgroundColor: backgroundColor,
-      textTheme: GoogleFonts.nunitoTextTheme().copyWith(
-        displayLarge: GoogleFonts.nunito(
-          fontSize: 32,
-          fontWeight: FontWeight.w600,
-          color: textPrimaryColor,
-        ),
-        headlineLarge: GoogleFonts.nunito(
-          fontSize: 28,
-          fontWeight: FontWeight.w600,
-          color: textPrimaryColor,
-        ),
-        headlineMedium: GoogleFonts.nunito(
-          fontSize: 24,
-          fontWeight: FontWeight.w500,
-          color: textPrimaryColor,
-        ),
-        titleLarge: GoogleFonts.nunito(
-          fontSize: 20,
-          fontWeight: FontWeight.w500,
-          color: textPrimaryColor,
-        ),
-        bodyLarge: GoogleFonts.nunito(fontSize: 16, color: textPrimaryColor),
-        bodyMedium: GoogleFonts.nunito(fontSize: 14, color: textSecondaryColor),
-      ),
+      textTheme: lightTextTheme,
       appBarTheme: AppBarTheme(
         elevation: 0,
         backgroundColor: backgroundColor,
@@ -156,6 +181,54 @@ class AppTheme {
   }
 
   static ThemeData get darkTheme {
+    final baseTextTheme = GoogleFonts.nunitoTextTheme();
+    final darkTextTheme = baseTextTheme
+        .apply(
+          bodyColor: darkTextPrimaryColor,
+          displayColor: darkTextPrimaryColor,
+        )
+        .copyWith(
+          displayLarge: GoogleFonts.nunito(
+            fontSize: 32,
+            fontWeight: FontWeight.w600,
+            color: darkTextPrimaryColor,
+          ),
+          headlineLarge: GoogleFonts.nunito(
+            fontSize: 28,
+            fontWeight: FontWeight.w600,
+            color: darkTextPrimaryColor,
+          ),
+          headlineMedium: GoogleFonts.nunito(
+            fontSize: 24,
+            fontWeight: FontWeight.w500,
+            color: darkTextPrimaryColor,
+          ),
+          titleLarge: GoogleFonts.nunito(
+            fontSize: 20,
+            fontWeight: FontWeight.w500,
+            color: darkTextPrimaryColor,
+          ),
+          bodyLarge: GoogleFonts.nunito(
+            fontSize: 16,
+            color: darkTextPrimaryColor,
+          ),
+          bodyMedium: GoogleFonts.nunito(
+            fontSize: 14,
+            color: darkTextSecondaryColor,
+          ),
+          bodySmall: baseTextTheme.bodySmall?.copyWith(
+            color: darkTextSecondaryColor,
+          ),
+          labelLarge: baseTextTheme.labelLarge?.copyWith(
+            color: darkTextSecondaryColor,
+          ),
+          labelMedium: baseTextTheme.labelMedium?.copyWith(
+            color: darkTextSecondaryColor,
+          ),
+          labelSmall: baseTextTheme.labelSmall?.copyWith(
+            color: darkTextSecondaryColor,
+          ),
+        );
     return ThemeData(
       useMaterial3: true,
       colorScheme: ColorScheme.dark(
@@ -173,36 +246,7 @@ class AppTheme {
         onSurfaceVariant: darkTextPrimaryColor.withOpacity(0.7), // Muted text
       ),
       scaffoldBackgroundColor: darkBackgroundColor,
-      textTheme: GoogleFonts.nunitoTextTheme().copyWith(
-        displayLarge: GoogleFonts.nunito(
-          fontSize: 32,
-          fontWeight: FontWeight.w600,
-          color: darkTextPrimaryColor,
-        ),
-        headlineLarge: GoogleFonts.nunito(
-          fontSize: 28,
-          fontWeight: FontWeight.w600,
-          color: darkTextPrimaryColor,
-        ),
-        headlineMedium: GoogleFonts.nunito(
-          fontSize: 24,
-          fontWeight: FontWeight.w500,
-          color: darkTextPrimaryColor,
-        ),
-        titleLarge: GoogleFonts.nunito(
-          fontSize: 20,
-          fontWeight: FontWeight.w500,
-          color: darkTextPrimaryColor,
-        ),
-        bodyLarge: GoogleFonts.nunito(
-          fontSize: 16,
-          color: darkTextPrimaryColor,
-        ),
-        bodyMedium: GoogleFonts.nunito(
-          fontSize: 14,
-          color: darkTextSecondaryColor,
-        ),
-      ),
+      textTheme: darkTextTheme,
       appBarTheme: AppBarTheme(
         elevation: 0,
         backgroundColor: darkBackgroundColor,

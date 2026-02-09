@@ -1,0 +1,221 @@
+#,Error Code,Severity,Error Message,File Location
+1,ERRUI002,MEDIUM,"Failed to load month navigation: ${error.toString()}",lib/screens/analytics_screen.dart:246
+2,ERRUI003,MEDIUM,"Failed to load monthly content: ${error.toString()}",lib/screens/analytics_screen.dart:601
+3,ERRUI003,MEDIUM,"Failed to build monthly content: ${e.toString()}",lib/screens/analytics_screen.dart:651
+4,ERRSYS125,MEDIUM,"Load user tickets failed: ${e.toString()}",lib/screens/my_tickets_screen.dart:51
+5,ERRSYS124,MEDIUM,"Help support screen error: ${e.toString()}",lib/screens/help_support_screen.dart:84
+6,ERRSYS093,HIGH,"Current PIN validation failed: ${e.toString()}",lib/screens/change_pin_screen.dart:322
+7,ERRSYS094,HIGH,"PIN change failed: ${e.toString()}",lib/screens/change_pin_screen.dart:379
+8,ERRSYS094,HIGH,"Failed to load security questions: ${e.toString()}",lib/screens/pin_recovery_screen.dart:56
+9,ERRSYS095,HIGH,"Security answers verification failed: ${e.toString()}",lib/screens/pin_recovery_screen.dart:624
+10,ERRSYS096,HIGH,"PIN reset failed: ${e.toString()}",lib/screens/pin_recovery_screen.dart:696
+11,ERRSYS092,HIGH,"PIN confirmation validation failed: ${e.toString()}",lib/screens/pin_setup_screen.dart:340
+12,ERRSYS091,HIGH,"PIN entry processing failed: ${e.toString()}",lib/screens/pin_lock_screen.dart:179
+13,ERRSYS170,MEDIUM,"Prefetch 7 days failed in splash screen: ${e.toString()}",lib/screens/splash_screen.dart:154
+14,ERRSYS171,MEDIUM,"Prefetch today's data failed in splash screen: ${e.toString()}",lib/screens/splash_screen.dart:185
+15,ERRSYS093,HIGH,"Security questions save failed: ${e.toString()}",lib/screens/security_questions_screen.dart:403
+16,ERRAUTH001,MEDIUM,"Registration error: ${e.toString()}",lib/screens/register_screen.dart:122
+17,ERRSYS168,MEDIUM,"Failed to clear user data during logout: ${e.toString()}",lib/screens/profile_screen.dart:556
+18,ERRSYS169,LOW,"Failed to set data fetch flag during logout: ${e.toString()}",lib/screens/profile_screen.dart:574
+19,ERRAUTH041,MEDIUM,"Logout failed: ${e.toString()}",lib/screens/profile_screen.dart:630
+20,ERRSYS183,LOW,"Failed to set data fetch flag after login: ${e.toString()}",lib/screens/login_screen.dart:55
+21,ERRAUTH002,MEDIUM,"Login error: ${e.toString()}",lib/screens/login_screen.dart:112
+22,ERRSYS184,MEDIUM,"Prefetch failed in HomeScreen after login: ${e.toString()}",lib/screens/home_screen.dart:142
+23,ERRSYS185,LOW,"Failed to check prefetch flag in HomeScreen: ${e.toString()}",lib/screens/home_screen.dart:155
+24,ERRSYS031,LOW,"Notification service initialization failed: ${e.toString()}",lib/services/notification_service.dart:383
+25,ERRSYS059,MEDIUM,"Failed to create notification channel: ${e.toString()}",lib/services/notification_service.dart:420
+26,ERRSYS032,LOW,Notification permission denied by user,lib/services/notification_service.dart:444
+27,ERRSYS033,MEDIUM,"Permission request failed: ${e.toString()}",lib/services/notification_service.dart:457
+28,ERRSYS134,LOW,"Settings save failed (syncNotificationSettingsToCloud call): ${e.toString()}",lib/services/notification_service.dart:530
+29,ERRSYS162,MEDIUM,Notification titles/bodies length mismatch,lib/services/notification_service.dart:581
+30,ERRDATA120,MEDIUM,"Failed to get grace status: $e",lib/services/grace_system_service.dart:84
+31,ERRSYS159,MEDIUM,"Reschedule notifications after habits update failed: $e",lib/services/grace_system_service.dart:282
+32,ERRDATA121,MEDIUM,"Failed to track task completion: $e",lib/services/grace_system_service.dart:299
+33,ERRDATA122,MEDIUM,"Failed to use grace day: $e",lib/services/grace_system_service.dart:355
+34,ERRDATA123,HIGH,"Failed to sync streak data via RPC: ${e.toString()}",lib/services/grace_system_service.dart:472
+35,ERRDATA127,MEDIUM,"Failed to get/create today habits record: $e",lib/services/grace_system_service.dart:551
+36,ERRDATA123,MEDIUM,"Failed to initialize grace system: $e",lib/providers/grace_system_provider.dart:68
+37,ERRDATA124,MEDIUM,"Failed to track task completion: $e",lib/providers/grace_system_provider.dart:114
+38,ERRDATA125,MEDIUM,"Failed to use grace day: $e",lib/providers/grace_system_provider.dart:145
+39,ERRDATA126,MEDIUM,"Failed to refresh grace status: $e",lib/providers/grace_system_provider.dart:182
+40,ERRDATA260,HIGH,"Batch save failed: ${e.toString()}",lib/providers/entry_provider.dart:555
+41,ERRDATA270,HIGH,"Local entry save failed in batch: ${e.toString()}",lib/providers/entry_provider.dart:586
+42,ERRDATA271,HIGH,"Local affirmations save failed in batch: ${e.toString()}",lib/providers/entry_provider.dart:610
+43,ERRDATA272,HIGH,"Local priorities save failed in batch: ${e.toString()}",lib/providers/entry_provider.dart:631
+44,ERRDATA273,HIGH,"Local meals save failed in batch: ${e.toString()}",lib/providers/entry_provider.dart:658
+45,ERRDATA274,HIGH,"Local gratitude save failed in batch: ${e.toString()}",lib/providers/entry_provider.dart:681
+46,ERRDATA275,HIGH,"Local self-care save failed in batch: ${e.toString()}",lib/providers/entry_provider.dart:713
+47,ERRDATA276,HIGH,"Local shower bath save failed in batch: ${e.toString()}",lib/providers/entry_provider.dart:748
+48,ERRDATA277,HIGH,"Local tomorrow notes save failed in batch: ${e.toString()}",lib/providers/entry_provider.dart:773
+49,ERRDATA261,LOW,"Batch grace tracking failed: ${e.toString()}",lib/providers/entry_provider.dart:854
+50,ERRDATA280,MEDIUM,"Gap detection failed: ${e.toString()}",lib/providers/entry_provider.dart:1005
+51,ERRSYS165,LOW,"Timezone update failed for existing user: ${e.toString()}",lib/services/user_data_service.dart:117
+52,ERRSYS119,MEDIUM,User not found after duplicate key retry,lib/services/user_data_service.dart:217
+53,ERRSYS120,HIGH,"User profile fetch failed: $errorString",lib/services/user_data_service.dart:260
+54,ERRSYS121,HIGH,"User creation failed: $errorString",lib/services/user_data_service.dart:288
+55,ERRSYS119,MEDIUM,"User stats fetch failed: ${e.toString()}",lib/services/user_data_service.dart:398
+56,ERRSYS160,MEDIUM,"Calculate streak from today habits failed: ${e.toString()}",lib/services/user_data_service.dart:517
+57,ERRSYS156,LOW,"Persist streak failed: ${e.toString()}",lib/services/user_data_service.dart:620
+58,ERRSYS158,HIGH,"Failed to sync streak via RPC: $e",lib/services/user_data_service.dart:678
+59,ERRSYS119,MEDIUM,"Streak calculation with grace failed: ${e.toString()}",lib/services/user_data_service.dart:847
+60,ERRSYS162,MEDIUM,"App launch streak calculation failed: ${e.toString()}",lib/services/user_data_service.dart:1248
+61,ERRSYS159,LOW,"Date parsing failed in recalculateStreak: ${e.toString()}",lib/services/user_data_service.dart:1352
+62,ERRSYS157,LOW,"Streak recalculation failed: ${e.toString()}",lib/services/user_data_service.dart:1377
+63,ERRSYS121,MEDIUM,"Failed to use grace day: ${e.toString()}",lib/services/user_data_service.dart:1432
+64,ERRSYS120,MEDIUM,"User preferences fetch failed: ${e.toString()}",lib/services/user_data_service.dart:1511
+65,ERRDATA202,HIGH,"DataRepository fetch failed: ${e.toString()}",lib/repositories/data_repository.dart:119
+66,ERRDATA250,LOW,"Background refetch failed: ${e.toString()}",lib/repositories/data_repository.dart:151
+67,ERRDATA203,LOW,"Cache invalidation failed: ${e.toString()}",lib/repositories/data_repository.dart:176
+68,ERRDATA251,LOW,"Execute pending invalidations failed: ${e.toString()}",lib/repositories/data_repository.dart:216
+69,ERRDATA252,LOW,"Immediate cache invalidation failed: ${e.toString()}",lib/repositories/data_repository.dart:233
+70,ERRDATA204,LOW,"Entries cache invalidation failed: ${e.toString()}",lib/repositories/data_repository.dart:266
+71,ERRDATA209,LOW,"Home summary cache invalidation failed: ${e.toString()}",lib/repositories/data_repository.dart:285
+72,ERRDATA205,LOW,"Habits cache invalidation failed: ${e.toString()}",lib/repositories/data_repository.dart:318
+73,ERRCACHE001,LOW,"Monthly cache invalidation failed: ${e.toString()}",lib/repositories/data_repository.dart:344
+74,ERRDATA206,LOW,"Clear cache failed: ${e.toString()}",lib/repositories/data_repository.dart:362
+75,ERRDATA207,LOW,"Cache cleanup failed: ${e.toString()}",lib/repositories/data_repository.dart:385
+76,ERRDATA208,LOW,"DataRepository dispose failed: ${e.toString()}",lib/repositories/data_repository.dart:417
+77,ERRSYS101,HIGH,"Entry sync failed: ${e.toString()}",lib/services/sync/supabase_sync_service.dart:19
+78,ERRSYS102,HIGH,"Affirmations sync failed: ${e.toString()}",lib/services/sync/supabase_sync_service.dart:48
+79,ERRSYS103,HIGH,"Priorities sync failed: ${e.toString()}",lib/services/sync/supabase_sync_service.dart:74
+80,ERRSYS104,HIGH,"Meals sync failed: ${e.toString()}",lib/services/sync/supabase_sync_service.dart:97
+81,ERRSYS105,HIGH,"Gratitude sync failed: ${e.toString()}",lib/services/sync/supabase_sync_service.dart:121
+82,ERRSYS106,HIGH,"Self care sync failed: ${e.toString()}",lib/services/sync/supabase_sync_service.dart:144
+83,ERRSYS107,HIGH,"Shower bath sync failed: ${e.toString()}",lib/services/sync/supabase_sync_service.dart:166
+84,ERRSYS108,HIGH,"Tomorrow notes sync failed: ${e.toString()}",lib/services/sync/supabase_sync_service.dart:193
+85,ERRSYS109,HIGH,"Entry fetch failed: ${e.toString()}",lib/services/sync/supabase_sync_service.dart:246
+86,ERRSYS110,HIGH,"Affirmations fetch failed: ${e.toString()}",lib/services/sync/supabase_sync_service.dart:273
+87,ERRSYS111,HIGH,"Priorities fetch failed: ${e.toString()}",lib/services/sync/supabase_sync_service.dart:296
+88,ERRSYS112,HIGH,"Meals fetch failed: ${e.toString()}",lib/services/sync/supabase_sync_service.dart:319
+89,ERRSYS113,HIGH,"Gratitude fetch failed: ${e.toString()}",lib/services/sync/supabase_sync_service.dart:342
+90,ERRSYS114,HIGH,"Self care fetch failed: ${e.toString()}",lib/services/sync/supabase_sync_service.dart:365
+91,ERRSYS115,HIGH,"Shower bath fetch failed: ${e.toString()}",lib/services/sync/supabase_sync_service.dart:388
+92,ERRSYS116,HIGH,"Tomorrow notes fetch failed: ${e.toString()}",lib/services/sync/supabase_sync_service.dart:413
+93,ERRSYS117,HIGH,"Streak sync failed: ${e.toString()}",lib/services/sync/supabase_sync_service.dart:453
+94,ERRSYS118,HIGH,"Habits daily sync failed: ${e.toString()}",lib/services/sync/supabase_sync_service.dart:498
+95,ERRSYS200,HIGH,"RPC batch save failed: ${result['error_message']}",lib/services/sync/supabase_sync_service.dart:582
+96,ERRSYS200,HIGH,"RPC batch save exception: ${e.toString()}",lib/services/sync/supabase_sync_service.dart:595
+97,ERRSYS300,HIGH,"RPC batch streak update failed: ${result['error_message']}",lib/services/sync/supabase_sync_service.dart:674
+98,ERRSYS300,HIGH,"RPC batch streak update exception: ${e.toString()}",lib/services/sync/supabase_sync_service.dart:687
+99,ERRSYS164,MEDIUM,"Failed to prefetch 7 days data: ${e.toString()}",lib/services/data_prefetch_service.dart:43
+100,ERRSYS171,MEDIUM,"Failed to prefetch today's data: ${e.toString()}",lib/services/data_prefetch_service.dart:91
+101,ERRSYS165,MEDIUM,"Failed to prefetch entries with joins: ${e.toString()}",lib/services/data_prefetch_service.dart:128
+102,ERRSYS166,MEDIUM,"Failed to prefetch habits: ${e.toString()}",lib/services/data_prefetch_service.dart:158
+103,ERRSYS167,MEDIUM,"Failed to prefetch streaks: ${e.toString()}",lib/services/data_prefetch_service.dart:181
+104,ERRSYS181,MEDIUM,"Date parsing failed in entry: ${e.toString()}",lib/services/data_prefetch_service.dart:215
+105,ERRSYS173,MEDIUM,"Failed to store entry_affirmations: ${e.toString()}",lib/services/data_prefetch_service.dart:272
+106,ERRSYS174,MEDIUM,"Failed to store entry_priorities: ${e.toString()}",lib/services/data_prefetch_service.dart:299
+107,ERRSYS175,MEDIUM,"Failed to store entry_meals: ${e.toString()}",lib/services/data_prefetch_service.dart:326
+108,ERRSYS176,MEDIUM,"Failed to store entry_gratitude: ${e.toString()}",lib/services/data_prefetch_service.dart:353
+109,ERRSYS177,MEDIUM,"Failed to store entry_self_care: ${e.toString()}",lib/services/data_prefetch_service.dart:380
+110,ERRSYS178,MEDIUM,"Failed to store entry_tomorrow_notes: ${e.toString()}",lib/services/data_prefetch_service.dart:407
+111,ERRSYS179,MEDIUM,"Failed to parse/store entry: ${e.toString()}",lib/services/data_prefetch_service.dart:423
+112,ERRSYS129,LOW,"Connectivity check failed: ${e.toString()}",lib/services/entry_service.dart:26
+113,ERRSYS186,MEDIUM,"Failed to fetch entry from cloud: ${e.toString()}",lib/services/entry_service.dart:50
+114,ERRSYS187,HIGH,"Failed to load entry for date: ${e.toString()}",lib/services/entry_service.dart:89
+115,ERRDB010,HIGH,"Local entry upsert failed: ${e.toString()}",lib/services/database/local_entry_service.dart:43
+116,ERRDB011,HIGH,"Local affirmations upsert failed: ${e.toString()}",lib/services/database/local_entry_service.dart:75
+117,ERRDB012,HIGH,"Local priorities upsert failed: ${e.toString()}",lib/services/database/local_entry_service.dart:106
+118,ERRDB013,HIGH,"Local meals upsert failed: ${e.toString()}",lib/services/database/local_entry_service.dart:137
+119,ERRDB014,HIGH,"Local gratitude upsert failed: ${e.toString()}",lib/services/database/local_entry_service.dart:171
+120,ERRDB015,HIGH,"Local self-care upsert failed: ${e.toString()}",lib/services/database/local_entry_service.dart:202
+121,ERRDB016,HIGH,"Local shower bath upsert failed: ${e.toString()}",lib/services/database/local_entry_service.dart:244
+122,ERRDB017,HIGH,"Local tomorrow notes upsert failed: ${e.toString()}",lib/services/database/local_entry_service.dart:276
+123,ERRDB018,MEDIUM,"Local mark as synced failed: ${e.toString()}",lib/services/database/local_entry_service.dart:472
+124,ERRANA001,MEDIUM,"Failed to get weekly analytics: ${e.toString()}",lib/services/analytics_service.dart:340
+125,ERRANA002,MEDIUM,"Failed to get monthly analytics: ${e.toString()}",lib/services/analytics_service.dart:568
+126,ERRANA002,MEDIUM,"Failed to get weekly insights list: ${e.toString()}",lib/services/analytics_service.dart:712
+127,ERRMODEL001,MEDIUM,"Failed to parse MonthMetadata: ${e.toString()}",lib/services/analytics_service.dart:744
+128,ERRANA004,MEDIUM,"Failed to get monthly insights list: ${e.toString()}",lib/services/analytics_service.dart:835
+129,ERRANA003,MEDIUM,"Failed to get daily progress: ${e.toString()}",lib/services/analytics_service.dart:979
+130,ERRSYS151,LOW,"Home summary fetch failed: ${e.toString()}",lib/services/home_summary_service.dart:47
+131,ERRSYS152,LOW,"Streak fetch failed: ${e.toString()}",lib/services/home_summary_service.dart:94
+132,ERRSYS153,LOW,"Today progress fetch failed: ${e.toString()}",lib/services/home_summary_service.dart:207
+133,ERRSYS154,MEDIUM,"Weekly snapshot fetch failed: ${e.toString()}",lib/services/home_summary_service.dart:230
+134,ERRSYS155,MEDIUM,"Current week calculation from local DB failed: ${e.toString()}",lib/services/home_summary_service.dart:323
+135,ERRSYS155,LOW,"Prompt/motivation fetch failed: ${e.toString()}",lib/services/home_summary_service.dart:430
+136,ERRSYS156,LOW,"AI insight fetch failed: ${e.toString()}",lib/services/home_summary_service.dart:451
+137,ERRDATA204,HIGH,"Provider fetch entries failed: ${e.toString()}",lib/providers/data_providers.dart:95
+138,ERRDATA205,MEDIUM,"Provider fetch habits failed: ${e.toString()}",lib/providers/data_providers.dart:126
+139,ERRDATA206,MEDIUM,"Home summary provider failed: ${e.toString()}",lib/providers/data_providers.dart:176
+140,ERRDATA200,HIGH,"DB query failed (entries): ${e.toString()}",lib/services/data_fetch_service.dart:59
+141,ERRDATA201,HIGH,"Fetch entries failed: ${e.toString()}",lib/services/data_fetch_service.dart:76
+142,ERRDATA211,MEDIUM,"Fetch habits daily failed: ${e.toString()}",lib/services/data_fetch_service.dart:134
+143,ERRDATA203,HIGH,"Batch fetch failed: ${e.toString()}",lib/services/data_fetch_service.dart:175
+144,ERRDATA205,MEDIUM,"DB query failed (monthly insights list): ${e.toString()}",lib/services/data_fetch_service.dart:207
+145,ERRDATA206,MEDIUM,"Fetch monthly insights list failed: ${e.toString()}",lib/services/data_fetch_service.dart:222
+146,ERRDATA207,MEDIUM,"DB query failed (monthly analytics): ${e.toString()}",lib/services/data_fetch_service.dart:255
+147,ERRDATA208,MEDIUM,"Fetch monthly analytics failed: ${e.toString()}",lib/services/data_fetch_service.dart:270
+148,ERRDATA220,HIGH,"DB query failed (user profile): ${e.toString()}",lib/services/data_fetch_service.dart:308
+149,ERRDATA221,HIGH,"Fetch user profile failed: ${e.toString()}",lib/services/data_fetch_service.dart:323
+150,ERRDATA222,MEDIUM,"DB query failed (user settings): ${e.toString()}",lib/services/data_fetch_service.dart:356
+151,ERRSYS001,CRITICAL,"Database initialization failed: ${e.toString()}",lib/services/database/database_manager.dart:30
+152,ERRSYS003,CRITICAL,"Database upgrade failed: ${e.toString()}",lib/services/database/database_manager.dart:71
+153,ERRSYS022,MEDIUM,"Force save on app close failed: ${e.toString()}",lib/services/app_lifecycle_service.dart:56
+154,ERRSYS021,MEDIUM,"App lifecycle state change failed: ${e.toString()}",lib/services/app_lifecycle_service.dart:77
+155,ERRAI005,LOW,"Failed to fetch yesterday insight: ${e.toString()}",lib/services/ai_service.dart:73
+156,ERRAI005,LOW,"Failed to fetch daily insight: ${e.toString()}",lib/services/ai_service.dart:116
+157,ERRAI006,MEDIUM,"Failed to trigger weekly analysis: ${e.toString()}",lib/services/ai_service.dart:145
+158,ERRAI007,LOW,"Failed to fetch weekly insight: ${e.toString()}",lib/services/ai_service.dart:199
+159,ERRAI009,LOW,"Failed to fetch recent insights: ${e.toString()}",lib/services/ai_service.dart:249
+160,ERRAI010,LOW,"Failed to fetch daily insights timeline: ${e.toString()}",lib/services/ai_service.dart:304
+161,ERRAI011,LOW,"Failed to check entry completion: ${e.toString()}",lib/services/ai_service.dart:330
+162,ERRAI012,LOW,"Failed to get most recent insight: ${e.toString()}",lib/services/ai_service.dart:374
+163,ERRAI013,LOW,"Failed to fetch monthly insight: ${e.toString()}",lib/services/ai_service.dart:441
+164,ERRSYS163,MEDIUM,"Failed to clear user data from local database: ${e.toString()}",lib/services/database/user_data_cleanup_service.dart:95
+165,ERRSYS160,LOW,"Failed to read data fetch flag: ${e.toString()}",lib/services/data_sync_flag_service.dart:24
+166,ERRSYS161,LOW,"Failed to set data fetch flag: ${e.toString()}",lib/services/data_sync_flag_service.dart:46
+167,ERRSYS162,LOW,"Failed to clear data fetch flag: ${e.toString()}",lib/services/data_sync_flag_service.dart:67
+168,ERRHIST001,MEDIUM,"Failed to fetch entries for month: ${e.toString()}",lib/services/history_service.dart:115
+169,ERRHIST002,MEDIUM,"Failed to fetch entry by date: ${e.toString()}",lib/services/history_service.dart:213
+170,ERRHIST004,LOW,"Failed to fetch insight for entry: ${e.toString()}",lib/services/history_service.dart:281
+171,ERRHIST008,LOW,"Failed to get mood map for date range: ${e.toString()}",lib/services/history_service.dart:345
+172,ERRHIST009,LOW,"Failed to get months with entries: ${e.toString()}",lib/services/history_service.dart:397
+173,ERRSYS122,MEDIUM,"Support ticket submission failed: ${e.toString()}",lib/services/support_ticket_service.dart:104
+174,ERRSYS123,MEDIUM,"Fetch user tickets failed: ${e.toString()}",lib/services/support_ticket_service.dart:139
+175,ERRSYS061,HIGH,"PIN validation failed: ${e.toString()}",lib/services/pin_auth_service.dart:63
+176,ERRSYS062,HIGH,"PIN setup failed: ${e.toString()}",lib/services/pin_auth_service.dart:92
+177,ERRSYS063,HIGH,"PIN change failed: ${e.toString()}",lib/services/pin_auth_service.dart:137
+178,ERRSYS068,HIGH,"Privacy lock enable failed: ${e.toString()}",lib/services/pin_auth_service.dart:234
+179,ERRSYS069,HIGH,"Privacy lock disable failed: ${e.toString()}",lib/services/pin_auth_service.dart:266
+180,ERRSYS134,MEDIUM,"Settings save failed (cloud notification settings): ${e.toString()}",lib/services/user_preference_sync_service.dart:32
+181,ERRSYS134,LOW,"Settings save failed (cloud appearance): ${e.toString()}",lib/services/user_preference_sync_service.dart:81
+182,ERRSYS160,LOW,"Failed to get device timezone: ${e.toString()}",lib/services/timezone_service.dart:96
+183,ERRSYS161,MEDIUM,"Failed to update user timezone: ${e.toString()}",lib/services/timezone_service.dart:115
+184,ERRSYS163,LOW,"Startup timezone check failed: ${e.toString()}",lib/services/timezone_service.dart:157
+185,ERRSYS124,HIGH,"Sign in failed: ${e.toString()}",lib/services/auth_service.dart:41
+186,ERRSYS162,LOW,"Timezone init failed after signup: ${e.toString()}",lib/services/auth_service.dart:72
+187,ERRSYS125,HIGH,"Sign up failed: ${e.toString()}",lib/services/auth_service.dart:88
+188,ERRSYS126,HIGH,"Sign out failed: ${e.toString()}",lib/services/auth_service.dart:109
+189,ERRSYS127,HIGH,"Password reset failed: ${e.toString()}",lib/services/auth_service.dart:125
+190,ERRSYS127,HIGH,"Resend verification failed: ${e.toString()}",lib/services/auth_service.dart:141
+191,ERRDATA021,HIGH,"Sync queue processing failed: ${e.toString()}",lib/services/sync/sync_worker.dart:69
+192,ERRNET001,MEDIUM,"Connection monitoring failed: ${e.toString()}",lib/services/connectivity_service.dart:35
+193,ERRDATA207,MEDIUM,"Recent entries provider failed: ${e.toString()}",lib/providers/recent_entries_provider.dart:48
+194,ERRHIST005,MEDIUM,"Failed to load current month: ${e.toString()}",lib/providers/history_provider.dart:125
+195,ERRHIST010,LOW,"Failed to load calendar mood data: ${e.toString()}",lib/providers/history_provider.dart:162
+196,ERRHIST006,MEDIUM,"Failed to load previous month: ${e.toString()}",lib/providers/history_provider.dart:213
+197,ERRHIST007,LOW,"Failed to get entry by date: ${e.toString()}",lib/providers/history_provider.dart:244
+198,ERRSYS011,HIGH,"User data fetch failed: ${e.toString()}",lib/providers/user_data_provider.dart:70
+199,ERRPROV001,MEDIUM,"Failed to set selected month: ${e.toString()}",lib/providers/analytics_provider.dart:59
+200,ERRPROV002,MEDIUM,User not authenticated for monthly insights list,lib/providers/analytics_provider.dart:106
+201,ERRPROV003,MEDIUM,"DataFetchService unavailable, using direct service: ${e.toString()}",lib/providers/analytics_provider.dart:122
+202,ERRPROV003,MEDIUM,"Monthly insights list provider failed: ${e.toString()}",lib/providers/analytics_provider.dart:133
+203,ERRPROV004,MEDIUM,User not authenticated for monthly analytics,lib/providers/analytics_provider.dart:153
+204,ERRPROV005,MEDIUM,"DataFetchService unavailable, using direct service: ${e.toString()}",lib/providers/analytics_provider.dart:175
+205,ERRPROV005,MEDIUM,"Monthly analytics provider failed: ${e.toString()}",lib/providers/analytics_provider.dart:189
+206,ERRSYS134,LOW,"Settings save failed (cloud theme sync): ${e.toString()}",lib/providers/theme_provider.dart:79
+207,ERRSYS134,LOW,"Settings save failed (cloud paper style sync): ${e.toString()}",lib/providers/paper_style_provider.dart:76
+208,ERRSYS134,LOW,"Settings save failed (cloud font size sync): ${e.toString()}",lib/providers/font_size_provider.dart:77
+209,ERRSYS162,LOW,"Timezone init failed after signup: ${e.toString()}",lib/providers/auth_provider.dart:93
+210,ERRSYS130,HIGH,"Auth provider sign up failed: ${e.toString()}",lib/providers/auth_provider.dart:107
+211,ERRSYS131,HIGH,"Auth provider sign in failed: ${e.toString()}",lib/providers/auth_provider.dart:130
+212,ERRSYS132,HIGH,"Auth provider sign out failed: ${e.toString()}",lib/providers/auth_provider.dart:145
+213,ERRSYS079,HIGH,"Privacy lock initialization failed: ${e.toString()}",lib/providers/privacy_lock_provider.dart:136
+214,ERRSYS080,HIGH,"Privacy lock enable failed: ${e.toString()}",lib/providers/privacy_lock_provider.dart:181
+215,ERRSYS021,MEDIUM,"Sync status error: $message",lib/providers/sync_status_provider.dart:55
+216,ERRUI001,MEDIUM,"MonthChipsCarousel initState failed: ${e.toString()}",lib/widgets/month_chips_carousel.dart:38
+217,ERRUI001,LOW,"Scroll to selected month failed: ${e.toString()}",lib/widgets/month_chips_carousel.dart:108
+218,ERRUI001,MEDIUM,"MonthChipsCarousel build failed: ${e.toString()}",lib/widgets/month_chips_carousel.dart:165
+219,ERRUI001,LOW,"_MonthChip initState failed: ${e.toString()}",lib/widgets/month_chips_carousel.dart:212
+220,ERRUI001,MEDIUM,"_MonthChip build failed: ${e.toString()}",lib/widgets/month_chips_carousel.dart:328

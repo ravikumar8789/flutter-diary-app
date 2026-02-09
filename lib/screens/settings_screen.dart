@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/notification_service.dart';
 import '../providers/theme_provider.dart';
-import '../providers/paper_style_provider.dart';
-import '../providers/font_size_provider.dart';
 import '../providers/grace_system_provider.dart';
 import '../widgets/grace_system_info_card.dart';
 import '../providers/auth_provider.dart';
 import '../screens/terms_screen.dart';
 import '../screens/privacy_policy_screen.dart';
+import '../ui/responsive/responsive_body.dart';
+import '../ui/responsive/responsive_info.dart';
+import '../ui/responsive/responsive_tokens.dart';
 
 /// Settings Screen - Refactored to streamline settings organization
 /// Removed Privacy & Security section (moved to Profile), Help & Support (duplicate), and Font Size/Paper Style (unused).
@@ -85,8 +86,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    final isTablet = size.width > 600;
+    final info = ResponsiveInfo.of(context);
+    final spacingM = ResponsiveTokens.spacingM(info);
+    final spacingL = ResponsiveTokens.spacingL(info);
 
     return Scaffold(
       appBar: AppBar(
@@ -107,173 +109,169 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ],
         ),
       ),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.all(isTablet ? 32 : 20),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: isTablet ? 800 : double.infinity,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Notifications
-              _buildSectionTitle(context, 'Notifications'),
-              Card(
-                child: Column(
-                  children: [
-                    SwitchListTile(
-                      title: const Text('Daily Reminder'),
-                      subtitle: const Text('Get reminded to write your entry'),
-                      value: _reminderEnabled,
-                      onChanged: (value) {
-                        setState(() => _reminderEnabled = value);
-                        _saveNotificationSettings();
+      body: ResponsiveBody(
+        useScrollView: true,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Notifications
+            _buildSectionTitle(context, 'Notifications'),
+            Card(
+              child: Column(
+                children: [
+                  SwitchListTile(
+                    title: const Text('Daily Reminder'),
+                    subtitle: const Text('Get reminded to write your entry'),
+                    value: _reminderEnabled,
+                    onChanged: (value) {
+                      setState(() => _reminderEnabled = value);
+                      _saveNotificationSettings();
+                    },
+                  ),
+                  if (_reminderEnabled) ...[
+                    ListTile(
+                      title: const Text('Reminder Time'),
+                      subtitle: Text(_reminderTime.format(context)),
+                      leading: const Icon(Icons.access_time),
+                      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                      onTap: () async {
+                        final time = await showTimePicker(
+                          context: context,
+                          initialTime: _reminderTime,
+                        );
+                        if (time != null) {
+                          setState(() => _reminderTime = time);
+                          _saveNotificationSettings();
+                        }
                       },
                     ),
-                    if (_reminderEnabled) ...[
-                      ListTile(
-                        title: const Text('Reminder Time'),
-                        subtitle: Text(_reminderTime.format(context)),
-                        leading: const Icon(Icons.access_time),
-                        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                        onTap: () async {
-                          final time = await showTimePicker(
-                            context: context,
-                            initialTime: _reminderTime,
-                          );
-                          if (time != null) {
-                            setState(() => _reminderTime = time);
-                            _saveNotificationSettings();
-                          }
-                        },
+                    Padding(
+                      padding: EdgeInsets.all(spacingM),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Reminder Days',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          SizedBox(height: spacingM),
+                          Wrap(
+                            spacing: ResponsiveTokens.spacingS(info),
+                            runSpacing: ResponsiveTokens.spacingS(info),
+                            children: List.generate(7, (index) {
+                              return FilterChip(
+                                label: Text(_dayLabels[index]),
+                                selected: _reminderDays[index],
+                                onSelected: (value) {
+                                  setState(
+                                    () => _reminderDays[index] = value,
+                                  );
+                                  _saveNotificationSettings();
+                                },
+                              );
+                            }),
+                          ),
+                        ],
                       ),
-                      Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Reminder Days',
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                            const SizedBox(height: 12),
-                            Wrap(
-                              spacing: 8,
-                              children: List.generate(7, (index) {
-                                return FilterChip(
-                                  label: Text(_dayLabels[index]),
-                                  selected: _reminderDays[index],
-                                  onSelected: (value) {
-                                    setState(
-                                      () => _reminderDays[index] = value,
-                                    );
-                                    _saveNotificationSettings();
-                                  },
-                                );
-                              }),
-                            ),
-                          ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            SizedBox(height: spacingL),
+
+            // Appearance
+            _buildSectionTitle(context, 'Appearance'),
+            Card(
+              child: Column(
+                children: [
+                  Consumer(
+                    builder: (context, ref, child) {
+                      final themeNotifier = ref.watch(themeProvider.notifier);
+
+                      return ListTile(
+                        title: const Text('Theme'),
+                        subtitle: Text(themeNotifier.currentThemeDisplayName),
+                        leading: const Icon(Icons.palette_outlined),
+                        trailing: const Icon(
+                          Icons.arrow_forward_ios,
+                          size: 16,
                         ),
-                      ),
-                    ],
-                  ],
-                ),
+                        onTap: () {
+                          _showThemeDialog(ref);
+                        },
+                      );
+                    },
+                  ),
+                ],
               ),
-              const SizedBox(height: 24),
+            ),
+            SizedBox(height: spacingL),
 
-              // Appearance
-              _buildSectionTitle(context, 'Appearance'),
-              Card(
-                child: Column(
-                  children: [
-                    Consumer(
-                      builder: (context, ref, child) {
-                        final themeNotifier = ref.watch(themeProvider.notifier);
+            // Journaling
+            _buildSectionTitle(context, 'Journaling'),
+            _buildGraceSystemSection(context),
+            SizedBox(height: spacingL),
 
-                        return ListTile(
-                          title: const Text('Theme'),
-                          subtitle: Text(themeNotifier.currentThemeDisplayName),
-                          leading: const Icon(Icons.palette_outlined),
-                          trailing: const Icon(
-                            Icons.arrow_forward_ios,
-                            size: 16,
-                          ),
-                          onTap: () {
-                            _showThemeDialog(ref);
-                          },
-                        );
-                      },
-                    ),
-                  ],
-                ),
+            // About
+            _buildSectionTitle(context, 'About'),
+            Card(
+              child: Column(
+                children: [
+                  ListTile(
+                    title: const Text('Version'),
+                    subtitle: const Text('1.0.0'),
+                    leading: const Icon(Icons.info_outline),
+                  ),
+                  ListTile(
+                    title: const Text('Terms of Service'),
+                    leading: const Icon(Icons.description_outlined),
+                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const TermsScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  ListTile(
+                    title: const Text('Privacy Policy'),
+                    leading: const Icon(Icons.privacy_tip_outlined),
+                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const PrivacyPolicyScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                ],
               ),
-              const SizedBox(height: 24),
+            ),
+            SizedBox(height: spacingL),
 
-              // Journaling
-              _buildSectionTitle(context, 'Journaling'),
-              _buildGraceSystemSection(context),
-              const SizedBox(height: 24),
-
-              // About
-              _buildSectionTitle(context, 'About'),
-              Card(
-                child: Column(
-                  children: [
-                    ListTile(
-                      title: const Text('Version'),
-                      subtitle: const Text('1.0.0'),
-                      leading: const Icon(Icons.info_outline),
-                    ),
-                    ListTile(
-                      title: const Text('Terms of Service'),
-                      leading: const Icon(Icons.description_outlined),
-                      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const TermsScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                    ListTile(
-                      title: const Text('Privacy Policy'),
-                      leading: const Icon(Icons.privacy_tip_outlined),
-                      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const PrivacyPolicyScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 32),
-
-              // Delete Account button (at bottom)
-              SizedBox(
-                width: double.infinity,
-                child: TextButton(
-                  onPressed: () {
-                    _showDeleteAccountDialog(context);
-                  },
-                  child: Text(
-                    'Delete Account',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                      fontSize: 16,
-                    ),
+            // Delete Account button (at bottom)
+            SizedBox(
+              width: double.infinity,
+              child: TextButton(
+                onPressed: () {
+                  _showDeleteAccountDialog(context);
+                },
+                child: Text(
+                  'Delete Account',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.error,
+                    fontSize: 16,
                   ),
                 ),
               ),
-              const SizedBox(height: 24),
+            ),
+            SizedBox(height: spacingL),
             ],
           ),
         ),
-      ),
     );
   }
 
@@ -290,6 +288,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         final graceState = ref.watch(graceSystemProvider);
         final authRepo = ref.watch(authRepositoryProvider);
         final currentUser = authRepo.currentUser;
+        final colorScheme = Theme.of(context).colorScheme;
 
         // Initialize grace system provider when user data is available
         if (currentUser != null &&
@@ -326,7 +325,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   Icons.shield,
                   color: graceState.graceDaysAvailable > 0
                       ? Colors.green
-                      : Colors.grey,
+                      : colorScheme.onSurfaceVariant,
                 ),
                 trailing: Container(
                   padding: const EdgeInsets.symmetric(
@@ -336,7 +335,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   decoration: BoxDecoration(
                     color: graceState.graceDaysAvailable > 0
                         ? Colors.green.shade100
-                        : Colors.grey.shade100,
+                        : colorScheme.surfaceVariant,
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Text(
@@ -344,7 +343,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     style: TextStyle(
                       color: graceState.graceDaysAvailable > 0
                           ? Colors.green.shade800
-                          : Colors.grey.shade600,
+                          : colorScheme.onSurfaceVariant,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -371,7 +370,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       width: 60,
                       child: LinearProgressIndicator(
                         value: graceState.progressPercentage / 100.0,
-                        backgroundColor: Colors.grey.shade300,
+                        backgroundColor: colorScheme.surfaceVariant,
                         valueColor: AlwaysStoppedAnimation<Color>(
                           graceState.progressPercentage >= 100
                               ? Colors.green

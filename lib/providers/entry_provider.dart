@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/entry_service.dart';
 import '../models/entry_models.dart';
+import '../models/error_models.dart';
 import '../services/error_logging_service.dart';
 import '../services/user_data_service.dart';
 import '../services/sync/supabase_sync_service.dart';
@@ -552,14 +553,17 @@ class EntryNotifier extends Notifier<EntryState> {
       _clearPendingChanges();
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRDATA260',
-        errorMessage: 'Batch save failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'user_id': userId,
-          'entry_date': date.toIso8601String(),
-          'operation': 'batch_save_rpc',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA260',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'entry_date': date.toIso8601String(),
+            'operation': 'batch_save_rpc',
+          },
+        ),
       );
       ref.read(syncStatusProvider.notifier).setError('ERRDATA260: $e');
     } finally {
@@ -583,15 +587,18 @@ class EntryNotifier extends Notifier<EntryState> {
       await localService.upsertEntry(entry);
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRDATA270',
-        errorMessage: 'Local entry save failed in batch: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'entry_id': entry.id,
-          'user_id': userId,
-          'entry_date': date.toIso8601String(),
-          'operation': 'batch_save_local_entry',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA270',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'entry_id': entry.id,
+            'user_id': userId,
+            'entry_date': date.toIso8601String(),
+            'operation': 'batch_save_local_entry',
+          },
+        ),
       );
       // Continue with other saves even if entry save fails
     }
@@ -607,15 +614,17 @@ class EntryNotifier extends Notifier<EntryState> {
         );
       } catch (e) {
         await ErrorLoggingService.logHighError(
-          errorCode: 'ERRDATA271',
-          errorMessage:
-              'Local affirmations save failed in batch: ${e.toString()}',
-          stackTrace: StackTrace.current.toString(),
-          errorContext: {
-            'entry_id': entry.id,
-            'affirmations_count': _pendingAffirmations!.length,
-            'operation': 'batch_save_local_affirmations',
-          },
+          error: ErrorContext.fromException(
+            errorCode: 'ERRDATA271',
+            severity: ErrorSeverity.high,
+            exception: e,
+            stackTrace: StackTrace.current,
+            errorContext: {
+              'entry_id': entry.id,
+              'affirmations_count': _pendingAffirmations!.length,
+              'operation': 'batch_save_local_affirmations',
+            },
+          ),
         );
       }
     }
@@ -628,15 +637,17 @@ class EntryNotifier extends Notifier<EntryState> {
         );
       } catch (e) {
         await ErrorLoggingService.logHighError(
-          errorCode: 'ERRDATA272',
-          errorMessage:
-              'Local priorities save failed in batch: ${e.toString()}',
-          stackTrace: StackTrace.current.toString(),
-          errorContext: {
-            'entry_id': entry.id,
-            'priorities_count': _pendingPriorities!.length,
-            'operation': 'batch_save_local_priorities',
-          },
+          error: ErrorContext.fromException(
+            errorCode: 'ERRDATA272',
+            severity: ErrorSeverity.high,
+            exception: e,
+            stackTrace: StackTrace.current,
+            errorContext: {
+              'entry_id': entry.id,
+              'priorities_count': _pendingPriorities!.length,
+              'operation': 'batch_save_local_priorities',
+            },
+          ),
         );
       }
     }
@@ -655,17 +666,20 @@ class EntryNotifier extends Notifier<EntryState> {
         );
       } catch (e) {
         await ErrorLoggingService.logHighError(
-          errorCode: 'ERRDATA273',
-          errorMessage: 'Local meals save failed in batch: ${e.toString()}',
-          stackTrace: StackTrace.current.toString(),
-          errorContext: {
-            'entry_id': entry.id,
-            'water_cups': _pendingMeals!.waterCups,
-            'has_breakfast': _pendingMeals!.breakfast != null,
-            'has_lunch': _pendingMeals!.lunch != null,
-            'has_dinner': _pendingMeals!.dinner != null,
-            'operation': 'batch_save_local_meals',
-          },
+          error: ErrorContext.fromException(
+            errorCode: 'ERRDATA273',
+            severity: ErrorSeverity.high,
+            exception: e,
+            stackTrace: StackTrace.current,
+            errorContext: {
+              'entry_id': entry.id,
+              'water_cups': _pendingMeals!.waterCups,
+              'has_breakfast': _pendingMeals!.breakfast != null,
+              'has_lunch': _pendingMeals!.lunch != null,
+              'has_dinner': _pendingMeals!.dinner != null,
+              'operation': 'batch_save_local_meals',
+            },
+          ),
         );
       }
     }
@@ -678,14 +692,17 @@ class EntryNotifier extends Notifier<EntryState> {
         );
       } catch (e) {
         await ErrorLoggingService.logHighError(
-          errorCode: 'ERRDATA274',
-          errorMessage: 'Local gratitude save failed in batch: ${e.toString()}',
-          stackTrace: StackTrace.current.toString(),
-          errorContext: {
-            'entry_id': entry.id,
-            'grateful_items_count': _pendingGratitude!.length,
-            'operation': 'batch_save_local_gratitude',
-          },
+          error: ErrorContext.fromException(
+            errorCode: 'ERRDATA274',
+            severity: ErrorSeverity.high,
+            exception: e,
+            stackTrace: StackTrace.current,
+            errorContext: {
+              'entry_id': entry.id,
+              'grateful_items_count': _pendingGratitude!.length,
+              'operation': 'batch_save_local_gratitude',
+            },
+          ),
         );
       }
     }
@@ -710,25 +727,28 @@ class EntryNotifier extends Notifier<EntryState> {
         );
       } catch (e) {
         await ErrorLoggingService.logHighError(
-          errorCode: 'ERRDATA275',
-          errorMessage: 'Local self-care save failed in batch: ${e.toString()}',
-          stackTrace: StackTrace.current.toString(),
-          errorContext: {
-            'entry_id': entry.id,
-            'self_care_data': {
-              'sleep': _pendingSelfCare!.sleep,
-              'get_up_early': _pendingSelfCare!.getUpEarly,
-              'fresh_air': _pendingSelfCare!.freshAir,
-              'learn_new': _pendingSelfCare!.learnNew,
-              'balanced_diet': _pendingSelfCare!.balancedDiet,
-              'podcast': _pendingSelfCare!.podcast,
-              'me_moment': _pendingSelfCare!.meMoment,
-              'hydrated': _pendingSelfCare!.hydrated,
-              'read_book': _pendingSelfCare!.readBook,
-              'exercise': _pendingSelfCare!.exercise,
+          error: ErrorContext.fromException(
+            errorCode: 'ERRDATA275',
+            severity: ErrorSeverity.high,
+            exception: e,
+            stackTrace: StackTrace.current,
+            errorContext: {
+              'entry_id': entry.id,
+              'self_care_data': {
+                'sleep': _pendingSelfCare!.sleep,
+                'get_up_early': _pendingSelfCare!.getUpEarly,
+                'fresh_air': _pendingSelfCare!.freshAir,
+                'learn_new': _pendingSelfCare!.learnNew,
+                'balanced_diet': _pendingSelfCare!.balancedDiet,
+                'podcast': _pendingSelfCare!.podcast,
+                'me_moment': _pendingSelfCare!.meMoment,
+                'hydrated': _pendingSelfCare!.hydrated,
+                'read_book': _pendingSelfCare!.readBook,
+                'exercise': _pendingSelfCare!.exercise,
+              },
+              'operation': 'batch_save_local_self_care',
             },
-            'operation': 'batch_save_local_self_care',
-          },
+          ),
         );
       }
     }
@@ -745,16 +765,18 @@ class EntryNotifier extends Notifier<EntryState> {
         );
       } catch (e) {
         await ErrorLoggingService.logHighError(
-          errorCode: 'ERRDATA276',
-          errorMessage:
-              'Local shower bath save failed in batch: ${e.toString()}',
-          stackTrace: StackTrace.current.toString(),
-          errorContext: {
-            'entry_id': entry.id,
-            'took_shower': _pendingShowerBath!.tookShower,
-            'has_note': _pendingShowerBath!.note != null,
-            'operation': 'batch_save_local_shower_bath',
-          },
+          error: ErrorContext.fromException(
+            errorCode: 'ERRDATA276',
+            severity: ErrorSeverity.high,
+            exception: e,
+            stackTrace: StackTrace.current,
+            errorContext: {
+              'entry_id': entry.id,
+              'took_shower': _pendingShowerBath!.tookShower,
+              'has_note': _pendingShowerBath!.note != null,
+              'operation': 'batch_save_local_shower_bath',
+            },
+          ),
         );
       }
     }
@@ -770,15 +792,17 @@ class EntryNotifier extends Notifier<EntryState> {
         );
       } catch (e) {
         await ErrorLoggingService.logHighError(
-          errorCode: 'ERRDATA277',
-          errorMessage:
-              'Local tomorrow notes save failed in batch: ${e.toString()}',
-          stackTrace: StackTrace.current.toString(),
-          errorContext: {
-            'entry_id': entry.id,
-            'tomorrow_notes_count': _pendingTomorrowNotes!.length,
-            'operation': 'batch_save_local_tomorrow_notes',
-          },
+          error: ErrorContext.fromException(
+            errorCode: 'ERRDATA277',
+            severity: ErrorSeverity.high,
+            exception: e,
+            stackTrace: StackTrace.current,
+            errorContext: {
+              'entry_id': entry.id,
+              'tomorrow_notes_count': _pendingTomorrowNotes!.length,
+              'operation': 'batch_save_local_tomorrow_notes',
+            },
+          ),
         );
       }
     }
@@ -851,10 +875,13 @@ class EntryNotifier extends Notifier<EntryState> {
     } catch (e) {
       // Log but don't fail batch save
       ErrorLoggingService.logLowError(
-        errorCode: 'ERRDATA261',
-        errorMessage: 'Batch grace tracking failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {'operation': 'batch_grace_tracking'},
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA261',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'operation': 'batch_grace_tracking'},
+        ),
       );
     }
   }
@@ -1002,10 +1029,13 @@ class EntryNotifier extends Notifier<EntryState> {
       }
     } catch (e) {
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRDATA280',
-        errorMessage: 'Gap detection failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {'user_id': userId},
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA280',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'user_id': userId},
+        ),
       );
     }
   }

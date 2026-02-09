@@ -5,6 +5,7 @@ import 'database/local_entry_service.dart';
 import 'sync/supabase_sync_service.dart';
 import '../models/entry_models.dart';
 import 'error_logging_service.dart';
+import '../models/error_models.dart';
 
 class EntryService {
   final LocalEntryService _localService = LocalEntryService();
@@ -23,10 +24,13 @@ class EntryService {
     } catch (e) {
       // Log error
       await ErrorLoggingService.logLowError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRSYS129',
-        errorMessage: 'Connectivity check failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {'operation': 'check_connectivity'},
+        ),
       );
       return false;
     }
@@ -47,15 +51,17 @@ class EntryService {
           cloudEntry = await _syncService.fetchEntryFromCloud(userId, dateOnly);
         } catch (e) {
           await ErrorLoggingService.logError(
+            ErrorContext.fromException(
             errorCode: 'ERRSYS186',
-            errorMessage: 'Failed to fetch entry from cloud: ${e.toString()}',
-            stackTrace: StackTrace.current.toString(),
-            severity: 'MEDIUM',
+              severity: ErrorSeverity.medium,
+              exception: e,
+              stackTrace: StackTrace.current,
             errorContext: {
               'user_id': userId,
               'date': dateOnly.toIso8601String().split('T')[0],
               'operation': 'load_entry_fetch_cloud',
             },
+            ),
           );
           // Continue with local data if cloud fetch fails
         }
@@ -86,14 +92,17 @@ class EntryService {
       
     } catch (e) {
       await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRSYS187',
-        errorMessage: 'Failed to load entry for date: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {
           'user_id': userId,
           'date': dateOnly.toIso8601String().split('T')[0],
           'operation': 'load_entry_for_date',
         },
+        ),
       );
       // Return null on error - entry screen will handle empty state
       return null;

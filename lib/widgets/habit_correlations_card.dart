@@ -196,6 +196,7 @@ class _HabitCorrelationsCardState extends State<HabitCorrelationsCard> {
     BuildContext context,
     Map<String, dynamic> distribution,
   ) {
+    final colorScheme = Theme.of(context).colorScheme;
     final positive = distribution['positive'] as int? ?? 0;
     final neutral = distribution['neutral'] as int? ?? 0;
     final negative = distribution['negative'] as int? ?? 0;
@@ -239,7 +240,7 @@ class _HabitCorrelationsCardState extends State<HabitCorrelationsCard> {
                   label: 'Neutral',
                   count: neutral,
                   total: total,
-                  color: Colors.grey,
+                  color: colorScheme.onSurfaceVariant,
                 ),
               ),
               const SizedBox(width: 8),
@@ -323,12 +324,12 @@ class _HabitCorrelationsCardState extends State<HabitCorrelationsCard> {
         impactLabel = 'Medium Impact';
         break;
       case 'low':
-        impactColor = Colors.grey;
+        impactColor = Theme.of(context).colorScheme.onSurfaceVariant;
         impactIcon = Icons.trending_down;
         impactLabel = 'Low Impact';
         break;
       default:
-        impactColor = Colors.grey;
+        impactColor = Theme.of(context).colorScheme.onSurfaceVariant;
         impactIcon = Icons.info;
         impactLabel = impact;
     }

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import '../models/history_entry_model.dart';
+import '../models/error_models.dart';
 import '../services/history_service.dart';
 import '../services/error_logging_service.dart';
 import 'data_providers.dart';
@@ -122,11 +123,13 @@ class HistoryNotifier extends Notifier<HistoryState> {
       );
     } catch (e) {
       await ErrorLoggingService.logError(
-        errorCode: 'ERRHIST005',
-        errorMessage: 'Failed to load current month: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'MEDIUM',
-        errorContext: {'user_id': userId},
+        ErrorContext.fromException(
+          errorCode: 'ERRHIST005',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'user_id': userId},
+        ),
       );
 
       state = state.copyWith(
@@ -159,10 +162,13 @@ class HistoryNotifier extends Notifier<HistoryState> {
       state = state.copyWith(moodMap: mergedMoodMap);
     } catch (e) {
       await ErrorLoggingService.logLowError(
-        errorCode: 'ERRHIST010',
-        errorMessage: 'Failed to load calendar mood data: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {'user_id': userId},
+        error: ErrorContext.fromException(
+          errorCode: 'ERRHIST010',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'user_id': userId},
+        ),
       );
       // Don't update state on error - use existing mood map
     }
@@ -210,14 +216,16 @@ class HistoryNotifier extends Notifier<HistoryState> {
       );
     } catch (e) {
       await ErrorLoggingService.logError(
-        errorCode: 'ERRHIST006',
-        errorMessage: 'Failed to load previous month: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'MEDIUM',
-        errorContext: {
-          'user_id': userId,
-          'month_key': monthKey,
-        },
+        ErrorContext.fromException(
+          errorCode: 'ERRHIST006',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'month_key': monthKey,
+          },
+        ),
       );
 
       state = state.copyWith(
@@ -241,14 +249,16 @@ class HistoryNotifier extends Notifier<HistoryState> {
       return await _service.getEntryByDate(userId, date);
     } catch (e) {
       await ErrorLoggingService.logError(
-        errorCode: 'ERRHIST007',
-        errorMessage: 'Failed to get entry by date: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'LOW',
-        errorContext: {
-          'user_id': userId,
-          'date': DateFormat('yyyy-MM-dd').format(date),
-        },
+        ErrorContext.fromException(
+          errorCode: 'ERRHIST007',
+          severity: ErrorSeverity.low,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'date': DateFormat('yyyy-MM-dd').format(date),
+          },
+        ),
       );
       return null;
     }

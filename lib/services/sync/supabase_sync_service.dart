@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import '../../models/entry_models.dart';
 import '../error_logging_service.dart';
+import '../../models/error_models.dart';
 import '../database/database_manager.dart';
 
 class SupabaseSyncService {
@@ -16,15 +17,18 @@ class SupabaseSyncService {
     } catch (e) {
       // Log error
       await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRSYS101',
-        errorMessage: 'Entry sync failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {
           'entry_id': entry.id,
           'user_id': entry.userId,
           'entry_date': entry.entryDate.toIso8601String(),
           'operation': 'sync_entry',
         },
+        ),
       );
       return false;
     }
@@ -45,14 +49,17 @@ class SupabaseSyncService {
     } catch (e) {
       // Log error
       await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRSYS102',
-        errorMessage: 'Affirmations sync failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+            severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {
           'entry_id': affirmations.entryId,
           'affirmations_count': affirmations.affirmations.length,
           'operation': 'sync_affirmations',
         },
+        ),
       );
       return false;
     }
@@ -71,14 +78,17 @@ class SupabaseSyncService {
     } catch (e) {
       // Log error
       await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRSYS103',
-        errorMessage: 'Priorities sync failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+            severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {
           'entry_id': priorities.entryId,
           'priorities_count': priorities.priorities.length,
           'operation': 'sync_priorities',
         },
+        ),
       );
       return false;
     }
@@ -94,10 +104,13 @@ class SupabaseSyncService {
     } catch (e) {
       // Log error
       await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRSYS104',
-        errorMessage: 'Meals sync failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {'entry_id': meals.entryId, 'operation': 'sync_meals'},
+        ),
       );
       return false;
     }
@@ -118,14 +131,17 @@ class SupabaseSyncService {
     } catch (e) {
       // Log error
       await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRSYS105',
-        errorMessage: 'Gratitude sync failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {
           'entry_id': gratitude.entryId,
           'grateful_items_count': gratitude.gratefulItems.length,
           'operation': 'sync_gratitude',
         },
+        ),
       );
       return false;
     }
@@ -141,13 +157,16 @@ class SupabaseSyncService {
     } catch (e) {
       // Log error
       await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRSYS106',
-        errorMessage: 'Self care sync failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {
           'entry_id': selfCare.entryId,
           'operation': 'sync_self_care',
         },
+        ),
       );
       return false;
     }
@@ -163,13 +182,16 @@ class SupabaseSyncService {
     } catch (e) {
       // Log error
       await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRSYS107',
-        errorMessage: 'Shower bath sync failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {
           'entry_id': showerBath.entryId,
           'operation': 'sync_shower_bath',
         },
+        ),
       );
       return false;
     }
@@ -190,14 +212,17 @@ class SupabaseSyncService {
     } catch (e) {
       // Log error
       await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRSYS108',
-        errorMessage: 'Tomorrow notes sync failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {
           'entry_id': tomorrowNotes.entryId,
           'tomorrow_notes_count': tomorrowNotes.tomorrowNotes.length,
           'operation': 'sync_tomorrow_notes',
         },
+        ),
       );
       return false;
     }
@@ -243,14 +268,17 @@ class SupabaseSyncService {
     } catch (e) {
       // Log error
       await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRSYS109',
-        errorMessage: 'Entry fetch failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+            severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {
           'user_id': userId,
           'entry_date': dateStr,
           'operation': 'fetch_entry',
         },
+        ),
       );
       return null;
     }
@@ -270,10 +298,13 @@ class SupabaseSyncService {
     } catch (e) {
       // Log error
       await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRSYS110',
-        errorMessage: 'Affirmations fetch failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {'entry_id': entryId, 'operation': 'fetch_affirmations'},
+        ),
       );
       return null;
     }
@@ -293,10 +324,13 @@ class SupabaseSyncService {
     } catch (e) {
       // Log error
       await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRSYS111',
-        errorMessage: 'Priorities fetch failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {'entry_id': entryId, 'operation': 'fetch_priorities'},
+        ),
       );
       return null;
     }
@@ -316,10 +350,13 @@ class SupabaseSyncService {
     } catch (e) {
       // Log error
       await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRSYS112',
-        errorMessage: 'Meals fetch failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {'entry_id': entryId, 'operation': 'fetch_meals'},
+        ),
       );
       return null;
     }
@@ -339,10 +376,13 @@ class SupabaseSyncService {
     } catch (e) {
       // Log error
       await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRSYS113',
-        errorMessage: 'Gratitude fetch failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {'entry_id': entryId, 'operation': 'fetch_gratitude'},
+        ),
       );
       return null;
     }
@@ -362,10 +402,13 @@ class SupabaseSyncService {
     } catch (e) {
       // Log error
       await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRSYS114',
-        errorMessage: 'Self care fetch failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {'entry_id': entryId, 'operation': 'fetch_self_care'},
+        ),
       );
       return null;
     }
@@ -385,10 +428,13 @@ class SupabaseSyncService {
     } catch (e) {
       // Log error
       await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRSYS115',
-        errorMessage: 'Shower bath fetch failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {'entry_id': entryId, 'operation': 'fetch_shower_bath'},
+        ),
       );
       return null;
     }
@@ -410,13 +456,16 @@ class SupabaseSyncService {
     } catch (e) {
       // Log error
       await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRSYS116',
-        errorMessage: 'Tomorrow notes fetch failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {
           'entry_id': entryId,
           'operation': 'fetch_tomorrow_notes',
         },
+        ),
       );
       return null;
     }
@@ -450,13 +499,16 @@ class SupabaseSyncService {
       return true;
     } catch (e) {
       await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRSYS117',
-        errorMessage: 'Streak sync failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {
           'user_id': userId,
           'operation': 'sync_streak',
         },
+        ),
       );
       return false;
     }
@@ -495,14 +547,17 @@ class SupabaseSyncService {
       return true;
     } catch (e) {
       await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRSYS118',
-        errorMessage: 'Habits daily sync failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {
           'user_id': userId,
           'date': date,
           'operation': 'sync_habits_daily',
         },
+        ),
       );
       return false;
     }
@@ -579,26 +634,31 @@ class SupabaseSyncService {
         return true;
       } else {
         await ErrorLoggingService.logHighError(
+          error: ErrorContext.create(
           errorCode: result['error_code'] ?? 'ERRSYS200',
           errorMessage: 'RPC batch save failed: ${result['error_message']}',
-          stackTrace: StackTrace.current.toString(),
+            severity: ErrorSeverity.high,
           errorContext: {
             'entry_id': entry.id,
             'rpc_response': result,
             'operation': 'batch_save_entry_rpc',
           },
+          ),
         );
         return false;
       }
     } catch (e) {
       await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRSYS200',
-        errorMessage: 'RPC batch save exception: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {
           'entry_id': entry.id,
           'operation': 'batch_save_entry_rpc',
         },
+        ),
       );
       return false;
     }
@@ -671,26 +731,31 @@ class SupabaseSyncService {
       } else {
         print('🔥 STREAK DEBUG: RPC call failed - error: ${result['error_message']}');
         await ErrorLoggingService.logHighError(
+          error: ErrorContext.create(
           errorCode: result['error_code'] ?? 'ERRSYS300',
           errorMessage: 'RPC batch streak update failed: ${result['error_message']}',
-          stackTrace: StackTrace.current.toString(),
+            severity: ErrorSeverity.high,
           errorContext: {
             'user_id': userId,
             'rpc_response': result,
             'operation': 'batch_update_streak_data_rpc',
           },
+          ),
         );
         return false;
       }
     } catch (e) {
       await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
         errorCode: 'ERRSYS300',
-        errorMessage: 'RPC batch streak update exception: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
         errorContext: {
           'user_id': userId,
           'operation': 'batch_update_streak_data_rpc',
         },
+        ),
       );
       return false;
     }

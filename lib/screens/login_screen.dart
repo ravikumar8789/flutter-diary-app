@@ -5,8 +5,12 @@ import 'register_screen.dart';
 import '../utils/snackbar_utils.dart';
 import '../providers/auth_provider.dart';
 import '../services/error_logging_service.dart';
+import '../models/error_models.dart';
 import '../services/data_sync_flag_service.dart';
 import 'home_screen.dart';
+import '../ui/responsive/responsive_body.dart';
+import '../ui/responsive/responsive_info.dart';
+import '../ui/responsive/responsive_tokens.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -49,13 +53,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           await DataSyncFlagService.setNeedsDataFetch(true);
         } catch (e) {
           await ErrorLoggingService.logError(
-            errorCode: 'ERRSYS183',
-            errorMessage: 'Failed to set data fetch flag after login: ${e.toString()}',
-            stackTrace: StackTrace.current.toString(),
-            severity: 'MEDIUM',
-            errorContext: {
-              'operation': 'login_set_flag',
-            },
+            ErrorContext.fromException(
+              errorCode: 'ERRSYS183',
+              severity: ErrorSeverity.medium,
+              exception: e,
+              stackTrace: StackTrace.current,
+              errorContext: {
+                'operation': 'login_set_flag',
+              },
+            ),
           );
         }
 
@@ -107,15 +113,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
         // Log error to Supabase
         await ErrorLoggingService.logError(
-          errorCode: errorCode,
-          errorMessage: e.toString(),
-          stackTrace: StackTrace.current.toString(),
-          severity: severity,
-          errorContext: {
-            'email': _emailController.text,
-            'attempt_time': DateTime.now().toIso8601String(),
-            'login_method': 'email_password',
-          },
+          ErrorContext.fromException(
+            errorCode: errorCode,
+            severity: severity == 'CRITICAL'
+                ? ErrorSeverity.critical
+                : severity == 'HIGH'
+                    ? ErrorSeverity.high
+                    : severity == 'MEDIUM'
+                        ? ErrorSeverity.medium
+                        : ErrorSeverity.low,
+            exception: e,
+            stackTrace: StackTrace.current,
+            errorContext: {
+              'email': _emailController.text,
+              'attempt_time': DateTime.now().toIso8601String(),
+              'login_method': 'email_password',
+            },
+          ),
         );
 
         // Show user-friendly message
@@ -181,162 +195,159 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       );
     });
 
-    final size = MediaQuery.of(context).size;
-    final isTablet = size.width > 600;
+    final info = ResponsiveInfo.of(context);
+    final spacingM = ResponsiveTokens.spacingM(info);
+    final spacingL = ResponsiveTokens.spacingL(info);
+    final iconSize = info.value(compact: 56.0, medium: 72.0, expanded: 80.0);
 
     return Scaffold(
       body: SafeArea(
         child: Center(
           child: Stack(
             children: [
-              SingleChildScrollView(
-                padding: EdgeInsets.all(isTablet ? 48 : 24),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth: isTablet ? 500 : double.infinity,
-                  ),
-                  child: AbsorbPointer(
-                    absorbing: _isLoading,
-                    child: Opacity(
-                      opacity: _isLoading ? 0.6 : 1,
-                      child: Form(
-                        key: _formKey,
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            // Logo/Icon
-                            Icon(
-                              Icons.auto_stories_outlined,
-                              size: isTablet ? 80 : 64,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                            const SizedBox(height: 24),
+              ResponsiveBody(
+                useScrollView: true,
+                child: AbsorbPointer(
+                  absorbing: _isLoading,
+                  child: Opacity(
+                    opacity: _isLoading ? 0.6 : 1,
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // Logo/Icon
+                          Icon(
+                            Icons.auto_stories_outlined,
+                            size: iconSize,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                          SizedBox(height: spacingM),
 
-                            // Title
-                            Text(
-                              'Welcome Back',
-                              style: Theme.of(context).textTheme.displayLarge,
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 8),
+                          // Title
+                          Text(
+                            'Welcome Back',
+                            style: Theme.of(context).textTheme.displayLarge,
+                            textAlign: TextAlign.center,
+                          ),
+                          SizedBox(height: ResponsiveTokens.spacingS(info)),
 
-                            // Subtitle
-                            Text(
-                              'Sign in to continue your journey',
-                              style: Theme.of(context).textTheme.bodyMedium,
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 48),
+                          // Subtitle
+                          Text(
+                            'Sign in to continue your journey',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                            textAlign: TextAlign.center,
+                          ),
+                          SizedBox(height: spacingL),
 
-                            // Email field
-                            TextFormField(
-                              controller: _emailController,
-                              keyboardType: TextInputType.emailAddress,
-                              decoration: const InputDecoration(
-                                labelText: 'Email',
-                                prefixIcon: Icon(Icons.email_outlined),
+                          // Email field
+                          TextFormField(
+                            controller: _emailController,
+                            keyboardType: TextInputType.emailAddress,
+                            decoration: const InputDecoration(
+                              labelText: 'Email',
+                              prefixIcon: Icon(Icons.email_outlined),
+                            ),
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Please enter your email';
+                              }
+                              if (!value.contains('@')) {
+                                return 'Please enter a valid email';
+                              }
+                              return null;
+                            },
+                          ),
+                          SizedBox(height: spacingM),
+
+                          // Password field
+                          TextFormField(
+                            controller: _passwordController,
+                            obscureText: !_isPasswordVisible,
+                            decoration: InputDecoration(
+                              labelText: 'Password',
+                              prefixIcon: const Icon(Icons.lock_outline),
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _isPasswordVisible
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _isPasswordVisible = !_isPasswordVisible;
+                                  });
+                                },
                               ),
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Please enter your email';
-                                }
-                                if (!value.contains('@')) {
-                                  return 'Please enter a valid email';
-                                }
-                                return null;
-                              },
                             ),
-                            const SizedBox(height: 16),
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Please enter your password';
+                              }
+                              if (value.length < 6) {
+                                return 'Password must be at least 6 characters';
+                              }
+                              return null;
+                            },
+                          ),
+                          SizedBox(height: ResponsiveTokens.spacingS(info)),
 
-                            // Password field
-                            TextFormField(
-                              controller: _passwordController,
-                              obscureText: !_isPasswordVisible,
-                              decoration: InputDecoration(
-                                labelText: 'Password',
-                                prefixIcon: const Icon(Icons.lock_outline),
-                                suffixIcon: IconButton(
-                                  icon: Icon(
-                                    _isPasswordVisible
-                                        ? Icons.visibility_off_outlined
-                                        : Icons.visibility_outlined,
-                                  ),
-                                  onPressed: () {
-                                    setState(() {
-                                      _isPasswordVisible = !_isPasswordVisible;
-                                    });
-                                  },
+                          // Forgot password
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                              onPressed: _forgotPassword,
+                              child: Text(
+                                'Forgot Password?',
+                                style: TextStyle(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.primary,
                                 ),
                               ),
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Please enter your password';
-                                }
-                                if (value.length < 6) {
-                                  return 'Password must be at least 6 characters';
-                                }
-                                return null;
-                              },
                             ),
-                            const SizedBox(height: 12),
+                          ),
+                          SizedBox(height: spacingM),
 
-                            // Forgot password
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: TextButton(
-                                onPressed: _forgotPassword,
+                          // Login button
+                          ElevatedButton(
+                            onPressed: _isLoading ? null : _login,
+                            child: const Text('Sign In'),
+                          ),
+                          SizedBox(height: spacingM),
+
+                          // Register link
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                "Don't have an account? ",
+                                style: Theme.of(context).textTheme.bodyMedium,
+                              ),
+                              TextButton(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) =>
+                                          const RegisterScreen(),
+                                    ),
+                                  );
+                                },
                                 child: Text(
-                                  'Forgot Password?',
+                                  'Sign Up',
                                   style: TextStyle(
                                     color: Theme.of(
                                       context,
                                     ).colorScheme.primary,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(height: 24),
-
-                            // Login button
-                            ElevatedButton(
-                              onPressed: _isLoading ? null : _login,
-                              child: const Text('Sign In'),
-                            ),
-                            const SizedBox(height: 24),
-
-                            // Register link
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  "Don't have an account? ",
-                                  style: Theme.of(context).textTheme.bodyMedium,
-                                ),
-                                TextButton(
-                                  onPressed: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) =>
-                                            const RegisterScreen(),
-                                      ),
-                                    );
-                                  },
-                                  child: Text(
-                                    'Sign Up',
-                                    style: TextStyle(
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.primary,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
                   ),

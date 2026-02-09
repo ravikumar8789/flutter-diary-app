@@ -6,6 +6,7 @@ import '../providers/auth_provider.dart';
 import '../providers/user_data_provider.dart';
 import '../utils/snackbar_utils.dart';
 import '../services/error_logging_service.dart';
+import '../models/error_models.dart';
 import '../services/data_sync_flag_service.dart';
 import '../services/database/user_data_cleanup_service.dart';
 import 'login_screen.dart';
@@ -13,14 +14,16 @@ import 'help_support_screen.dart';
 import 'settings_screen.dart';
 import '../providers/privacy_lock_provider.dart';
 import 'pin_setup_screen.dart';
+import '../ui/responsive/responsive_body.dart';
+import '../ui/responsive/responsive_info.dart';
+import '../ui/responsive/responsive_tokens.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final size = MediaQuery.of(context).size;
-    final isTablet = size.width > 600;
+    final info = ResponsiveInfo.of(context);
     final userDataState = ref.watch(userDataProvider);
 
     return Scaffold(
@@ -56,7 +59,7 @@ class ProfileScreen extends ConsumerWidget {
                     child: _buildProfileContent(
                       context,
                       userDataState.userData!,
-                      isTablet,
+                      info,
                       ref,
                     ),
                   ),
@@ -141,7 +144,7 @@ class ProfileScreen extends ConsumerWidget {
   Widget _buildProfileContent(
     BuildContext context,
     userData,
-    bool isTablet,
+    ResponsiveInfo info,
     WidgetRef ref,
   ) {
     // Calculate stats from user data
@@ -158,249 +161,248 @@ class ProfileScreen extends ConsumerWidget {
     final language = preferences['language'] ?? 'English';
     final timezone = userData.timezone ?? 'UTC';
 
-    return SingleChildScrollView(
-      padding: EdgeInsets.all(isTablet ? 32 : 16),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: isTablet ? 800 : double.infinity),
-        child: Column(
-          children: [
-            const SizedBox(height: 24),
+    final spacingM = ResponsiveTokens.spacingM(info);
+    final spacingL = ResponsiveTokens.spacingL(info);
+    final avatarRadius = info.value(
+      compact: 60.0,
+      medium: 70.0,
+      expanded: 80.0,
+    );
+    final avatarIconSize = info.value(
+      compact: 60.0,
+      medium: 70.0,
+      expanded: 80.0,
+    );
 
-            // Avatar
-            Stack(
-              children: [
-                CircleAvatar(
-                  radius: isTablet ? 80 : 60,
-                  backgroundColor: Theme.of(
-                    context,
-                  ).colorScheme.primary.withOpacity(0.2),
-                  backgroundImage: userData.avatarUrl != null
-                      ? NetworkImage(userData.avatarUrl!)
-                      : null,
-                  child: userData.avatarUrl == null
-                      ? Icon(
-                          Icons.person,
-                          size: isTablet ? 80 : 60,
-                          color: Theme.of(context).colorScheme.primary,
-                        )
-                      : null,
-                ),
-                Positioned(
-                  bottom: 0,
-                  right: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: Theme.of(context).scaffoldBackgroundColor,
-                        width: 3,
-                      ),
-                    ),
-                    child: const Icon(
-                      Icons.camera_alt,
-                      size: 20,
-                      color: Colors.white,
+    return ResponsiveBody(
+      useSafeArea: false,
+      useScrollView: true,
+      child: Column(
+        children: [
+          SizedBox(height: spacingL),
+
+          // Avatar
+          Stack(
+            children: [
+              CircleAvatar(
+                radius: avatarRadius,
+                backgroundColor: Theme.of(
+                  context,
+                ).colorScheme.primary.withOpacity(0.2),
+                backgroundImage: userData.avatarUrl != null
+                    ? NetworkImage(userData.avatarUrl!)
+                    : null,
+                child: userData.avatarUrl == null
+                    ? Icon(
+                        Icons.person,
+                        size: avatarIconSize,
+                        color: Theme.of(context).colorScheme.primary,
+                      )
+                    : null,
+              ),
+              Positioned(
+                bottom: 0,
+                right: 0,
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Theme.of(context).scaffoldBackgroundColor,
+                      width: 3,
                     ),
                   ),
+                  child: const Icon(
+                    Icons.camera_alt,
+                    size: 20,
+                    color: Colors.white,
+                  ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 24),
+              ),
+            ],
+          ),
+          SizedBox(height: spacingL),
 
-            // Name
-            Text(
+          // Name
+          Text(
+            userData.displayName,
+            style: Theme.of(context).textTheme.headlineMedium,
+          ),
+          SizedBox(height: spacingM),
+
+          // Email
+          Text(userData.email, style: Theme.of(context).textTheme.bodyMedium),
+          SizedBox(height: spacingL),
+
+          // Stats cards (InnerGlow Style)
+          Row(
+            children: [
+              Expanded(
+                child: _buildStatCard(
+                  context,
+                  entriesCount.toString(),
+                  'Total Entries',
+                  Icons.book,
+                ),
+              ),
+              SizedBox(width: spacingM),
+              Expanded(
+                child: _buildStatCard(
+                  context,
+                  currentStreak.toString(),
+                  'Current Streak',
+                  Icons.local_fire_department,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: spacingM),
+          Row(
+            children: [
+              Expanded(
+                child: _buildStatCard(
+                  context,
+                  stats['longest_streak']?.toString() ?? '0',
+                  'Longest Streak',
+                  Icons.emoji_events,
+                ),
+              ),
+              SizedBox(width: spacingM),
+              Expanded(
+                child: _buildStatCard(
+                  context,
+                  stats['grace_pieces']?.toString() ?? '0',
+                  'Grace Pieces',
+                  Icons.favorite,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: spacingL),
+          const Divider(),
+          SizedBox(height: spacingM),
+
+          // Profile information
+          _buildInfoSection(context, 'Personal Information', [
+            _buildInfoTile(
+              context,
+              Icons.person_outline,
+              'Display Name',
               userData.displayName,
-              style: Theme.of(context).textTheme.headlineMedium,
             ),
-            const SizedBox(height: 8),
-
-            // Email
-            Text(userData.email, style: Theme.of(context).textTheme.bodyMedium),
-            const SizedBox(height: 32),
-
-            // Stats cards (InnerGlow Style)
-            Row(
-              children: [
-                Expanded(
-                  child: _buildStatCard(
-                    context,
-                    entriesCount.toString(),
-                    'Total Entries',
-                    Icons.book,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildStatCard(
-                    context,
-                    currentStreak.toString(),
-                    'Current Streak',
-                    Icons.local_fire_department,
-                  ),
-                ),
-              ],
+            _buildInfoTile(
+              context,
+              Icons.email_outlined,
+              'Email',
+              userData.email,
             ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildStatCard(
-                    context,
-                    stats['longest_streak']?.toString() ?? '0',
-                    'Longest Streak',
-                    Icons.emoji_events,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildStatCard(
-                    context,
-                    stats['grace_pieces']?.toString() ?? '0',
-                    'Grace Pieces',
-                    Icons.favorite,
-                  ),
-                ),
-              ],
+            _buildInfoTile(
+              context,
+              Icons.calendar_today,
+              'Member Since',
+              memberSince,
             ),
-            const SizedBox(height: 32),
-            const Divider(),
-            const SizedBox(height: 16),
+            _buildInfoTile(context, Icons.language, 'Language', language),
+          ]),
+          SizedBox(height: spacingL),
 
-            // Profile information
-            _buildInfoSection(context, 'Personal Information', [
-              _buildInfoTile(
-                context,
-                Icons.person_outline,
-                'Display Name',
-                userData.displayName,
-              ),
-              _buildInfoTile(
-                context,
-                Icons.email_outlined,
-                'Email',
-                userData.email,
-              ),
-              _buildInfoTile(
-                context,
-                Icons.calendar_today,
-                'Member Since',
-                memberSince,
-              ),
-              _buildInfoTile(context, Icons.language, 'Language', language),
-            ]),
-            const SizedBox(height: 24),
+          _buildInfoSection(context, 'Preferences', [
+            _buildInfoTile(context, Icons.palette_outlined, 'Theme', theme),
+            _buildInfoTile(context, Icons.public, 'Region', 'Auto-detected'),
+            _buildInfoTile(context, Icons.schedule, 'Timezone', timezone),
+          ]),
+          SizedBox(height: spacingL),
 
-            _buildInfoSection(context, 'Preferences', [
-              _buildInfoTile(context, Icons.palette_outlined, 'Theme', theme),
-              _buildInfoTile(context, Icons.public, 'Region', 'Auto-detected'),
-              _buildInfoTile(context, Icons.schedule, 'Timezone', timezone),
-            ]),
-            const SizedBox(height: 24),
-
-            // Settings & Actions (InnerGlow Style)
-            _buildInfoSection(context, 'Settings & Actions', [
-              _buildActionTile(
+          // Settings & Actions (InnerGlow Style)
+          _buildInfoSection(context, 'Settings & Actions', [
+            _buildActionTile(context, Icons.settings_outlined, 'Settings', () {
+              Navigator.push(
                 context,
-                Icons.settings_outlined,
-                'Settings',
-                () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const SettingsScreen(),
-                    ),
-                  );
-                },
-              ),
-              Consumer(
-                builder: (context, ref, child) {
-                  final privacyLockData = ref.watch(privacyLockProvider);
+                MaterialPageRoute(builder: (context) => const SettingsScreen()),
+              );
+            }),
+            Consumer(
+              builder: (context, ref, child) {
+                final privacyLockData = ref.watch(privacyLockProvider);
 
-                  return SwitchListTile(
-                    title: const Text('Privacy Lock'),
-                    subtitle: Text(
-                      privacyLockData.isEnabled
-                          ? 'Secure your diary with 4-digit PIN'
-                          : 'Require authentication to open app',
-                    ),
-                    secondary: Icon(
-                      Icons.lock_outline,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    value: privacyLockData.isEnabled,
-                    onChanged: (value) async {
-                      if (value) {
-                        // Navigate to PIN setup first (don't enable lock yet)
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const PinSetupScreen(),
+                return SwitchListTile(
+                  title: const Text('Privacy Lock'),
+                  subtitle: Text(
+                    privacyLockData.isEnabled
+                        ? 'Secure your diary with 4-digit PIN'
+                        : 'Require authentication to open app',
+                  ),
+                  secondary: Icon(
+                    Icons.lock_outline,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  value: privacyLockData.isEnabled,
+                  onChanged: (value) async {
+                    if (value) {
+                      // Navigate to PIN setup first (don't enable lock yet)
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const PinSetupScreen(),
+                        ),
+                      );
+                    } else {
+                      // Disable privacy lock
+                      final success = await ref
+                          .read(privacyLockProvider.notifier)
+                          .disablePrivacyLock();
+
+                      if (!success && context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Failed to disable privacy lock'),
+                            backgroundColor: Colors.red,
                           ),
                         );
-                      } else {
-                        // Disable privacy lock
-                        final success = await ref
-                            .read(privacyLockProvider.notifier)
-                            .disablePrivacyLock();
-
-                        if (!success && context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Failed to disable privacy lock'),
-                              backgroundColor: Colors.red,
-                            ),
-                          );
-                        }
                       }
-                    },
-                  );
-                },
-              ),
-              _buildActionTile(
+                    }
+                  },
+                );
+              },
+            ),
+            _buildActionTile(context, Icons.help_outline, 'Help & Support', () {
+              Navigator.push(
                 context,
-                Icons.help_outline,
-                'Help & Support',
-                () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const HelpSupportScreen(),
-                    ),
-                  );
-                },
-              ),
-            ]),
-            const SizedBox(height: 24),
-
-            // Logout button
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  _showLogoutDialog(context, ref);
-                },
-                icon: const Icon(Icons.logout),
-                label: const Text('Logout'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Theme.of(context).colorScheme.error,
-                  padding: const EdgeInsets.all(16),
+                MaterialPageRoute(
+                  builder: (context) => const HelpSupportScreen(),
                 ),
-              ),
-            ),
-            const SizedBox(height: 16),
+              );
+            }),
+          ]),
+          SizedBox(height: spacingL),
 
-            // Version number (InnerGlow Style)
-            Text(
-              'Version 1.0.0',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+          // Logout button
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () {
+                _showLogoutDialog(context, ref);
+              },
+              icon: const Icon(Icons.logout),
+              label: const Text('Logout'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.error,
+                padding: const EdgeInsets.all(16),
               ),
             ),
-            const SizedBox(height: 24),
-          ],
-        ),
+          ),
+          SizedBox(height: spacingM),
+
+          // Version number (InnerGlow Style)
+          Text(
+            'Version 1.0.0',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          SizedBox(height: spacingL),
+        ],
       ),
     );
   }
@@ -535,10 +537,10 @@ class ProfileScreen extends ConsumerWidget {
           builder: (_) => const Center(child: CircularProgressIndicator()),
         );
       }
-      
+
       // Get user ID before clearing (needed for DB cleanup)
       final userId = Supabase.instance.client.auth.currentUser?.id;
-      
+
       // Step 1: Clear all user data from local database
       if (userId != null) {
         try {
@@ -546,35 +548,36 @@ class ProfileScreen extends ConsumerWidget {
         } catch (e) {
           // Log error but continue with logout
           await ErrorLoggingService.logError(
-            errorCode: 'ERRSYS168',
-            errorMessage: 'Failed to clear user data during logout: ${e.toString()}',
-            stackTrace: StackTrace.current.toString(),
-            severity: 'MEDIUM',
-            errorContext: {
-              'user_id': userId,
-              'operation': 'logout_data_cleanup',
-            },
+            ErrorContext.fromException(
+              errorCode: 'ERRSYS168',
+              severity: ErrorSeverity.medium,
+              exception: e,
+              stackTrace: StackTrace.current,
+              errorContext: {
+                'user_id': userId,
+                'operation': 'logout_data_cleanup',
+              },
+            ),
           );
         }
       }
-      
+
       // Step 2: Set flag to indicate data fetch is needed on next login
       try {
         await DataSyncFlagService.setNeedsDataFetch(true);
       } catch (e) {
         // Log error but continue with logout
         await ErrorLoggingService.logError(
-          errorCode: 'ERRSYS169',
-          errorMessage: 'Failed to set data fetch flag during logout: ${e.toString()}',
-          stackTrace: StackTrace.current.toString(),
-          severity: 'LOW',
-          errorContext: {
-            'user_id': userId,
-            'operation': 'logout_set_flag',
-          },
+          ErrorContext.fromException(
+            errorCode: 'ERRSYS169',
+            severity: ErrorSeverity.low,
+            exception: e,
+            stackTrace: StackTrace.current,
+            errorContext: {'user_id': userId, 'operation': 'logout_set_flag'},
+          ),
         );
       }
-      
+
       // Step 3: Clear user data (provider state)
       ref.read(userDataProvider.notifier).clearUserData();
 
@@ -599,35 +602,37 @@ class ProfileScreen extends ConsumerWidget {
     } catch (e) {
       // Even if logout fails, try to clear data and set flag
       final userId = Supabase.instance.client.auth.currentUser?.id;
-      
+
       if (userId != null) {
         try {
           await UserDataCleanupService.clearUserData(userId);
         } catch (_) {
           // Ignore errors in error handler
         }
-        
+
         try {
           await DataSyncFlagService.setNeedsDataFetch(true);
         } catch (_) {
           // Ignore errors in error handler
         }
       }
-      
+
       // Clear user data and privacy lock
       ref.read(userDataProvider.notifier).clearUserData();
       await ref.read(privacyLockProvider.notifier).disablePrivacyLock();
 
       // Log error to Supabase
       await ErrorLoggingService.logError(
-        errorCode: 'ERRAUTH041',
-        errorMessage: 'Logout failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        severity: 'MEDIUM',
-        errorContext: {
-          'logout_attempt_time': DateTime.now().toIso8601String(),
-          'user_id': userId,
-        },
+        ErrorContext.fromException(
+          errorCode: 'ERRAUTH041',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'logout_attempt_time': DateTime.now().toIso8601String(),
+            'user_id': userId,
+          },
+        ),
       );
 
       // Show error with code

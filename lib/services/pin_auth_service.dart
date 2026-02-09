@@ -4,6 +4,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'error_logging_service.dart';
+import '../models/error_models.dart';
 
 class PinAuthService {
   static const String _pinHashKey = 'pin_hash';
@@ -60,13 +61,16 @@ class PinAuthService {
     } catch (e) {
 
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS061',
-        errorMessage: 'PIN validation failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'validation_time': DateTime.now().toIso8601String(),
-          'service': 'PinAuthService',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS061',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'validation_time': DateTime.now().toIso8601String(),
+            'service': 'PinAuthService',
+          },
+        ),
       );
       return false;
     }
@@ -89,13 +93,16 @@ class PinAuthService {
     } catch (e) {
 
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS062',
-        errorMessage: 'PIN setup failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'setup_time': DateTime.now().toIso8601String(),
-          'service': 'PinAuthService',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS062',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'setup_time': DateTime.now().toIso8601String(),
+            'service': 'PinAuthService',
+          },
+        ),
       );
       return false;
     }
@@ -134,13 +141,16 @@ class PinAuthService {
     } catch (e) {
 
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS063',
-        errorMessage: 'PIN change failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'change_time': DateTime.now().toIso8601String(),
-          'service': 'PinAuthService',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS063',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'change_time': DateTime.now().toIso8601String(),
+            'service': 'PinAuthService',
+          },
+        ),
       );
       return false;
     }
@@ -231,13 +241,16 @@ class PinAuthService {
     } catch (e) {
 
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS068',
-        errorMessage: 'Privacy lock enable failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'enable_time': DateTime.now().toIso8601String(),
-          'service': 'PinAuthService',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS068',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'enable_time': DateTime.now().toIso8601String(),
+            'service': 'PinAuthService',
+          },
+        ),
       );
       return false;
     }
@@ -263,13 +276,16 @@ class PinAuthService {
     } catch (e) {
 
       await ErrorLoggingService.logHighError(
-        errorCode: 'ERRSYS069',
-        errorMessage: 'Privacy lock disable failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'disable_time': DateTime.now().toIso8601String(),
-          'service': 'PinAuthService',
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS069',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'disable_time': DateTime.now().toIso8601String(),
+            'service': 'PinAuthService',
+          },
+        ),
       );
       return false;
     }

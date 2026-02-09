@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'sync/sync_worker.dart';
 import 'error_logging_service.dart';
+import '../models/error_models.dart';
 import '../providers/privacy_lock_provider.dart';
 import '../providers/entry_provider.dart';
 
@@ -53,13 +54,16 @@ class AppLifecycleService extends WidgetsBindingObserver {
               entryNotifier.forceImmediateSave();
             } catch (e) {
               ErrorLoggingService.logMediumError(
-                errorCode: 'ERRSYS022',
-                errorMessage: 'Force save on app close failed: ${e.toString()}',
-                stackTrace: StackTrace.current.toString(),
-                errorContext: {
-                  'lifecycle_state': state.toString(),
-                  'operation': 'force_save_on_close',
-                },
+                error: ErrorContext.fromException(
+                  errorCode: 'ERRSYS022',
+                  severity: ErrorSeverity.medium,
+                  exception: e,
+                  stackTrace: StackTrace.current,
+                  errorContext: {
+                    'lifecycle_state': state.toString(),
+                    'operation': 'force_save_on_close',
+                  },
+                ),
               );
             }
           }
@@ -74,13 +78,16 @@ class AppLifecycleService extends WidgetsBindingObserver {
     } catch (e) {
       // Log app lifecycle error
       ErrorLoggingService.logMediumError(
-        errorCode: 'ERRSYS021',
-        errorMessage: 'App lifecycle state change failed: ${e.toString()}',
-        stackTrace: StackTrace.current.toString(),
-        errorContext: {
-          'lifecycle_state': state.toString(),
-          'state_change_time': DateTime.now().toIso8601String(),
-        },
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS021',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'lifecycle_state': state.toString(),
+            'state_change_time': DateTime.now().toIso8601String(),
+          },
+        ),
       );
     }
   }
