@@ -23,6 +23,12 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   String _viewMode = 'list';
   String? _selectedMood; // Only mood filter now
 
+  // Cache variables for optimizations
+  List<String>? _cachedSortedKeys;
+  List<HistoryEntry>? _cachedEntries;
+  Map<int, int>? _cachedMoodCounts;
+  Map<String, int>? _cachedMoodMap;
+
   @override
   void initState() {
     super.initState();
@@ -48,18 +54,22 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     return entries;
   }
 
-  // Calculate mood counts from entries
+  // Calculate mood counts from moodMap (all entries, not just loaded)
   Map<int, int> get _moodCounts {
     final historyState = ref.read(historyProvider);
-    final entries = historyState.entries;
-    
-    final counts = <int, int>{};
-    for (var entry in entries) {
-      final mood = entry.entry.moodScore ?? 3; // Default to 3 if null
-      counts[mood] = (counts[mood] ?? 0) + 1;
+    final moodMap = historyState.moodMap; // Already has ALL mood data
+
+    // Cache optimization: recalculate only if moodMap changed
+    if (_cachedMoodMap != moodMap) {
+      final counts = <int, int>{};
+      for (var moodScore in moodMap.values) {
+        counts[moodScore] = (counts[moodScore] ?? 0) + 1;
+      }
+      _cachedMoodCounts = counts;
+      _cachedMoodMap = moodMap;
     }
-    
-    return counts;
+
+    return _cachedMoodCounts ?? {};
   }
 
   // Group entries by month
@@ -69,7 +79,38 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       final key = DateFormat('MMMM yyyy').format(entry.entry.entryDate);
       grouped.putIfAbsent(key, () => []).add(entry);
     }
+
+    // Sort entries within each month (newest first)
+    for (var monthKey in grouped.keys) {
+      grouped[monthKey]!.sort(
+        (a, b) => b.entry.entryDate.compareTo(a.entry.entryDate),
+      );
+    }
+
     return grouped;
+  }
+
+  // Get sorted month keys (newest first) - cached for performance
+  List<String> get _sortedMonthKeys {
+    final currentEntries = _filteredEntries;
+
+    // Cache optimization: recalculate only if entries changed
+    if (_cachedEntries != currentEntries) {
+      final grouped = _groupedEntries;
+      final monthKeys = grouped.keys.toList();
+
+      // Sort by DateTime (newest first)
+      monthKeys.sort((a, b) {
+        final dateA = DateFormat('MMMM yyyy').parse(a);
+        final dateB = DateFormat('MMMM yyyy').parse(b);
+        return dateB.compareTo(dateA); // Descending order
+      });
+
+      _cachedSortedKeys = monthKeys;
+      _cachedEntries = currentEntries;
+    }
+
+    return _cachedSortedKeys ?? [];
   }
 
   // Get available months for pagination
@@ -87,48 +128,51 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     return unloaded;
   }
 
-
   @override
   Widget build(BuildContext context) {
     final historyState = ref.watch(historyProvider);
     final info = ResponsiveInfo.of(context);
 
     return Scaffold(
-        appBar: AppBar(
+      appBar: AppBar(
         title: Row(
           children: [
-            Icon(Icons.history, size: 20, color: Theme.of(context).colorScheme.onSurface),
+            Icon(
+              Icons.history,
+              size: 20,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
             const SizedBox(width: 8),
             Text(
               'History',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
             ),
           ],
         ),
-          actions: [
+        actions: [
           // View mode toggle (List/Calendar)
-            IconButton(
-              icon: Icon(
-                _viewMode == 'list' ? Icons.calendar_month : Icons.list,
-              ),
-            tooltip: _viewMode == 'list' ? 'Switch to Calendar' : 'Switch to List',
-              onPressed: () {
-                setState(() {
-                  _viewMode = _viewMode == 'list' ? 'calendar' : 'list';
-                });
-              },
-            ),
-          ],
-        ),
+          IconButton(
+            icon: Icon(_viewMode == 'list' ? Icons.calendar_month : Icons.list),
+            tooltip: _viewMode == 'list'
+                ? 'Switch to Calendar'
+                : 'Switch to List',
+            onPressed: () {
+              setState(() {
+                _viewMode = _viewMode == 'list' ? 'calendar' : 'list';
+              });
+            },
+          ),
+        ],
+      ),
       body: SafeArea(
         bottom: false,
         child: Column(
           children: [
             // Header with entry count (InnerGlow Style)
             if (_viewMode == 'list') _buildHeader(context, historyState, info),
-            
+
             // Mood filter chips (only in list mode)
             if (_viewMode == 'list') _buildMoodChips(info),
 
@@ -180,7 +224,8 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     HistoryState historyState,
     ResponsiveInfo info,
   ) {
-    final totalCount = historyState.entries.length;
+    // Use moodMap.length for accurate total count (all entries, not just loaded)
+    final totalCount = historyState.moodMap.length;
     final horizontalPadding = ResponsiveTokens.screenPaddingHorizontal(info);
     final verticalPadding = ResponsiveTokens.spacingM(info);
     return Container(
@@ -203,9 +248,9 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         children: [
           Text(
             '$totalCount ${totalCount == 1 ? 'entry' : 'entries'}',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
           ),
           if (_selectedMood != null)
             TextButton.icon(
@@ -229,10 +274,10 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   /// Build compact mood filter chips
   Widget _buildMoodChips(ResponsiveInfo info) {
     final moodCounts = _moodCounts;
-    final totalCount = ref.read(historyProvider).entries.length;
+    final totalCount = ref.read(historyProvider).moodMap.length; // All entries
     final spacingS = ResponsiveTokens.spacingS(info);
     final spacingM = ResponsiveTokens.spacingM(info);
-    
+
     // Mood emojis and colors
     final moodData = [
       {'emoji': '😢', 'mood': 1, 'color': Colors.red},
@@ -279,8 +324,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                     color: mood['color'] as Color,
                     onTap: () {
                       setState(() {
-                        _selectedMood =
-                            count > 0 ? moodNum.toString() : null;
+                        _selectedMood = count > 0 ? moodNum.toString() : null;
                       });
                     },
                   );
@@ -317,8 +361,9 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                         color: mood['color'] as Color,
                         onTap: () {
                           setState(() {
-                            _selectedMood =
-                                count > 0 ? moodNum.toString() : null;
+                            _selectedMood = count > 0
+                                ? moodNum.toString()
+                                : null;
                           });
                         },
                       ),
@@ -344,32 +389,25 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
         decoration: BoxDecoration(
-          color: isSelected 
-              ? color.withOpacity(0.2) 
-              : color.withOpacity(0.08),
+          color: isSelected ? color.withOpacity(0.2) : color.withOpacity(0.08),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected 
-                ? color.withOpacity(0.6) 
-                : Colors.transparent,
+            color: isSelected ? color.withOpacity(0.6) : Colors.transparent,
             width: isSelected ? 1.5 : 0,
           ),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              label,
-              style: const TextStyle(fontSize: 18),
-            ),
+            Text(label, style: const TextStyle(fontSize: 18)),
             const SizedBox(height: 2),
             Text(
               '($count)',
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                color: isSelected 
-                    ? _darkenColorForText(color) 
+                color: isSelected
+                    ? _darkenColorForText(color)
                     : Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
@@ -391,6 +429,8 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
   Widget _buildListView(ResponsiveInfo info, HistoryState historyState) {
     final grouped = _groupedEntries;
+    final sortedKeys = _sortedMonthKeys;
+
     if (grouped.isEmpty && !historyState.isLoading) {
       return _buildEmptyState();
     }
@@ -400,13 +440,13 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         horizontal: ResponsiveTokens.screenPaddingHorizontal(info),
         vertical: ResponsiveTokens.spacingM(info),
       ),
-      itemCount: grouped.length + (_availableMonths.isNotEmpty ? 1 : 0),
+      itemCount: sortedKeys.length + (_availableMonths.isNotEmpty ? 1 : 0),
       itemBuilder: (context, index) {
         // Load more button at the end
-        if (index == grouped.length && _availableMonths.isNotEmpty) {
+        if (index == sortedKeys.length && _availableMonths.isNotEmpty) {
           return _buildLoadMoreButton(historyState);
         }
-        final monthKey = grouped.keys.toList()[index];
+        final monthKey = sortedKeys[index];
         final entries = grouped[monthKey]!;
 
         return Column(
@@ -470,7 +510,9 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             // Entries for this month
             ...entries.map(
               (entry) => Padding(
-                padding: EdgeInsets.only(bottom: ResponsiveTokens.spacingM(info)),
+                padding: EdgeInsets.only(
+                  bottom: ResponsiveTokens.spacingM(info),
+                ),
                 child: _buildEntryCard(entry, info),
               ),
             ),
@@ -481,14 +523,58 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   }
 
   Widget _buildLoadMoreButton(HistoryState historyState) {
-    final availableMonths = _availableMonths;
-    if (availableMonths.isEmpty) {
+    final loadedMonths = historyState.loadedMonths;
+    final allMonths = historyState.monthsWithEntries;
+
+    if (allMonths.isEmpty) {
       return const SizedBox.shrink();
     }
 
-    // Get the oldest unloaded month (load backwards chronologically)
-    // availableMonths is already sorted (oldest first)
-    final nextMonthKey = availableMonths.first;
+    String nextMonthKey;
+
+    // Find next chronological month to load (handles gaps in data)
+    if (loadedMonths.isNotEmpty) {
+      // Convert loaded months to DateTime and find newest loaded
+      final loadedMonthDates = loadedMonths.map((key) {
+        final parts = key.split('-');
+        return DateTime(int.parse(parts[0]), int.parse(parts[1]), 1);
+      }).toList()..sort((a, b) => b.compareTo(a)); // Sort newest first
+
+      final newestLoadedMonth = loadedMonthDates.first;
+
+      // Get all unloaded months as DateTime objects
+      final unloadedMonths = allMonths
+          .where((m) => !loadedMonths.contains(m))
+          .map((key) {
+            final parts = key.split('-');
+            return DateTime(int.parse(parts[0]), int.parse(parts[1]), 1);
+          })
+          .toList();
+
+      if (unloadedMonths.isEmpty) {
+        return const SizedBox.shrink();
+      }
+
+      // Find unloaded months that are before newest loaded month
+      final validMonths = unloadedMonths
+          .where((month) => month.isBefore(newestLoadedMonth))
+          .toList();
+
+      if (validMonths.isNotEmpty) {
+        // Sort descending (newest first) and take closest to newest loaded
+        validMonths.sort((a, b) => b.compareTo(a));
+        final nextMonth = validMonths.first;
+        nextMonthKey = DateFormat('yyyy-MM').format(nextMonth);
+      } else {
+        // No months before newest loaded - use oldest unloaded as fallback
+        unloadedMonths.sort((a, b) => a.compareTo(b));
+        final nextMonth = unloadedMonths.first;
+        nextMonthKey = DateFormat('yyyy-MM').format(nextMonth);
+      }
+    } else {
+      // No months loaded yet - shouldn't happen, but handle gracefully
+      return const SizedBox.shrink();
+    }
 
     // Parse month key to get display name
     final parts = nextMonthKey.split('-');
@@ -542,7 +628,9 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                             'Load more entries',
                             style: TextStyle(
                               fontSize: 12,
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                             ),
                           ),
                         ],
@@ -564,8 +652,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     final mealsCount = entry.mealsCount;
     final waterCups = entry.meals?.waterCups ?? 0;
     final cardPadding = ResponsiveTokens.spacingM(info);
-    final previewFontSize =
-        info.value(compact: 12.0, medium: 13.0, expanded: 14.0);
+    final previewFontSize = info.value(
+      compact: 12.0,
+      medium: 13.0,
+      expanded: 14.0,
+    );
     final colorScheme = Theme.of(context).colorScheme;
 
     return TweenAnimationBuilder<double>(
@@ -739,18 +830,12 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       decoration: BoxDecoration(
         color: colors[mood - 1].withOpacity(0.1),
         shape: BoxShape.circle,
-        border: Border.all(
-            color: colors[mood - 1].withOpacity(0.3),
-          width: 2,
-          ),
+        border: Border.all(color: colors[mood - 1].withOpacity(0.3), width: 2),
       ),
-      child: Text(
-        emojis[mood - 1],
-        style: const TextStyle(fontSize: 24),
-      ),
+      child: Text(emojis[mood - 1], style: const TextStyle(fontSize: 24)),
     );
   }
-  
+
   Color _getSentimentColor(BuildContext context, String sentiment) {
     switch (sentiment) {
       case 'positive':
@@ -828,7 +913,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     final lastDay = DateTime(focusedDay.year, focusedDay.month + 1, 0);
     final spacingM = ResponsiveTokens.spacingM(info);
     final spacingL = ResponsiveTokens.spacingL(info);
-    final headerFontSize = info.value(compact: 18.0, medium: 20.0, expanded: 22.0);
+    final headerFontSize = info.value(
+      compact: 18.0,
+      medium: 20.0,
+      expanded: 22.0,
+    );
     final dayFontSize = info.value(compact: 12.0, medium: 14.0, expanded: 14.0);
     final dowFontSize = info.value(compact: 11.0, medium: 12.0, expanded: 12.0);
     final colorScheme = Theme.of(context).colorScheme;
@@ -881,12 +970,15 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
               ],
             ),
           ),
-          // Calendar
+          // Calendar - disable internal gestures to let parent ListView scroll
           TableCalendar(
             firstDay: firstDay,
             lastDay: lastDay,
             focusedDay: focusedDay,
             calendarFormat: CalendarFormat.month,
+            availableGestures: AvailableGestures.none,
+            pageJumpingEnabled: false,
+            pageAnimationEnabled: false,
             startingDayOfWeek: StartingDayOfWeek.monday,
             headerVisible: false,
             daysOfWeekVisible: true,
@@ -1077,8 +1169,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
   void _handleDateTap(DateTime date) async {
     final info = ResponsiveInfo.of(context);
-    final loadingHeightFactor =
-        info.value(compact: 0.25, medium: 0.3, expanded: 0.35);
+    final loadingHeightFactor = info.value(
+      compact: 0.25,
+      medium: 0.3,
+      expanded: 0.35,
+    );
     // Show loading bottom sheet immediately
     showModalBottomSheet(
       context: context,
@@ -1131,20 +1226,26 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           isScrollControlled: true,
           backgroundColor: Colors.transparent,
           builder: (context) => DraggableScrollableSheet(
-            initialChildSize:
-                info.value(compact: 0.35, medium: 0.4, expanded: 0.45),
-            maxChildSize:
-                info.value(compact: 0.55, medium: 0.6, expanded: 0.7),
-            minChildSize:
-                info.value(compact: 0.25, medium: 0.3, expanded: 0.35),
+            initialChildSize: info.value(
+              compact: 0.35,
+              medium: 0.4,
+              expanded: 0.45,
+            ),
+            maxChildSize: info.value(compact: 0.55, medium: 0.6, expanded: 0.7),
+            minChildSize: info.value(
+              compact: 0.25,
+              medium: 0.3,
+              expanded: 0.35,
+            ),
             expand: false,
             builder: (context, scrollController) {
               final colorScheme = Theme.of(context).colorScheme;
               return Container(
                 decoration: BoxDecoration(
                   color: colorScheme.surface,
-                  borderRadius:
-                      const BorderRadius.vertical(top: Radius.circular(24)),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(24),
+                  ),
                 ),
                 child: Column(
                   children: [
@@ -1190,8 +1291,9 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                             ),
                             const SizedBox(height: 8),
                             Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 32),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 32,
+                              ),
                               child: Text(
                                 'You haven\'t written an entry for ${DateFormat('MMMM d, y').format(date)}',
                                 textAlign: TextAlign.center,
@@ -1240,7 +1342,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     );
   }
 
-
   void _showEntryDetail(HistoryEntry entry) {
     final info = ResponsiveInfo.of(context);
     showModalBottomSheet(
@@ -1248,19 +1349,18 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => DraggableScrollableSheet(
-        initialChildSize:
-            info.value(compact: 0.65, medium: 0.7, expanded: 0.8),
-        maxChildSize:
-            info.value(compact: 0.9, medium: 0.95, expanded: 0.98),
-        minChildSize:
-            info.value(compact: 0.45, medium: 0.5, expanded: 0.6),
+        initialChildSize: info.value(compact: 0.65, medium: 0.7, expanded: 0.8),
+        maxChildSize: info.value(compact: 0.9, medium: 0.95, expanded: 0.98),
+        minChildSize: info.value(compact: 0.45, medium: 0.5, expanded: 0.6),
         expand: false,
         builder: (context, scrollController) {
           final colorScheme = Theme.of(context).colorScheme;
           return Container(
             decoration: BoxDecoration(
               color: colorScheme.surface,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(24),
+              ),
             ),
             child: Column(
               children: [
@@ -1275,81 +1375,81 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                   ),
                 ),
 
-              Expanded(
-                child: SingleChildScrollView(
-                  controller: scrollController,
-                  padding: EdgeInsets.all(
-                    ResponsiveTokens.spacingL(ResponsiveInfo.of(context)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Header
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  DateFormat(
-                                    'EEEE, MMMM d, y',
-                                  ).format(entry.entry.entryDate),
-                                  style: const TextStyle(
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.bold,
+                Expanded(
+                  child: SingleChildScrollView(
+                    controller: scrollController,
+                    padding: EdgeInsets.all(
+                      ResponsiveTokens.spacingL(ResponsiveInfo.of(context)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Header
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    DateFormat(
+                                      'EEEE, MMMM d, y',
+                                    ).format(entry.entry.entryDate),
+                                    style: const TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
-                                ),
-                                // Removed "Edited" text - will show in metadata
-                              ],
+                                  // Removed "Edited" text - will show in metadata
+                                ],
+                              ),
                             ),
-                          ),
-                          _buildMoodIcon(entry.entry.moodScore ?? 3),
-                        ],
-                      ),
-                      const SizedBox(height: 24),
-
-                      // Full diary text
-                      _buildSection(
-                        'Diary Entry',
-                        Icons.book,
-                        Colors.blue,
-                        Text(
-                          entry.entry.diaryText ?? 'No diary text',
-                          style: const TextStyle(fontSize: 16, height: 1.6),
+                            _buildMoodIcon(entry.entry.moodScore ?? 3),
+                          ],
                         ),
-                      ),
+                        const SizedBox(height: 24),
 
-                      // AI Insights (Expandable Card)
-                      _buildExpandableInsightsCard(entry),
+                        // Full diary text
+                        _buildSection(
+                          'Diary Entry',
+                          Icons.book,
+                          Colors.blue,
+                          Text(
+                            entry.entry.diaryText ?? 'No diary text',
+                            style: const TextStyle(fontSize: 16, height: 1.6),
+                          ),
+                        ),
 
-                      // Affirmations
-                      _buildAffirmationsSection(entry.affirmations),
+                        // AI Insights (Expandable Card)
+                        _buildExpandableInsightsCard(entry),
 
-                      // Gratitude
-                      _buildGratitudeSection(entry.gratitude),
+                        // Affirmations
+                        _buildAffirmationsSection(entry.affirmations),
 
-                      // Priorities
-                      _buildPrioritiesSection(entry.priorities),
+                        // Gratitude
+                        _buildGratitudeSection(entry.gratitude),
 
-                      // Meals
-                      _buildMealsSection(entry.meals),
+                        // Priorities
+                        _buildPrioritiesSection(entry.priorities),
 
-                      // Self-Care
-                      _buildSelfCareSection(entry.selfCare),
+                        // Meals
+                        _buildMealsSection(entry.meals),
 
-                      // Tomorrow Notes
-                      _buildTomorrowNotesSection(entry.tomorrowNotes),
+                        // Self-Care
+                        _buildSelfCareSection(entry.selfCare),
 
-                      // Metadata
-                      _buildMetadataSection(entry),
+                        // Tomorrow Notes
+                        _buildTomorrowNotesSection(entry.tomorrowNotes),
 
-                      const SizedBox(height: 24),
-                    ],
+                        // Metadata
+                        _buildMetadataSection(entry),
+
+                        const SizedBox(height: 24),
+                      ],
+                    ),
                   ),
                 ),
-              ),
               ],
             ),
           );
@@ -1400,7 +1500,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   Widget _buildExpandableInsightsCard(HistoryEntry entry) {
     return _ExpandableInsightsCard(entryId: entry.entry.id);
   }
-
 
   Widget _buildAffirmationsSection(EntryAffirmations? affirmations) {
     if (affirmations == null || affirmations.affirmations.isEmpty) {
@@ -1743,7 +1842,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             message,
             style: TextStyle(
               fontSize: 14,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               height: 1.6,
             ),
             textAlign: TextAlign.center,
@@ -1843,10 +1942,12 @@ class _ExpandableInsightsCard extends ConsumerStatefulWidget {
   const _ExpandableInsightsCard({required this.entryId});
 
   @override
-  ConsumerState<_ExpandableInsightsCard> createState() => _ExpandableInsightsCardState();
+  ConsumerState<_ExpandableInsightsCard> createState() =>
+      _ExpandableInsightsCardState();
 }
 
-class _ExpandableInsightsCardState extends ConsumerState<_ExpandableInsightsCard>
+class _ExpandableInsightsCardState
+    extends ConsumerState<_ExpandableInsightsCard>
     with SingleTickerProviderStateMixin {
   bool _isExpanded = false;
   bool _isLoading = false;
@@ -1887,7 +1988,9 @@ class _ExpandableInsightsCardState extends ConsumerState<_ExpandableInsightsCard
       _animationController.forward();
 
       try {
-        final insight = await _historyService.fetchInsightForEntry(widget.entryId);
+        final insight = await _historyService.fetchInsightForEntry(
+          widget.entryId,
+        );
         setState(() {
           _insight = insight;
           _isLoading = false;
@@ -1936,7 +2039,10 @@ class _ExpandableInsightsCardState extends ConsumerState<_ExpandableInsightsCard
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [Colors.purple.shade300, Colors.purple.shade500],
+                        colors: [
+                          Colors.purple.shade300,
+                          Colors.purple.shade500,
+                        ],
                       ),
                       borderRadius: BorderRadius.circular(10),
                     ),
@@ -2068,7 +2174,11 @@ class _ExpandableInsightsCardState extends ConsumerState<_ExpandableInsightsCard
             ),
             child: Row(
               children: [
-                Icon(Icons.info_outline, size: 18, color: Colors.purple.shade700),
+                Icon(
+                  Icons.info_outline,
+                  size: 18,
+                  color: Colors.purple.shade700,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(

@@ -37,6 +37,7 @@ class AnalyticsScreen extends ConsumerStatefulWidget {
 class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
   final PageController _pageController = PageController();
   int _currentPageIndex = 0;
+  int _hoveredMoodX = -1;
 
   @override
   void dispose() {
@@ -640,6 +641,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                 data.moodTrendData,
                 info: info,
                 isWeekly: false,
+                daysInMonth: data.monthEnd.day,
               ),
               SizedBox(height: ResponsiveTokens.spacingL(info)),
 
@@ -739,6 +741,19 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
     MonthlyAnalyticsData data,
   ) {
     final aspectRatio = info.value(compact: 1.4, medium: 1.6, expanded: 1.8);
+    final monthlyInsight = data.monthlyInsight as MonthlyInsight?;
+    double? selfCareCompletionPercent;
+    if (monthlyInsight?.habitAnalysis != null) {
+      final value = monthlyInsight!.habitAnalysis!['self_care_completion'];
+      if (value is num) {
+        selfCareCompletionPercent = value.toDouble();
+      } else if (value is String) {
+        selfCareCompletionPercent = double.tryParse(value);
+      }
+    }
+    final rawSelfCarePercent =
+        selfCareCompletionPercent ?? (data.avgSelfCareRate * 100);
+    final selfCarePercent = rawSelfCarePercent.clamp(0, 100).toDouble();
     final cards = [
       _buildSummaryCard(
         context,
@@ -767,7 +782,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
       _buildSummaryCard(
         context,
         'Self-Care',
-        '${(data.avgSelfCareRate * 100).toInt()}%',
+        '${selfCarePercent.toStringAsFixed(0)}%',
         'Completion rate',
         Icons.spa,
         Colors.purple,
@@ -865,11 +880,20 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
     }
   }
 
+  String _getMoodLabel(double mood) {
+    if (mood >= 4.5) return 'Great';
+    if (mood >= 3.5) return 'Good';
+    if (mood >= 2.5) return 'Okay';
+    if (mood >= 1.5) return 'Low';
+    return 'Very Low';
+  }
+
   Widget _buildMoodChart(
     BuildContext context,
     List<MoodDataPoint> data, {
     required ResponsiveInfo info,
     required bool isWeekly,
+    int? daysInMonth,
   }) {
     if (data.isEmpty) {
       return Card(
@@ -887,111 +911,335 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
       );
     }
 
-    final spots = data.asMap().entries.map((e) {
-      return FlSpot(e.key.toDouble(), e.value.moodScore);
-    }).toList();
+    final isMonthly = !isWeekly;
+    final maxX = isMonthly
+        ? (daysInMonth ?? 31).toDouble()
+        : (data.length - 1).toDouble();
+    final minX = isMonthly ? 1.0 : 0.0;
+
+    final spots = <FlSpot>[];
+    if (isWeekly) {
+      for (final entry in data.asMap().entries) {
+        final point = entry.value;
+        spots.add(FlSpot(entry.key.toDouble(), point.moodScore));
+      }
+    } else {
+      int? lastDay;
+      for (final point in data) {
+        final day = point.date.day;
+        if (lastDay != null && day - lastDay > 1) {
+          spots.add(FlSpot.nullSpot);
+        }
+        spots.add(FlSpot(day.toDouble(), point.moodScore));
+        lastDay = day;
+      }
+    }
+
+    // Calculate average mood for monthly reference line
+    double? avgMood;
+    if (isMonthly && spots.isNotEmpty) {
+      final validSpots = spots.where((s) => !s.isNull()).toList();
+      if (validSpots.isNotEmpty) {
+        avgMood =
+            validSpots.map((s) => s.y).reduce((a, b) => a + b) /
+            validSpots.length;
+      }
+    }
 
     return Card(
-      elevation: 2,
+      elevation: 0.5,
       child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: ResponsiveChartBox(
-          child: LineChart(
-            LineChartData(
-              gridData: FlGridData(
-                show: true,
-                drawVerticalLine: false,
-                horizontalInterval: 1,
-                getDrawingHorizontalLine: (value) {
-                  return FlLine(
-                    color: Theme.of(context).colorScheme.surfaceVariant,
-                    strokeWidth: 1,
-                  );
-                },
-              ),
-              titlesData: FlTitlesData(
-                leftTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    reservedSize: 40,
-                    getTitlesWidget: (value, meta) {
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: Text(
-                          value.toInt().toString(),
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onSurfaceVariant,
-                              ),
-                        ),
-                      );
-                    },
-                  ),
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Helper text
+            Row(
+              children: [
+                Icon(
+                  Icons.touch_app_outlined,
+                  size: 13,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
-                rightTitles: const AxisTitles(
-                  sideTitles: SideTitles(showTitles: false),
-                ),
-                topTitles: const AxisTitles(
-                  sideTitles: SideTitles(showTitles: false),
-                ),
-                bottomTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    reservedSize: 30,
-                    getTitlesWidget: (value, meta) {
-                      if (value.toInt() >= 0 && value.toInt() < data.length) {
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Text(
-                            data[value.toInt()].label ?? '',
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
-                                ),
-                          ),
-                        );
-                      }
-                      return const Text('');
-                    },
-                  ),
-                ),
-              ),
-              borderData: FlBorderData(show: false),
-              minX: 0,
-              maxX: (data.length - 1).toDouble(),
-              minY: 1,
-              maxY: 5,
-              lineBarsData: [
-                LineChartBarData(
-                  spots: spots,
-                  isCurved: true,
-                  color: Theme.of(context).colorScheme.primary,
-                  barWidth: 3,
-                  dotData: FlDotData(
-                    show: true,
-                    getDotPainter: (spot, percent, barData, index) {
-                      return FlDotCirclePainter(
-                        radius: 4,
-                        color: Theme.of(context).colorScheme.primary,
-                        strokeWidth: 2,
-                        strokeColor: Colors.white,
-                      );
-                    },
-                  ),
-                  belowBarData: BarAreaData(
-                    show: true,
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.primary.withOpacity(0.1),
+                const SizedBox(width: 5),
+                Expanded(
+                  child: Text(
+                    'Tap a point to see details · Gaps = no entry',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 10,
+                    ),
                   ),
                 ),
               ],
             ),
-          ),
+            const SizedBox(height: 16),
+            ResponsiveChartBox(
+              compactHeight: 200,
+              mediumHeight: 220,
+              expandedHeight: 240,
+              child: LineChart(
+                LineChartData(
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    horizontalInterval: 1,
+                    getDrawingHorizontalLine: (value) {
+                      return FlLine(
+                        color: Theme.of(context).colorScheme.surfaceVariant,
+                        strokeWidth: 0.5,
+                      );
+                    },
+                  ),
+                  titlesData: FlTitlesData(
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 24,
+                        interval: 1,
+                        getTitlesWidget: (value, meta) {
+                          if (value < 1 || value > 5)
+                            return const SizedBox.shrink();
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 4),
+                            child: Text(
+                              value.toInt().toString(),
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                    fontSize: 10,
+                                  ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 24,
+                        interval: 1,
+                        getTitlesWidget: (value, meta) {
+                          if (isWeekly) {
+                            if (value.toInt() >= 0 &&
+                                value.toInt() < data.length) {
+                              final isHovered = _hoveredMoodX == value.toInt();
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Text(
+                                  data[value.toInt()].label ?? '',
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(
+                                        color: isHovered
+                                            ? Theme.of(
+                                                context,
+                                              ).colorScheme.primary
+                                            : Theme.of(
+                                                context,
+                                              ).colorScheme.onSurfaceVariant,
+                                        fontWeight: isHovered
+                                            ? FontWeight.w600
+                                            : null,
+                                        fontSize: 10,
+                                      ),
+                                ),
+                              );
+                            }
+                            return const Text('');
+                          }
+
+                          // Monthly: smart label showing to avoid overlap
+                          final day = value.toInt();
+                          if (day < 1 || day > (daysInMonth ?? 31)) {
+                            return const Text('');
+                          }
+
+                          final lastDay = daysInMonth ?? 31;
+                          // Show: 1, 5, 10, 15, 20, 25 (skip 30/31 to avoid overlap)
+                          final isKeyDay =
+                              day == 1 ||
+                              day == 5 ||
+                              day == 10 ||
+                              day == 15 ||
+                              day == 20 ||
+                              day == 25;
+
+                          final isHovered = day == _hoveredMoodX;
+
+                          // Show hovered day only if it's not adjacent to key days
+                          final shouldShowHovered =
+                              isHovered &&
+                              !isKeyDay &&
+                              day != lastDay &&
+                              (day - 1) % 5 != 0 &&
+                              (day + 1) % 5 != 0;
+
+                          if (!isKeyDay && !shouldShowHovered) {
+                            return const SizedBox.shrink();
+                          }
+
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(
+                              day.toString(),
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: isHovered
+                                        ? Theme.of(context).colorScheme.primary
+                                        : Theme.of(
+                                            context,
+                                          ).colorScheme.onSurfaceVariant,
+                                    fontWeight: isHovered
+                                        ? FontWeight.w600
+                                        : null,
+                                    fontSize: 10,
+                                  ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  minX: minX,
+                  maxX: maxX,
+                  minY: 1,
+                  maxY: 5,
+                  extraLinesData: isMonthly && avgMood != null
+                      ? ExtraLinesData(
+                          horizontalLines: [
+                            HorizontalLine(
+                              y: avgMood,
+                              color: Colors.orange.shade700,
+                              strokeWidth: 1.5,
+                              dashArray: [5, 3],
+                              label: HorizontalLineLabel(
+                                show: true,
+                                alignment: Alignment.topRight,
+                                padding: const EdgeInsets.only(
+                                  right: 6,
+                                  bottom: 2,
+                                ),
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
+                                      color: Colors.orange.shade900,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                labelResolver: (line) =>
+                                    'Avg ${avgMood!.toStringAsFixed(1)}',
+                              ),
+                            ),
+                          ],
+                        )
+                      : null,
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: spots,
+                      isCurved: true,
+                      color: Theme.of(context).colorScheme.primary,
+                      barWidth: 2,
+                      dotData: FlDotData(
+                        show: true,
+                        checkToShowDot: (spot, barData) {
+                          if (spot.isNull()) return false;
+                          return true;
+                        },
+                        getDotPainter: (spot, percent, barData, index) {
+                          final isHovered = spot.x.round() == _hoveredMoodX;
+                          return FlDotCirclePainter(
+                            radius: isHovered ? 4 : 2,
+                            color: Theme.of(context).colorScheme.primary,
+                            strokeWidth: isHovered ? 2 : 1,
+                            strokeColor: Colors.white,
+                          );
+                        },
+                      ),
+                      belowBarData: BarAreaData(
+                        show: true,
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.primary.withOpacity(0.06),
+                      ),
+                    ),
+                  ],
+                  lineTouchData: LineTouchData(
+                    enabled: true,
+                    handleBuiltInTouches: true,
+                    touchCallback: (event, response) {
+                      if (!event.isInterestedForInteractions ||
+                          response?.lineBarSpots == null ||
+                          response!.lineBarSpots!.isEmpty) {
+                        if (_hoveredMoodX != -1) {
+                          setState(() {
+                            _hoveredMoodX = -1;
+                          });
+                        }
+                        return;
+                      }
+                      final spot = response.lineBarSpots!.first;
+                      final hoveredValue = spot.x.round();
+                      if (_hoveredMoodX != hoveredValue) {
+                        setState(() {
+                          _hoveredMoodX = hoveredValue;
+                        });
+                      }
+                    },
+                    touchTooltipData: LineTouchTooltipData(
+                      getTooltipColor: (touchedSpot) =>
+                          Theme.of(context).colorScheme.inverseSurface,
+                      tooltipBorderRadius: BorderRadius.circular(8),
+                      getTooltipItems: (touchedSpots) {
+                        return touchedSpots.map((spot) {
+                          if (spot.bar.spots[spot.spotIndex].isNull()) {
+                            return null;
+                          }
+
+                          String dateLabel;
+                          if (isWeekly) {
+                            dateLabel = data[spot.spotIndex].label ?? 'Day';
+                          } else {
+                            final day = spot.x.toInt();
+                            final point = data.firstWhere(
+                              (p) => p.date.day == day,
+                              orElse: () => data[0],
+                            );
+                            final monthName = DateFormat(
+                              'MMM',
+                            ).format(point.date);
+                            dateLabel = '$monthName $day';
+                          }
+
+                          final mood = spot.y;
+                          final moodLabel = _getMoodLabel(mood);
+
+                          return LineTooltipItem(
+                            '$dateLabel · Mood ${mood.toStringAsFixed(1)}\n($moodLabel)',
+                            Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                ) ??
+                                const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                ),
+                          );
+                        }).toList();
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

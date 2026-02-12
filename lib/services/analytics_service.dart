@@ -15,9 +15,9 @@ class AnalyticsService {
     SupabaseClient? client,
     AIService? aiService,
     DataFetchService? dataFetchService,
-  })  : _supabase = client ?? Supabase.instance.client,
-        _aiService = aiService ?? AIService(),
-        _dataFetchService = dataFetchService;
+  }) : _supabase = client ?? Supabase.instance.client,
+       _aiService = aiService ?? AIService(),
+       _dataFetchService = dataFetchService;
 
   /// Get weekly analytics data from Supabase
   Future<WeeklyAnalyticsData> getWeeklyAnalytics(DateTime weekStart) async {
@@ -41,7 +41,7 @@ class AnalyticsService {
       List<Map<String, dynamic>> entries;
       List<Map<String, dynamic>> mealsResponse = [];
       List<Map<String, dynamic>> habitsResponse = [];
-      
+
       if (_dataFetchService != null) {
         // Use cached fetchEntries and fetchHabitsDaily
         final entriesList = await _dataFetchService.fetchEntries(
@@ -49,15 +49,19 @@ class AnalyticsService {
           startDate: weekStart,
           endDate: weekEnd,
         );
-        entries = entriesList.map((e) => {
-          'id': e.id,
-          'entry_date': e.entryDate.toIso8601String().split('T')[0],
-          'mood_score': e.moodScore,
-        }).toList();
-        
+        entries = entriesList
+            .map(
+              (e) => {
+                'id': e.id,
+                'entry_date': e.entryDate.toIso8601String().split('T')[0],
+                'mood_score': e.moodScore,
+              },
+            )
+            .toList();
+
         // DISCONNECTED: Habits feature disabled
         habitsResponse = <Map<String, dynamic>>[]; // Return empty list
-        
+
         /* DISCONNECTED CODE - Habits feature disabled
         final habitsList = await _dataFetchService.fetchHabitsDaily(
           userId: userId,
@@ -69,7 +73,7 @@ class AnalyticsService {
           'self_care_completed_count': h.selfCareCompletedCount,
         }).toList();
         */
-        
+
         // For meals, we still need to query directly since we don't have a cached method for entry_meals
         final entryIds = entries.map((e) => e['id'] as String).toList();
         if (entryIds.isNotEmpty) {
@@ -82,28 +86,28 @@ class AnalyticsService {
         }
       } else {
         // Fallback to direct queries
-      final entriesResponse = await _supabase
-          .from('entries')
-          .select('id, entry_date, mood_score')
-          .eq('user_id', userId)
-          .gte('entry_date', weekStartStr)
-          .lte('entry_date', weekEndStr);
+        final entriesResponse = await _supabase
+            .from('entries')
+            .select('id, entry_date, mood_score')
+            .eq('user_id', userId)
+            .gte('entry_date', weekStartStr)
+            .lte('entry_date', weekEndStr);
 
-      final entryIds = (entriesResponse as List)
-          .map((e) => e['id'] as String)
-          .toList();
-      if (entryIds.isNotEmpty) {
+        final entryIds = (entriesResponse as List)
+            .map((e) => e['id'] as String)
+            .toList();
+        if (entryIds.isNotEmpty) {
           mealsResponse = List<Map<String, dynamic>>.from(
             await _supabase
-            .from('entry_meals')
-            .select('entry_id, water_cups')
+                .from('entry_meals')
+                .select('entry_id, water_cups')
                 .inFilter('entry_id', entryIds),
           );
-      }
+        }
 
         // DISCONNECTED: Habits feature disabled
         habitsResponse = <Map<String, dynamic>>[]; // Return empty list
-        
+
         /* DISCONNECTED CODE - Habits feature disabled
         habitsResponse = List<Map<String, dynamic>>.from(
           await _supabase
@@ -177,7 +181,8 @@ class AnalyticsService {
       final finalCupsAvg = weeklyInsight?.cupsAvg ?? cupsAvg;
       // weeklyInsight.selfCareRate is percentage (0-100) from database - use directly
       // selfCareRate from local calc is decimal (0-1) - convert to percentage (0-100)
-      final finalSelfCareRate = weeklyInsight?.selfCareRate ?? (selfCareRate * 100.0);
+      final finalSelfCareRate =
+          weeklyInsight?.selfCareRate ?? (selfCareRate * 100.0);
       final finalConsistencyScore =
           weeklyInsight?.consistencyScore ?? (entriesCount / 7.0);
       final finalEntriesCount = weeklyInsight?.entriesCount ?? entriesCount;
@@ -191,7 +196,7 @@ class AnalyticsService {
       // Fetch entries with full data for daily progress
       List<Map<String, dynamic>> entriesWithData;
       final entryIds = entries.map((e) => e['id'] as String).toList();
-      
+
       if (_dataFetchService != null) {
         // Use cached fetchEntries
         final entriesList = await _dataFetchService.fetchEntries(
@@ -199,20 +204,24 @@ class AnalyticsService {
           startDate: weekStart,
           endDate: weekEnd,
         );
-        entriesWithData = entriesList.map((e) => {
-          'id': e.id,
-          'entry_date': e.entryDate.toIso8601String().split('T')[0],
-          'mood_score': e.moodScore,
-          'diary_text': e.diaryText,
-        }).toList();
+        entriesWithData = entriesList
+            .map(
+              (e) => {
+                'id': e.id,
+                'entry_date': e.entryDate.toIso8601String().split('T')[0],
+                'mood_score': e.moodScore,
+                'diary_text': e.diaryText,
+              },
+            )
+            .toList();
       } else {
         // Fallback to direct query
         entriesWithData = List<Map<String, dynamic>>.from(
           await _supabase
-          .from('entries')
-          .select('id, entry_date, mood_score, diary_text')
-          .eq('user_id', userId)
-          .gte('entry_date', weekStartStr)
+              .from('entries')
+              .select('id, entry_date, mood_score, diary_text')
+              .eq('user_id', userId)
+              .gte('entry_date', weekStartStr)
               .lte('entry_date', weekEndStr),
         );
       }
@@ -339,14 +348,14 @@ class AnalyticsService {
     } catch (e) {
       await ErrorLoggingService.logError(
         ErrorContext.fromException(
-        errorCode: 'ERRANA001',
+          errorCode: 'ERRANA001',
           severity: ErrorSeverity.medium,
           exception: e,
           stackTrace: StackTrace.current,
-        errorContext: {
-          'week_start': weekStart.toIso8601String(),
-          'operation': 'get_weekly_analytics',
-        },
+          errorContext: {
+            'week_start': weekStart.toIso8601String(),
+            'operation': 'get_weekly_analytics',
+          },
         ),
       );
       rethrow;
@@ -380,7 +389,7 @@ class AnalyticsService {
       List<Map<String, dynamic>> entries;
       List<Map<String, dynamic>> mealsResponse = [];
       List<Map<String, dynamic>> habitsResponse = [];
-      
+
       if (_dataFetchService != null) {
         // Use cached fetchEntries and fetchHabitsDaily
         final entriesList = await _dataFetchService.fetchEntries(
@@ -388,15 +397,19 @@ class AnalyticsService {
           startDate: monthStart,
           endDate: monthEnd,
         );
-        entries = entriesList.map((e) => {
-          'id': e.id,
-          'entry_date': e.entryDate.toIso8601String().split('T')[0],
-          'mood_score': e.moodScore,
-        }).toList();
-        
+        entries = entriesList
+            .map(
+              (e) => {
+                'id': e.id,
+                'entry_date': e.entryDate.toIso8601String().split('T')[0],
+                'mood_score': e.moodScore,
+              },
+            )
+            .toList();
+
         // DISCONNECTED: Habits feature disabled
         habitsResponse = <Map<String, dynamic>>[]; // Return empty list
-        
+
         /* DISCONNECTED CODE - Habits feature disabled
         final habitsList = await _dataFetchService.fetchHabitsDaily(
           userId: userId,
@@ -408,7 +421,7 @@ class AnalyticsService {
           'self_care_completed_count': h.selfCareCompletedCount,
         }).toList();
         */
-        
+
         // For meals, we still need to query directly
         final entryIds = entries.map((e) => e['id'] as String).toList();
         if (entryIds.isNotEmpty) {
@@ -421,28 +434,28 @@ class AnalyticsService {
         }
       } else {
         // Fallback to direct queries
-      final entriesResponse = await _supabase
-          .from('entries')
-          .select('id, entry_date, mood_score')
-          .eq('user_id', userId)
-          .gte('entry_date', monthStartStr)
-          .lte('entry_date', monthEndStr);
+        final entriesResponse = await _supabase
+            .from('entries')
+            .select('id, entry_date, mood_score')
+            .eq('user_id', userId)
+            .gte('entry_date', monthStartStr)
+            .lte('entry_date', monthEndStr);
 
-      final entryIds = (entriesResponse as List)
-          .map((e) => e['id'] as String)
-          .toList();
-      if (entryIds.isNotEmpty) {
+        final entryIds = (entriesResponse as List)
+            .map((e) => e['id'] as String)
+            .toList();
+        if (entryIds.isNotEmpty) {
           mealsResponse = List<Map<String, dynamic>>.from(
             await _supabase
-            .from('entry_meals')
-            .select('entry_id, water_cups')
+                .from('entry_meals')
+                .select('entry_id, water_cups')
                 .inFilter('entry_id', entryIds),
           );
-      }
+        }
 
         // DISCONNECTED: Habits feature disabled
         habitsResponse = <Map<String, dynamic>>[]; // Return empty list
-        
+
         /* DISCONNECTED CODE - Habits feature disabled
         habitsResponse = List<Map<String, dynamic>>.from(
           await _supabase
@@ -503,35 +516,26 @@ class AnalyticsService {
       final daysInMonth = monthEnd.day;
       final overallConsistency = totalEntries / daysInMonth;
 
-      // Build mood trend data (weekly averages)
+      // Build mood trend data (daily points for full month)
       final moodData = <MoodDataPoint>[];
-      for (int week = 0; week < 4; week++) {
-        final weekStart = monthStart.add(Duration(days: week * 7));
-        final weekEnd = weekStart.add(const Duration(days: 6));
-        final weekEntries = entries.where((e) {
-          final entryDate = DateTime.parse(e['entry_date'] as String);
-          return entryDate.isAfter(
-                weekStart.subtract(const Duration(days: 1)),
-              ) &&
-              entryDate.isBefore(weekEnd.add(const Duration(days: 1)));
-        }).toList();
+      final moodByDay = <int, List<double>>{};
+      for (final entry in entries) {
+        final moodScore = (entry['mood_score'] as num?)?.toDouble();
+        if (moodScore == null) continue;
+        final entryDate = DateTime.parse(entry['entry_date'] as String);
+        final day = entryDate.day;
+        moodByDay.putIfAbsent(day, () => []).add(moodScore);
+      }
 
-        double? weekMood;
-        if (weekEntries.isNotEmpty) {
-          final weekMoodScores = weekEntries
-              .where((e) => e['mood_score'] != null)
-              .map((e) => (e['mood_score'] as num).toDouble())
-              .toList();
-          weekMood = weekMoodScores.isNotEmpty
-              ? weekMoodScores.reduce((a, b) => a + b) / weekMoodScores.length
-              : null;
-        }
-
+      for (int day = 1; day <= daysInMonth; day++) {
+        final scores = moodByDay[day];
+        if (scores == null || scores.isEmpty) continue;
+        final avg = scores.reduce((a, b) => a + b) / scores.length;
         moodData.add(
           MoodDataPoint(
-            date: weekStart,
-            moodScore: weekMood ?? 0,
-            label: 'Week ${week + 1}',
+            date: DateTime(monthStart.year, monthStart.month, day),
+            moodScore: avg,
+            label: day.toString(),
           ),
         );
       }
@@ -569,20 +573,19 @@ class AnalyticsService {
     } catch (e) {
       await ErrorLoggingService.logError(
         ErrorContext.fromException(
-        errorCode: 'ERRANA002',
+          errorCode: 'ERRANA002',
           severity: ErrorSeverity.medium,
           exception: e,
           stackTrace: StackTrace.current,
-        errorContext: {
-          'month_start': monthStart.toIso8601String(),
-          'operation': 'get_monthly_analytics',
-        },
+          errorContext: {
+            'month_start': monthStart.toIso8601String(),
+            'operation': 'get_monthly_analytics',
+          },
         ),
       );
       rethrow;
     }
   }
-
 
   /// Format date range for display
   static String formatDateRange(DateTime start, DateTime end) {
@@ -715,14 +718,14 @@ class AnalyticsService {
     } catch (e) {
       await ErrorLoggingService.logError(
         ErrorContext.fromException(
-        errorCode: 'ERRANA002',
+          errorCode: 'ERRANA002',
           severity: ErrorSeverity.medium,
           exception: e,
           stackTrace: StackTrace.current,
-        errorContext: {
-          'user_id': userId,
-          'operation': 'get_weekly_insights_list',
-        },
+          errorContext: {
+            'user_id': userId,
+            'operation': 'get_weekly_insights_list',
+          },
         ),
       );
       return [];
@@ -749,15 +752,15 @@ class AnalyticsService {
         } catch (e) {
           await ErrorLoggingService.logError(
             ErrorContext.fromException(
-            errorCode: 'ERRMODEL001',
+              errorCode: 'ERRMODEL001',
               severity: ErrorSeverity.medium,
               exception: e,
               stackTrace: StackTrace.current,
-            errorContext: {
-              'user_id': userId,
-              'insight_data': insight.toString(),
-              'operation': 'month_metadata_fromJson',
-            },
+              errorContext: {
+                'user_id': userId,
+                'insight_data': insight.toString(),
+                'operation': 'month_metadata_fromJson',
+              },
             ),
           );
           // Continue processing other months
@@ -842,14 +845,14 @@ class AnalyticsService {
     } catch (e) {
       await ErrorLoggingService.logError(
         ErrorContext.fromException(
-        errorCode: 'ERRANA004',
+          errorCode: 'ERRANA004',
           severity: ErrorSeverity.medium,
           exception: e,
           stackTrace: StackTrace.current,
-        errorContext: {
-          'user_id': userId,
-          'operation': 'get_monthly_insights_list',
-        },
+          errorContext: {
+            'user_id': userId,
+            'operation': 'get_monthly_insights_list',
+          },
         ),
       );
       return [];
@@ -988,15 +991,15 @@ class AnalyticsService {
     } catch (e) {
       await ErrorLoggingService.logError(
         ErrorContext.fromException(
-        errorCode: 'ERRANA003',
+          errorCode: 'ERRANA003',
           severity: ErrorSeverity.medium,
           exception: e,
           stackTrace: StackTrace.current,
-        errorContext: {
-          'user_id': userId,
-          'week_start': weekStart.toIso8601String(),
-          'operation': 'get_daily_progress',
-        },
+          errorContext: {
+            'user_id': userId,
+            'week_start': weekStart.toIso8601String(),
+            'operation': 'get_daily_progress',
+          },
         ),
       );
       return [];
