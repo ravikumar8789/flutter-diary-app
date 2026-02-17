@@ -7,13 +7,13 @@ import '../widgets/bottom_navigation_bar.dart';
 import '../widgets/daily_insights_timeline.dart';
 import '../widgets/week_chips_carousel.dart';
 import '../widgets/month_chips_carousel.dart';
+import '../widgets/analytics_period_switch.dart';
 import '../widgets/mini_calendar_widget.dart';
 import '../services/error_logging_service.dart';
 import '../models/error_models.dart';
 import '../widgets/habit_correlations_card.dart';
 import '../widgets/interactive_bar_chart.dart';
 import '../widgets/day_details_bottom_sheet.dart';
-import '../ui/responsive/responsive_app_bar_actions.dart';
 import '../ui/responsive/responsive_body.dart';
 import '../ui/responsive/responsive_chart_box.dart';
 import '../ui/responsive/responsive_grid.dart';
@@ -71,68 +71,14 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
           ],
         ),
         actions: [
-          ResponsiveAppBarActions(
-            regularActions: [
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: spacingS),
-                child: SegmentedButton<AnalyticsPeriod>(
-                  segments: [
-                    ButtonSegment<AnalyticsPeriod>(
-                      value: AnalyticsPeriod.weekly,
-                      label: const Text('Weekly'),
-                      icon: const Icon(Icons.calendar_view_week, size: 18),
-                    ),
-                    ButtonSegment<AnalyticsPeriod>(
-                      value: AnalyticsPeriod.monthly,
-                      label: const Text('Monthly'),
-                      icon: const Icon(Icons.calendar_month, size: 18),
-                    ),
-                  ],
-                  selected: {period},
-                  onSelectionChanged: (Set<AnalyticsPeriod> newSelection) {
-                    ref
-                        .read(analyticsPeriodProvider.notifier)
-                        .setPeriod(newSelection.first);
-                  },
-                ),
-              ),
-            ],
-            compactActions: [
-              PopupMenuButton<AnalyticsPeriod>(
-                tooltip: 'Select period',
-                initialValue: period,
-                icon: const Icon(Icons.calendar_today),
-                onSelected: (selected) {
-                  ref
-                      .read(analyticsPeriodProvider.notifier)
-                      .setPeriod(selected);
-                },
-                itemBuilder: (context) => [
-                  CheckedPopupMenuItem(
-                    value: AnalyticsPeriod.weekly,
-                    checked: period == AnalyticsPeriod.weekly,
-                    child: const Row(
-                      children: [
-                        Icon(Icons.calendar_view_week, size: 18),
-                        SizedBox(width: 8),
-                        Text('Weekly'),
-                      ],
-                    ),
-                  ),
-                  CheckedPopupMenuItem(
-                    value: AnalyticsPeriod.monthly,
-                    checked: period == AnalyticsPeriod.monthly,
-                    child: const Row(
-                      children: [
-                        Icon(Icons.calendar_month, size: 18),
-                        SizedBox(width: 8),
-                        Text('Monthly'),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: spacingS),
+            child: AnalyticsPeriodSwitch(
+              value: period,
+              onChanged: (p) =>
+                  ref.read(analyticsPeriodProvider.notifier).setPeriod(p),
+              compact: info.isCompact,
+            ),
           ),
         ],
       ),
