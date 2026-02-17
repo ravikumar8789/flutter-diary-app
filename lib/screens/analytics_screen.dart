@@ -1146,7 +1146,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                       spots: spots,
                       isCurved: true,
                       color: Theme.of(context).colorScheme.primary,
-                      barWidth: 2,
+                      barWidth: 0,
                       dotData: FlDotData(
                         show: true,
                         checkToShowDot: (spot, barData) {
@@ -1164,7 +1164,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                         },
                       ),
                       belowBarData: BarAreaData(
-                        show: true,
+                        show: false,
                         color: Theme.of(
                           context,
                         ).colorScheme.primary.withOpacity(0.06),

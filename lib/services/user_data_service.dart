@@ -365,8 +365,11 @@ class UserDataService {
         whereArgs: [userId],
         limit: 1,
       );
-      final streak = streakRecord.isNotEmpty
+      final currentStreak = streakRecord.isNotEmpty
           ? (streakRecord.first['current'] as int? ?? 0)
+          : 0;
+      final longestStreak = streakRecord.isNotEmpty
+          ? (streakRecord.first['longest'] as int? ?? 0)
           : 0;
 
       // Get last entry date from habits_daily (most recent date with any task completed)
@@ -399,7 +402,8 @@ class UserDataService {
 
       final stats = {
         'entries_count': entriesCount,
-        'current_streak': streak,
+        'current_streak': currentStreak,
+        'longest_streak': longestStreak,
         'days_active': daysSinceFirst,
         'last_entry_date': lastEntryDate,
       };
@@ -422,6 +426,7 @@ class UserDataService {
         data: {
           'entries_count': 0,
           'current_streak': 0,
+          'longest_streak': 0,
           'days_active': 0,
           'last_entry_date': null,
         },

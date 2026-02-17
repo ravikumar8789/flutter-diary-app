@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dev Issue Tracker</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+	<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <h1>📋 Dev Issue Tracker</h1>
+                <span class="issue-count" id="issueCount">0 issues</span>
+            </div>
+            <div class="header-right">
+                <select id="priorityFilter" class="filter-select">
+                    <option value="all">All Priorities</option>
+                    <option value="High">🔥 High</option>
+                    <option value="Medium">📊 Medium</option>
+                    <option value="Low">🍃 Low</option>
+                </select>
+                <button id="refreshBtn" class="refresh-btn">⟳ Refresh</button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Issues List -->
+            <div class="issues-section">
+                <div class="issues-header">
+                    <h2>Issues</h2>
+                    <input type="text" id="searchInput" class="search-input" placeholder="🔍 Search issues...">
+                </div>
+                <div id="issuesList" class="issues-list">
+                    <!-- Issues will be loaded here -->
+                </div>
+            </div>
+
+            <!-- Issue Details -->
+            <div class="details-section" id="detailsSection">
+                <div class="details-header">
+                    <h2>Issue Details</h2>
+                </div>
+                <div id="issueDetails" class="issue-details">
+                    <div class="no-selection">
+                        <p>👈 Select an issue to view details</p>
+                    </div>
+                </div>
+                <!-- Delete button container (hidden by default) -->
+                <div id="deleteContainer" class="delete-container" style="display: none;">
+                    <button id="deleteBtn" class="delete-btn">🗑️ Delete Issue</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

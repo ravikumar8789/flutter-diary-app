@@ -1,0 +1,421 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+    background: white;
+    border-radius: 20px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    overflow: hidden;
+}
+
+/* Header */
+.header {
+    background: white;
+    padding: 20px 30px;
+    border-bottom: 1px solid #eef2f6;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.header-left h1 {
+    font-size: 24px;
+    color: #2d3748;
+    margin-bottom: 5px;
+}
+
+.issue-count {
+    font-size: 14px;
+    color: #718096;
+    background: #f7fafc;
+    padding: 4px 12px;
+    border-radius: 20px;
+}
+
+.header-right {
+    display: flex;
+    gap: 15px;
+}
+
+.filter-select {
+    padding: 10px 20px;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #4a5568;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: white;
+}
+
+.filter-select:hover {
+    border-color: #667eea;
+}
+
+.refresh-btn {
+    padding: 10px 24px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.refresh-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+}
+
+/* Main Content */
+.main-content {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    min-height: 600px;
+}
+
+/* Issues Section */
+.issues-section {
+    background: #f8fafd;
+    border-right: 1px solid #eef2f6;
+    padding: 20px;
+}
+
+.issues-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.issues-header h2 {
+    font-size: 18px;
+    color: #2d3748;
+}
+
+.search-input {
+    padding: 10px 16px;
+    border: 2px solid #e2e8f0;
+    border-radius: 30px;
+    font-size: 14px;
+    width: 200px;
+    transition: all 0.2s;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.issues-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 600px;
+    overflow-y: auto;
+    padding-right: 10px;
+}
+
+.issue-card {
+    background: white;
+    border-radius: 12px;
+    padding: 15px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+    border: 2px solid transparent;
+    transition: all 0.2s;
+    cursor: pointer;
+}
+
+.issue-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px rgba(0,0,0,0.05);
+    border-color: #e2e8f0;
+}
+
+.issue-card.selected {
+    border-color: #667eea;
+    background: #f5f3ff;
+}
+
+.issue-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.issue-title {
+    font-weight: 600;
+    color: #2d3748;
+    font-size: 16px;
+}
+
+.priority-badge {
+    padding: 4px 12px;
+    border-radius: 30px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.priority-High {
+    background: #fff5f5;
+    color: #e53e3e;
+    border: 1px solid #feb2b2;
+}
+
+.priority-Medium {
+    background: #fffaf0;
+    color: #dd6b20;
+    border: 1px solid #fbd38d;
+}
+
+.priority-Low {
+    background: #f0fff4;
+    color: #38a169;
+    border: 1px solid #9ae6b4;
+}
+
+.issue-meta {
+    display: flex;
+    gap: 10px;
+    font-size: 13px;
+    color: #718096;
+}
+
+.issue-feature {
+    background: #edf2f7;
+    padding: 2px 10px;
+    border-radius: 30px;
+}
+
+.issue-date {
+    display: flex;
+    align-items: center;
+}
+
+/* Details Section */
+.details-section {
+    background: white;
+    padding: 20px;
+}
+
+.details-header {
+    margin-bottom: 20px;
+}
+
+.details-header h2 {
+    font-size: 18px;
+    color: #2d3748;
+}
+
+.issue-details {
+    max-height: 650px;
+    overflow-y: auto;
+}
+
+.detail-item {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #f8fafd;
+    border-radius: 12px;
+}
+
+.detail-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #718096;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+}
+
+.detail-value {
+    color: #2d3748;
+    line-height: 1.6;
+    font-size: 15px;
+}
+
+.steps-list {
+    list-style: none;
+    padding: 0;
+}
+
+.step-item {
+    padding: 10px 0;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    align-items: center;
+}
+
+.step-number {
+    width: 24px;
+    height: 24px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    margin-right: 12px;
+}
+
+.step-text {
+    color: #4a5568;
+}
+
+.no-selection {
+    text-align: center;
+    color: #a0aec0;
+    padding: 50px 20px;
+    font-size: 16px;
+}
+
+/* Scrollbar */
+.issues-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+.issues-list::-webkit-scrollbar-track {
+    background: #edf2f7;
+    border-radius: 10px;
+}
+
+.issues-list::-webkit-scrollbar-thumb {
+    background: #cbd5e0;
+    border-radius: 10px;
+}
+
+.issues-list::-webkit-scrollbar-thumb:hover {
+    background: #a0aec0;
+}
+
+@media (max-width: 768px) {
+    .main-content {
+        grid-template-columns: 1fr;
+    }
+    
+    .header {
+        flex-direction: column;
+        gap: 15px;
+    }
+}
+
+/* Add these styles at the end of your existing CSS */
+
+.delete-container {
+    padding: 20px;
+    border-top: 1px solid #eef2f6;
+    text-align: center;
+}
+
+.delete-btn {
+    background: white;
+    color: #e53e3e;
+    border: 2px solid #feb2b2;
+    padding: 12px 24px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    width: 100%;
+}
+
+.delete-btn:hover {
+    background: #fff5f5;
+    border-color: #e53e3e;
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(229, 62, 62, 0.2);
+}
+
+.delete-btn:active {
+    transform: translateY(0);
+}
+
+/* Confirmation modal styles */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: white;
+    padding: 30px;
+    border-radius: 20px;
+    max-width: 400px;
+    width: 90%;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+
+.modal-content h3 {
+    color: #2d3748;
+    margin-bottom: 10px;
+    font-size: 20px;
+}
+
+.modal-content p {
+    color: #718096;
+    margin-bottom: 20px;
+}
+
+.modal-buttons {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+
+.modal-cancel {
+    padding: 10px 20px;
+    background: #edf2f7;
+    color: #4a5568;
+    border: none;
+    border-radius: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    flex: 1;
+}
+
+.modal-cancel:hover {
+    background: #e2e8f0;
+}
+
+.modal-confirm {
+    padding: 10px 20px;
+    background: #e53e3e;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    flex: 1;
+}
+
+.modal-confirm:hover {
+    background: #c53030;
+}

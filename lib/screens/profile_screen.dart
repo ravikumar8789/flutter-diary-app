@@ -13,6 +13,8 @@ import 'login_screen.dart';
 import 'help_support_screen.dart';
 import 'settings_screen.dart';
 import '../providers/privacy_lock_provider.dart';
+import '../providers/grace_system_provider.dart';
+import '../widgets/grace_system_info_card.dart';
 import 'pin_setup_screen.dart';
 import '../ui/responsive/responsive_body.dart';
 import '../ui/responsive/responsive_info.dart';
@@ -25,6 +27,14 @@ class ProfileScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final info = ResponsiveInfo.of(context);
     final userDataState = ref.watch(userDataProvider);
+    final user = Supabase.instance.client.auth.currentUser;
+
+    // Initialize grace system if user is available
+    if (user != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(graceSystemProvider.notifier).initialize(user.id);
+      });
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -182,8 +192,6 @@ class ProfileScreen extends ConsumerWidget {
           SizedBox(height: spacingL),
 
           // Avatar
-          Stack(
-            children: [
               CircleAvatar(
                 radius: avatarRadius,
                 backgroundColor: Theme.of(
@@ -199,28 +207,6 @@ class ProfileScreen extends ConsumerWidget {
                         color: Theme.of(context).colorScheme.primary,
                       )
                     : null,
-              ),
-              Positioned(
-                bottom: 0,
-                right: 0,
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: Theme.of(context).scaffoldBackgroundColor,
-                      width: 3,
-                    ),
-                  ),
-                  child: const Icon(
-                    Icons.camera_alt,
-                    size: 20,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ],
           ),
           SizedBox(height: spacingL),
 
@@ -270,11 +256,14 @@ class ProfileScreen extends ConsumerWidget {
               ),
               SizedBox(width: spacingM),
               Expanded(
-                child: _buildStatCard(
+                child: Consumer(
+                  builder: (context, ref, child) {
+                    final graceState = ref.watch(graceSystemProvider);
+                    return _buildGraceDaysCard(
                   context,
-                  stats['grace_pieces']?.toString() ?? '0',
-                  'Grace Pieces',
-                  Icons.favorite,
+                      graceState.graceDaysAvailable.toString(),
+                    );
+                  },
                 ),
               ),
             ],
@@ -433,6 +422,77 @@ class ProfileScreen extends ConsumerWidget {
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
               textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGraceDaysCard(
+    BuildContext context,
+    String value,
+  ) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Icon(
+              Icons.favorite,
+              color: Theme.of(context).colorScheme.primary,
+              size: 24,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              value,
+              style: Theme.of(
+                context,
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  'Grace Days',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                GestureDetector(
+                  onTap: () {
+                    showDialog(
+                      context: context,
+                      builder: (context) => Dialog(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Container(
+                          constraints: const BoxConstraints(maxWidth: 400),
+                          child: const GraceSystemInfoCard(),
+                        ),
+                      ),
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      Icons.info_outline,
+                      color: Theme.of(context).colorScheme.primary,
+                      size: 14,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

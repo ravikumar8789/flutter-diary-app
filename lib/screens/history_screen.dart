@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -10,7 +13,6 @@ import '../services/history_service.dart';
 import '../providers/data_providers.dart';
 import '../ui/responsive/responsive_info.dart';
 import '../ui/responsive/responsive_tokens.dart';
-import '../ui/responsive/responsive_wrap.dart';
 
 class HistoryScreen extends ConsumerStatefulWidget {
   const HistoryScreen({super.key});
@@ -22,6 +24,8 @@ class HistoryScreen extends ConsumerStatefulWidget {
 class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   String _viewMode = 'list';
   String? _selectedMood; // Only mood filter now
+
+  Timer? _moodSelectionTimer;
 
   // Cache variables for optimizations
   List<String>? _cachedSortedKeys;
@@ -36,6 +40,41 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(historyProvider.notifier).loadCurrentMonth();
       ref.read(historyProvider.notifier).loadCalendarMoodData();
+    });
+  }
+
+  @override
+  void dispose() {
+    _moodSelectionTimer?.cancel();
+    super.dispose();
+  }
+
+  void _handleMoodSelection(int moodScore) {
+    _moodSelectionTimer?.cancel();
+    debugPrint('HISTORY DEBUG: _handleMoodSelection called, moodScore=$moodScore');
+
+    _moodSelectionTimer = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      debugPrint('HISTORY DEBUG: Timer fired for moodScore=$moodScore');
+      final historyState = ref.read(historyProvider);
+      final totalCount = _moodCounts[moodScore] ?? 0;
+      final loadedCount = historyState.entries
+          .where((e) => e.entry.moodScore == moodScore)
+          .length;
+
+      debugPrint(
+        'HISTORY DEBUG: totalCount=$totalCount loadedCount=$loadedCount '
+        'isLoadingMoodFilter=${historyState.isLoadingMoodFilter} entries.length=${historyState.entries.length}',
+      );
+
+      if (totalCount > loadedCount && !historyState.isLoadingMoodFilter) {
+        debugPrint('HISTORY DEBUG: Calling loadMoodFilteredEntries($moodScore)');
+        ref.read(historyProvider.notifier).loadMoodFilteredEntries(moodScore);
+      } else {
+        debugPrint(
+          'HISTORY DEBUG: Skipping fetch - totalCount<=loadedCount or already loading',
+        );
+      }
     });
   }
 
@@ -170,12 +209,23 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         bottom: false,
         child: Column(
           children: [
-            // Header with entry count (InnerGlow Style)
-            if (_viewMode == 'list') _buildHeader(context, historyState, info),
-
             // Mood filter chips (only in list mode)
             if (_viewMode == 'list') _buildMoodChips(info),
 
+            // Mood filter loading indicator
+            if (_viewMode == 'list' &&
+                _selectedMood != null &&
+                historyState.isLoadingMoodFilter)
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: const Center(
+                  child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              ),
             // Entries list
             Expanded(
               child: historyState.isLoading
@@ -214,59 +264,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         onTap: (index) {
           AppBottomNavigationBar.navigateToScreen(context, index);
         },
-      ),
-    );
-  }
-
-  /// Build header with entry count (InnerGlow Style)
-  Widget _buildHeader(
-    BuildContext context,
-    HistoryState historyState,
-    ResponsiveInfo info,
-  ) {
-    // Use moodMap.length for accurate total count (all entries, not just loaded)
-    final totalCount = historyState.moodMap.length;
-    final horizontalPadding = ResponsiveTokens.screenPaddingHorizontal(info);
-    final verticalPadding = ResponsiveTokens.spacingM(info);
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: horizontalPadding,
-        vertical: verticalPadding,
-      ),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        border: Border(
-          bottom: BorderSide(
-            color: Theme.of(context).colorScheme.outline.withOpacity(0.1),
-          ),
-        ),
-      ),
-      child: ResponsiveWrapRow(
-        info: info,
-        rowMainAxisAlignment: MainAxisAlignment.spaceBetween,
-        wrapAlignment: WrapAlignment.spaceBetween,
-        children: [
-          Text(
-            '$totalCount ${totalCount == 1 ? 'entry' : 'entries'}',
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-          ),
-          if (_selectedMood != null)
-            TextButton.icon(
-              onPressed: () {
-                setState(() => _selectedMood = null);
-              },
-              icon: const Icon(Icons.clear, size: 16),
-              label: const Text('Clear filter'),
-              style: TextButton.styleFrom(
-                padding: EdgeInsets.symmetric(
-                  horizontal: ResponsiveTokens.spacingM(info),
-                  vertical: ResponsiveTokens.spacingS(info),
-                ),
-              ),
-            ),
-        ],
       ),
     );
   }
@@ -322,11 +319,20 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                     count: count,
                     isSelected: _selectedMood == moodNum.toString(),
                     color: mood['color'] as Color,
-                    onTap: () {
-                      setState(() {
-                        _selectedMood = count > 0 ? moodNum.toString() : null;
-                      });
-                    },
+                        onTap: () {
+                          final newMood = count > 0 ? moodNum.toString() : null;
+                          debugPrint(
+                            'HISTORY DEBUG: Mood chip tapped moodNum=$moodNum count=$count newMood=$newMood',
+                          );
+                          setState(() {
+                            _selectedMood = newMood;
+                          });
+                          if (newMood != null) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              _handleMoodSelection(moodNum);
+                            });
+                          }
+                        },
                   );
                 }),
               ],
@@ -360,11 +366,19 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                         isSelected: _selectedMood == moodNum.toString(),
                         color: mood['color'] as Color,
                         onTap: () {
+                          final newMood =
+                              count > 0 ? moodNum.toString() : null;
+                          debugPrint(
+                            'HISTORY DEBUG: Mood chip tapped (row) moodNum=$moodNum count=$count newMood=$newMood',
+                          );
                           setState(() {
-                            _selectedMood = count > 0
-                                ? moodNum.toString()
-                                : null;
+                            _selectedMood = newMood;
                           });
+                          if (newMood != null) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              _handleMoodSelection(moodNum);
+                            });
+                          }
                         },
                       ),
                     ),
@@ -431,6 +445,16 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     final grouped = _groupedEntries;
     final sortedKeys = _sortedMonthKeys;
 
+    final moodLoadMore = _selectedMood != null &&
+        (_moodCounts[int.parse(_selectedMood!)] ?? 0) >
+            historyState.entries
+                .where((e) =>
+                    e.entry.moodScore?.toString() == _selectedMood)
+                .length;
+    final monthLoadMore =
+        _selectedMood == null && _availableMonths.isNotEmpty;
+    final hasTrailingLoadMore = moodLoadMore || monthLoadMore;
+
     if (grouped.isEmpty && !historyState.isLoading) {
       return _buildEmptyState();
     }
@@ -440,10 +464,17 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         horizontal: ResponsiveTokens.screenPaddingHorizontal(info),
         vertical: ResponsiveTokens.spacingM(info),
       ),
-      itemCount: sortedKeys.length + (_availableMonths.isNotEmpty ? 1 : 0),
+      itemCount: sortedKeys.length + (hasTrailingLoadMore ? 1 : 0),
       itemBuilder: (context, index) {
         // Load more button at the end
-        if (index == sortedKeys.length && _availableMonths.isNotEmpty) {
+        if (index == sortedKeys.length && hasTrailingLoadMore) {
+          debugPrint(
+            'HISTORY DEBUG: Building trailing LoadMore moodLoadMore=$moodLoadMore '
+            'monthLoadMore=$monthLoadMore',
+          );
+          if (moodLoadMore) {
+            return _buildLoadMoreMoodButton(historyState);
+          }
           return _buildLoadMoreButton(historyState);
         }
         final monthKey = sortedKeys[index];
@@ -522,6 +553,84 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     );
   }
 
+  Widget _buildLoadMoreMoodButton(HistoryState historyState) {
+    if (_selectedMood == null) return const SizedBox.shrink();
+
+    final moodScore = int.parse(_selectedMood!);
+    final totalCount = _moodCounts[moodScore] ?? 0;
+    final loadedCount = historyState.entries
+        .where((e) => e.entry.moodScore == moodScore)
+        .length;
+
+    if (loadedCount >= totalCount) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.all(16),
+      child: Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: InkWell(
+          onTap: historyState.isLoadingMoodFilter
+              ? null
+              : () {
+                  debugPrint(
+                    'HISTORY DEBUG: LoadMoreMood button tapped moodScore=$moodScore',
+                  );
+                  ref
+                      .read(historyProvider.notifier)
+                      .loadMoodFilteredEntries(moodScore);
+                },
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: LinearGradient(
+                colors: [
+                  Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                  Theme.of(context).colorScheme.secondary.withOpacity(0.1),
+                ],
+              ),
+            ),
+            child: historyState.isLoadingMoodFilter
+                ? const Center(child: CircularProgressIndicator())
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.expand_more,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 12),
+                      Column(
+                        children: [
+                          Text(
+                            'Load more entries',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                          Text(
+                            '$loadedCount of $totalCount loaded',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildLoadMoreButton(HistoryState historyState) {
     final loadedMonths = historyState.loadedMonths;
     final allMonths = historyState.monthsWithEntries;
@@ -581,6 +690,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     final month = DateTime(int.parse(parts[0]), int.parse(parts[1]), 1);
     final monthDisplayName = DateFormat('MMMM yyyy').format(month);
 
+    debugPrint(
+      'HISTORY DEBUG: _buildLoadMoreButton nextMonthKey=$nextMonthKey '
+      'loadedMonths=${historyState.loadedMonths.length}',
+    );
+
     return Container(
       margin: const EdgeInsets.all(16),
       child: Card(
@@ -589,9 +703,14 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         child: InkWell(
           onTap: historyState.isLoadingMore
               ? null
-              : () => ref
-                    .read(historyProvider.notifier)
-                    .loadPreviousMonth(nextMonthKey),
+              : () {
+                  debugPrint(
+                    'HISTORY DEBUG: LoadMoreMonth button tapped nextMonthKey=$nextMonthKey',
+                  );
+                  ref
+                      .read(historyProvider.notifier)
+                      .loadPreviousMonth(nextMonthKey);
+                },
           borderRadius: BorderRadius.circular(16),
           child: Container(
             padding: const EdgeInsets.all(20),

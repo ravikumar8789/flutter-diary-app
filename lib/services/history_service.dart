@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/entry_models.dart';
@@ -307,6 +308,118 @@ class HistoryService {
         ),
       );
       return null;
+    }
+  }
+
+  /// Fetch entries by mood with pagination (for mood filter on History screen)
+  ///
+  /// Skips last 2 months (already loaded). Fetches from older months.
+  Future<List<HistoryEntry>> getEntriesByMood({
+    required String userId,
+    required int moodScore,
+    DateTime? startDate,
+    DateTime? endDate,
+    int limit = 30,
+    int offset = 0,
+  }) async {
+    try {
+      debugPrint(
+        'HISTORY DEBUG: getEntriesByMood START moodScore=$moodScore '
+        'endDate=$endDate offset=$offset limit=$limit',
+      );
+      if (_dataFetchService == null) {
+        debugPrint('HISTORY DEBUG: getEntriesByMood EXIT - _dataFetchService null');
+        return [];
+      }
+
+      final response = await _dataFetchService.fetchEntriesByMoodWithJoins(
+        userId: userId,
+        moodScore: moodScore,
+        startDate: startDate,
+        endDate: endDate,
+        limit: limit,
+        offset: offset,
+      );
+
+      debugPrint('HISTORY DEBUG: getEntriesByMood raw response length=${response.length}');
+      if (response.isEmpty) return [];
+
+      final historyEntries = <HistoryEntry>[];
+      for (var row in response) {
+        final entry = Entry.fromSupabaseJson(row);
+
+        final selfCare = row['entry_self_care'] != null
+            ? EntrySelfCare.fromSupabaseJson(
+                row['entry_self_care'] as Map<String, dynamic>,
+              )
+            : null;
+
+        final meals = row['entry_meals'] != null
+            ? EntryMeals.fromSupabaseJson(
+                row['entry_meals'] as Map<String, dynamic>,
+              )
+            : null;
+
+        final affirmations = row['entry_affirmations'] != null
+            ? EntryAffirmations.fromSupabaseJson(
+                row['entry_affirmations'] as Map<String, dynamic>,
+              )
+            : null;
+
+        final gratitude = row['entry_gratitude'] != null
+            ? EntryGratitude.fromSupabaseJson(
+                row['entry_gratitude'] as Map<String, dynamic>,
+              )
+            : null;
+
+        final priorities = row['entry_priorities'] != null
+            ? EntryPriorities.fromSupabaseJson(
+                row['entry_priorities'] as Map<String, dynamic>,
+              )
+            : null;
+
+        final tomorrowNotes = row['entry_tomorrow_notes'] != null
+            ? EntryTomorrowNotes.fromSupabaseJson(
+                row['entry_tomorrow_notes'] as Map<String, dynamic>,
+              )
+            : null;
+
+        historyEntries.add(
+          HistoryEntry(
+            entry: entry,
+            insight: null,
+            selfCare: selfCare,
+            meals: meals,
+            affirmations: affirmations,
+            gratitude: gratitude,
+            priorities: priorities,
+            tomorrowNotes: tomorrowNotes,
+          ),
+        );
+      }
+
+      historyEntries.sort(
+        (a, b) => b.entry.entryDate.compareTo(a.entry.entryDate),
+      );
+
+      debugPrint('HISTORY DEBUG: getEntriesByMood SUCCESS returning ${historyEntries.length} entries');
+      return historyEntries;
+    } catch (e) {
+      debugPrint('HISTORY DEBUG: getEntriesByMood ERROR: $e');
+      await ErrorLoggingService.logError(
+        ErrorContext.fromException(
+          errorCode: 'ERRHIST011',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'mood_score': moodScore,
+            'offset': offset,
+          },
+        ),
+      );
+      rethrow;
     }
   }
 

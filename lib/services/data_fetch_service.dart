@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sqflite/sqflite.dart';
 import '../repositories/data_repository.dart';
@@ -691,6 +692,107 @@ class DataFetchService {
             'date': dateStr,
             'cache_key': key,
             'operation': 'fetch_entry_by_date',
+          },
+        ),
+      );
+      rethrow;
+    }
+  }
+
+  /// Fetch entries by mood with JOINs (for HistoryService mood filter)
+  ///
+  /// Returns entries filtered by mood with date range and pagination.
+  /// Uses cache key: entries_mood_${userId}_${moodScore}_${endDateStr}_${limit}_${offset}
+  Future<List<Map<String, dynamic>>> fetchEntriesByMoodWithJoins({
+    required String userId,
+    required int moodScore,
+    DateTime? startDate,
+    DateTime? endDate,
+    int limit = 30,
+    int offset = 0,
+  }) async {
+    final endDateStr = endDate != null
+        ? endDate.toIso8601String().split('T')[0]
+        : 'all';
+    final key =
+        'entries_mood_${userId}_${moodScore}_${endDateStr}_${limit}_$offset';
+
+    debugPrint(
+      'HISTORY DEBUG: fetchEntriesByMoodWithJoins key=$key '
+      'endDate=$endDate startDate=$startDate',
+    );
+
+    try {
+      return await _repository.fetch<List<Map<String, dynamic>>>(
+        key: key,
+        fetcher: () async {
+          try {
+            var query = _supabase
+                .from('entries')
+                .select('''
+                  *,
+                  entry_self_care(*),
+                  entry_meals(*),
+                  entry_affirmations(*),
+                  entry_gratitude(*),
+                  entry_priorities(*),
+                  entry_tomorrow_notes(*)
+                ''')
+                .eq('user_id', userId)
+                .eq('mood_score', moodScore);
+
+            if (endDate != null) {
+              final endDateStrVal = endDate.toIso8601String().split('T')[0];
+              query = query.lt('entry_date', endDateStrVal);
+            }
+            if (startDate != null) {
+              final startDateStr =
+                  startDate.toIso8601String().split('T')[0];
+              query = query.gte('entry_date', startDateStr);
+            }
+
+            final response = await query
+                .order('entry_date', ascending: false)
+                .range(offset, offset + limit - 1);
+            debugPrint(
+              'HISTORY DEBUG: fetchEntriesByMoodWithJoins Supabase returned '
+              '${(response as List).length} rows',
+            );
+            return (response as List)
+                .map((e) => e as Map<String, dynamic>)
+                .toList();
+          } catch (e) {
+            await ErrorLoggingService.logHighError(
+              error: ErrorContext.fromException(
+                errorCode: 'ERRDATA232',
+                severity: ErrorSeverity.high,
+                exception: e,
+                stackTrace: StackTrace.current,
+                errorContext: {
+                  'user_id': userId,
+                  'mood_score': moodScore,
+                  'end_date': endDate?.toIso8601String(),
+                  'table': 'entries',
+                  'operation': 'fetch_entries_by_mood_with_joins',
+                },
+              ),
+            );
+            rethrow;
+          }
+        },
+      );
+    } catch (e) {
+      await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
+          errorCode: 'ERRDATA233',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'user_id': userId,
+            'mood_score': moodScore,
+            'cache_key': key,
+            'operation': 'fetch_entries_by_mood_with_joins',
           },
         ),
       );
