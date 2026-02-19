@@ -1015,7 +1015,9 @@ class UserDataService {
 
       // 4. Check if today_date matches today
       final streakTodayDate = supabaseStreak['today_date'] as String?;
-      final isNewDay = streakTodayDate != todayDateStr;
+      // Only reset when we have a previous date AND it's a different calendar day.
+      // Null = not yet set (new user / no activity) → don't overwrite on app open.
+      final isNewDay = streakTodayDate != null && streakTodayDate != todayDateStr;
       print(
         '🔥 STREAK DEBUG: Streak today_date: $streakTodayDate, App today: $todayDateStr, isNewDay: $isNewDay',
       );

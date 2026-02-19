@@ -442,6 +442,27 @@ class DataFetchService {
             if (localStreak.isNotEmpty) {
               final streak = localStreak.first;
 
+              // CRITICAL: If local has unsynced changes, do NOT overwrite with Supabase
+              // (Supabase may be stale; sync is debounced 3s)
+              final isSynced = (streak['is_synced'] as int? ?? 0) == 1;
+              if (!isSynced) {
+                return {
+                  'user_id': streak['user_id'],
+                  'current': streak['current'],
+                  'longest': streak['longest'],
+                  'last_entry_date': streak['last_entry_date'],
+                  'freeze_credits': streak['freeze_credits'],
+                  'grace_pieces_total': streak['grace_pieces_total'],
+                  'updated_at': streak['updated_at'],
+                  'today_date': streak['today_date'],
+                  'today_diary': streak['today_diary'],
+                  'today_affirmations': streak['today_affirmations'],
+                  'today_gratitude': streak['today_gratitude'],
+                  'today_self_care_count': streak['today_self_care_count'],
+                  'today_grace_pieces': streak['today_grace_pieces'],
+                };
+              }
+
               // CRITICAL: Check if date changed (more important than time-based staleness)
               final lastEntryDateStr = streak['last_entry_date'] as String?;
               bool dateChanged = false;

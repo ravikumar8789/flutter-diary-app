@@ -47,10 +47,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             .read(authControllerProvider)
             .signIn(_emailController.text.trim(), _passwordController.text);
 
-        // Set needsDataFetch flag to true after successful login
-        // This ensures 7-day data is fetched when HomeScreen loads
+        // Clear last fetch date so 7-day data is fetched when splash/home loads
         try {
-          await DataSyncFlagService.setNeedsDataFetch(true);
+          await DataSyncFlagService.clearLastFetchDate();
         } catch (e) {
           await ErrorLoggingService.logError(
             ErrorContext.fromException(

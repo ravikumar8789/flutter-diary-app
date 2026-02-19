@@ -92,6 +92,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _hasLoadedUserData = false;
   bool _hasCheckedPrefetch = false;
   String? _currentUserId;
+  bool _needsFetch = false;
+  bool _prefetchComplete = false;
 
   @override
   void initState() {
@@ -113,32 +115,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
-  /// Handle prefetch after login (7 days data only)
-  /// Called when HomeScreen shows loading state after login
-  Future<void> _handlePrefetchAfterLogin(String userId) async {
+  /// Run prefetch after login and wait for completion before showing content.
+  /// Non-blocking: on failure, sets _prefetchComplete so user can proceed.
+  void _runPrefetchAndWait(String userId) async {
     try {
-      // Check if data fetch is needed
       final needsFetch = await DataSyncFlagService.needsDataFetch();
-      
+      if (!mounted) return;
+      setState(() => _needsFetch = needsFetch);
+
       if (needsFetch) {
         try {
           final dataFetchService = ref.read(dataFetchServiceProvider);
-          
-          // Fetch 7 days data (includes today, so no need for separate today fetch)
           await DataPrefetchService.prefetch7DaysData(
             userId,
             dataFetchService,
           );
-          
-          // Set flag to false after successful fetch
           await DataSyncFlagService.clearNeedsDataFetch();
-          
-          // Invalidate home summary cache and provider to refresh week stats
           dataFetchService.invalidateHomeSummaryCache(userId);
           ref.invalidate(homeSummaryProvider);
-          
         } catch (e) {
-          // Log error but continue - data will be fetched on-demand
           await ErrorLoggingService.logHighError(
             error: ErrorContext.fromException(
               errorCode: 'ERRSYS184',
@@ -151,8 +146,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               },
             ),
           );
-          // Keep flag as true so it retries next time
+        } finally {
+          if (mounted) setState(() => _prefetchComplete = true);
         }
+      } else {
+        if (mounted) setState(() => _prefetchComplete = true);
       }
     } catch (e) {
       await ErrorLoggingService.logHighError(
@@ -167,6 +165,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           },
         ),
       );
+      if (mounted) {
+        setState(() {
+          _needsFetch = false;
+          _prefetchComplete = true;
+        });
+      }
     }
   }
 
@@ -181,23 +185,46 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final userStats = ref.watch(userStatsProvider);
     final isLoading = userDataState.isLoading;
 
-    // Show loading state while user data is being fetched
-    if (isLoading && userData == null) {
-      // Check if prefetch is needed (after login or fresh install)
+    // Show loading state while user data is being fetched OR prefetch in progress
+    final showLoading =
+        (isLoading && userData == null) || (_needsFetch && !_prefetchComplete);
+    if (showLoading) {
       if (user != null && !_hasCheckedPrefetch) {
         _hasCheckedPrefetch = true;
-        _handlePrefetchAfterLogin(user.id);
+        _runPrefetchAndWait(user.id);
       }
-      
+
       return Scaffold(
         appBar: null,
-        body: const Center(
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Loading your data...'),
+              const SizedBox(height: 24),
+              _skeletonBase(context, height: 24, width: 120, radius: 6),
+              const SizedBox(height: 16),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final info = ResponsiveInfo.of(context);
+                  final columns = responsiveCardCrossAxisCount(info);
+                  final spacing = ResponsiveTokens.spacingM(info);
+                  final totalSpacing = spacing * (columns - 1);
+                  final cardWidth =
+                      (constraints.maxWidth - totalSpacing) / columns;
+                  return Wrap(
+                    spacing: spacing,
+                    runSpacing: spacing,
+                    children: List.generate(
+                      4,
+                      (_) => SizedBox(
+                        width: cardWidth,
+                        child: _skeletonWeekCard(context),
+                      ),
+                    ),
+                  );
+                },
+              ),
             ],
           ),
         ),
@@ -502,6 +529,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             _skeletonBase(context, height: 12, width: 80, radius: 6),
             const SizedBox(height: 8),
             _skeletonBase(context, height: 10, width: 70, radius: 6),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _skeletonWeekCard(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _skeletonBase(context, height: 20, width: 20, radius: 10),
+            const SizedBox(height: 6),
+            _skeletonBase(context, height: 18, width: 40, radius: 6),
+            const SizedBox(height: 2),
+            _skeletonBase(context, height: 12, width: 60, radius: 6),
+            const SizedBox(height: 2),
+            _skeletonBase(context, height: 10, width: 50, radius: 6),
           ],
         ),
       ),

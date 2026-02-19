@@ -20,8 +20,8 @@
 19,ERRAUTH041,MEDIUM,"Logout failed: ${e.toString()}",lib/screens/profile_screen.dart:630
 20,ERRSYS183,LOW,"Failed to set data fetch flag after login: ${e.toString()}",lib/screens/login_screen.dart:55
 21,ERRAUTH002,MEDIUM,"Login error: ${e.toString()}",lib/screens/login_screen.dart:112
-22,ERRSYS184,MEDIUM,"Prefetch failed in HomeScreen after login: ${e.toString()}",lib/screens/home_screen.dart:142
-23,ERRSYS185,LOW,"Failed to check prefetch flag in HomeScreen: ${e.toString()}",lib/screens/home_screen.dart:155
+22,ERRSYS184,HIGH,"Prefetch 7 days failed in HomeScreen after login (non-blocking): ${e.toString()}",lib/screens/home_screen.dart:139
+23,ERRSYS185,HIGH,"Prefetch flag check or run failed in HomeScreen: ${e.toString()}",lib/screens/home_screen.dart:158
 24,ERRSYS031,LOW,"Notification service initialization failed: ${e.toString()}",lib/services/notification_service.dart:383
 25,ERRSYS059,MEDIUM,"Failed to create notification channel: ${e.toString()}",lib/services/notification_service.dart:420
 26,ERRSYS032,LOW,Notification permission denied by user,lib/services/notification_service.dart:444

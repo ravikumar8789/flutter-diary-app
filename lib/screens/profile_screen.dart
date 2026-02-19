@@ -622,9 +622,9 @@ class ProfileScreen extends ConsumerWidget {
         }
       }
 
-      // Step 2: Set flag to indicate data fetch is needed on next login
+      // Step 2: Clear last fetch date so 7-day data is fetched on next login
       try {
-        await DataSyncFlagService.setNeedsDataFetch(true);
+        await DataSyncFlagService.clearLastFetchDate();
       } catch (e) {
         // Log error but continue with logout
         await ErrorLoggingService.logError(
@@ -671,7 +671,7 @@ class ProfileScreen extends ConsumerWidget {
         }
 
         try {
-          await DataSyncFlagService.setNeedsDataFetch(true);
+          await DataSyncFlagService.clearLastFetchDate();
         } catch (_) {
           // Ignore errors in error handler
         }
