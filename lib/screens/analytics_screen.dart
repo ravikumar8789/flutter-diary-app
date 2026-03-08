@@ -49,7 +49,6 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
   Widget build(BuildContext context) {
     final info = ResponsiveInfo.of(context);
     final spacingS = ResponsiveTokens.spacingS(info);
-    final spacingL = ResponsiveTokens.spacingL(info);
     final period = ref.watch(analyticsPeriodProvider);
 
     return Scaffold(
@@ -75,8 +74,10 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
             padding: EdgeInsets.symmetric(horizontal: spacingS),
             child: AnalyticsPeriodSwitch(
               value: period,
-              onChanged: (p) =>
-                  ref.read(analyticsPeriodProvider.notifier).setPeriod(p),
+              onChanged: (p) {
+                ref.invalidate(analyticsConnectivityProvider);
+                ref.read(analyticsPeriodProvider.notifier).setPeriod(p);
+              },
               compact: info.isCompact,
             ),
           ),
@@ -90,27 +91,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
               child: ResponsiveBody(
                 useSafeArea: false,
                 useScrollView: true,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Period header with date range (InnerGlow Style)
-                    _buildPeriodHeader(context, period),
-                    SizedBox(height: spacingL),
-
-                    // Week Navigation (only for weekly)
-                    if (period == AnalyticsPeriod.weekly)
-                      _buildWeekNavigation(context),
-
-                    // Month Navigation (only for monthly)
-                    if (period == AnalyticsPeriod.monthly)
-                      _buildMonthNavigation(context),
-
-                    // Summary Cards
-                    period == AnalyticsPeriod.weekly
-                        ? _buildWeeklyContentWithSwipe(context, info)
-                        : _buildMonthlyContent(context, info),
-                  ],
-                ),
+                child: _buildAnalyticsBody(context, period, info),
               ),
             ),
             // Bottom Navigation Bar
@@ -119,6 +100,80 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
               onTap: (index) {
                 AppBottomNavigationBar.navigateToScreen(context, index);
               },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAnalyticsBody(
+      BuildContext context, AnalyticsPeriod period, ResponsiveInfo info) {
+    final connectivityAsync = ref.watch(analyticsConnectivityProvider);
+    final spacingL = ResponsiveTokens.spacingL(info);
+
+    return connectivityAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (_, __) => _buildOfflineAnalyticsUI(context),
+      data: (isOnline) {
+        if (!isOnline) return _buildOfflineAnalyticsUI(context);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildPeriodHeader(context, period),
+            SizedBox(height: spacingL),
+            if (period == AnalyticsPeriod.weekly) _buildWeekNavigation(context),
+            if (period == AnalyticsPeriod.monthly)
+              _buildMonthNavigation(context),
+            period == AnalyticsPeriod.weekly
+                ? _buildWeeklyContentWithSwipe(context, info)
+                : _buildMonthlyContent(context, info),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildOfflineAnalyticsUI(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.cloud_off,
+              size: 64,
+              color: colorScheme.primary.withOpacity(0.7),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              "You're offline",
+              style: textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: colorScheme.onSurface,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Analytics require an internet connection. Please check your connection and try again.',
+              style: textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurface.withOpacity(0.7),
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: () {
+                ref.invalidate(analyticsConnectivityProvider);
+              },
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('Try again'),
             ),
           ],
         ),

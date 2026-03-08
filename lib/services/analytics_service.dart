@@ -105,19 +105,8 @@ class AnalyticsService {
           );
         }
 
-        // DISCONNECTED: Habits feature disabled
-        habitsResponse = <Map<String, dynamic>>[]; // Return empty list
-
-        /* DISCONNECTED CODE - Habits feature disabled
-        habitsResponse = List<Map<String, dynamic>>.from(
-          await _supabase
-          .from('habits_daily')
-          .select('date, self_care_completed_count')
-          .eq('user_id', userId)
-          .gte('date', weekStartStr)
-              .lte('date', weekEndStr),
-        );
-        */
+        // habits_daily removed from Supabase — local-only; use empty for analytics
+        habitsResponse = <Map<String, dynamic>>[];
 
         entries = List<Map<String, dynamic>>.from(entriesResponse);
       }
@@ -453,19 +442,8 @@ class AnalyticsService {
           );
         }
 
-        // DISCONNECTED: Habits feature disabled
-        habitsResponse = <Map<String, dynamic>>[]; // Return empty list
-
-        /* DISCONNECTED CODE - Habits feature disabled
-        habitsResponse = List<Map<String, dynamic>>.from(
-          await _supabase
-          .from('habits_daily')
-          .select('date, self_care_completed_count')
-          .eq('user_id', userId)
-          .gte('date', monthStartStr)
-              .lte('date', monthEndStr),
-        );
-        */
+        // habits_daily removed from Supabase — local-only; use empty for analytics
+        habitsResponse = <Map<String, dynamic>>[];
 
         entries = List<Map<String, dynamic>>.from(entriesResponse);
       }

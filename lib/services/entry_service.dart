@@ -1,8 +1,7 @@
-import 'dart:io';
 import 'package:uuid/uuid.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'database/local_entry_service.dart';
 import 'sync/supabase_sync_service.dart';
+import 'connectivity_service.dart';
 import '../models/entry_models.dart';
 import 'error_logging_service.dart';
 import '../models/error_models.dart';
@@ -10,31 +9,6 @@ import '../models/error_models.dart';
 class EntryService {
   final LocalEntryService _localService = LocalEntryService();
   final SupabaseSyncService _syncService = SupabaseSyncService();
-  final Connectivity _connectivity = Connectivity();
-
-  // Check if device is online
-  Future<bool> _isOnline() async {
-    try {
-      final connectivityResult = await _connectivity.checkConnectivity();
-      if (connectivityResult == ConnectivityResult.none) return false;
-
-      // Additional check with actual internet connection
-      final result = await InternetAddress.lookup('google.com');
-      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
-    } catch (e) {
-      // Log error
-      await ErrorLoggingService.logLowError(
-        error: ErrorContext.fromException(
-        errorCode: 'ERRSYS129',
-          severity: ErrorSeverity.low,
-          exception: e,
-          stackTrace: StackTrace.current,
-        errorContext: {'operation': 'check_connectivity'},
-        ),
-      );
-      return false;
-    }
-  }
 
   // Load entry for a specific date (server-first to prevent race conditions)
   Future<EntryData?> loadEntryForDate(String userId, DateTime date) async {
@@ -46,7 +20,7 @@ class EntryService {
       // 1. If online, fetch from server FIRST to get latest data (prevents race condition)
       // This ensures server data (from other devices) is loaded before local unsynced data
       Entry? cloudEntry;
-      if (await _isOnline()) {
+      if (await ConnectivityService().isOnline()) {
         try {
           cloudEntry = await _syncService.fetchEntryFromCloud(userId, dateOnly);
         } catch (e) {
@@ -151,19 +125,7 @@ class EntryService {
     final cacheKey = '${userId}_$dateStr';
     _entryCache[cacheKey] = updatedEntry;
 
-    // 3. Sync to cloud (non-blocking)
-    if (await _isOnline()) {
-      _syncService.syncEntry(updatedEntry).then((success) {
-        if (success) {
-          _localService.markAsSynced(updatedEntry.id);
-          // Update cache with synced entry
-          final syncedEntry = updatedEntry.copyWith(isSynced: true);
-          _entryCache[cacheKey] = syncedEntry;
-          // AI analysis triggered by database completion check
-          // No immediate trigger needed
-        }
-      });
-    }
+    // 3. Sync via SyncWorker when online (LocalEntryService adds to queue on upsert)
   }
 
   // Save affirmations
@@ -181,22 +143,7 @@ class EntryService {
     );
 
     await _localService.upsertAffirmations(entryAffirmations);
-
-    // Sync to cloud - ensure entry exists first (unless skipped for batch save)
-    if (await _isOnline()) {
-      if (!skipEntrySync) {
-        // FIRST: Ensure entry exists in Supabase
-        final entrySynced = await _syncService.syncEntry(entry);
-        
-        // THEN: Sync affirmations (only if entry sync succeeded)
-        if (entrySynced) {
-          _syncService.syncAffirmations(entryAffirmations);
-        }
-      } else {
-        // Entry already synced in batch, just sync affirmations
-        _syncService.syncAffirmations(entryAffirmations);
-      }
-    }
+    // LocalEntryService adds to sync_queue; SyncWorker syncs when online
   }
 
   // Save priorities
@@ -214,22 +161,7 @@ class EntryService {
     );
 
     await _localService.upsertPriorities(entryPriorities);
-
-    // Sync to cloud - ensure entry exists first (unless skipped for batch save)
-    if (await _isOnline()) {
-      if (!skipEntrySync) {
-        // FIRST: Ensure entry exists in Supabase
-        final entrySynced = await _syncService.syncEntry(entry);
-        
-        // THEN: Sync priorities (only if entry sync succeeded)
-        if (entrySynced) {
-          _syncService.syncPriorities(entryPriorities);
-        }
-      } else {
-        // Entry already synced in batch, just sync priorities
-        _syncService.syncPriorities(entryPriorities);
-      }
-    }
+    // LocalEntryService adds to sync_queue; SyncWorker syncs when online
   }
 
   // Save meals
@@ -253,22 +185,7 @@ class EntryService {
     );
 
     await _localService.upsertMeals(entryMeals);
-
-    // Sync to cloud - ensure entry exists first (unless skipped for batch save)
-    if (await _isOnline()) {
-      if (!skipEntrySync) {
-        // FIRST: Ensure entry exists in Supabase
-        final entrySynced = await _syncService.syncEntry(entry);
-        
-        // THEN: Sync meals (only if entry sync succeeded)
-        if (entrySynced) {
-          _syncService.syncMeals(entryMeals);
-        }
-      } else {
-        // Entry already synced in batch, just sync meals
-        _syncService.syncMeals(entryMeals);
-      }
-    }
+    // LocalEntryService adds to sync_queue; SyncWorker syncs when online
   }
 
   // Save gratitude
@@ -286,22 +203,7 @@ class EntryService {
     );
 
     await _localService.upsertGratitude(entryGratitude);
-
-    // Sync to cloud - ensure entry exists first (unless skipped for batch save)
-    if (await _isOnline()) {
-      if (!skipEntrySync) {
-        // FIRST: Ensure entry exists in Supabase
-        final entrySynced = await _syncService.syncEntry(entry);
-        
-        // THEN: Sync gratitude (only if entry sync succeeded)
-        if (entrySynced) {
-          _syncService.syncGratitude(entryGratitude);
-        }
-      } else {
-        // Entry already synced in batch, just sync gratitude
-        _syncService.syncGratitude(entryGratitude);
-      }
-    }
+    // LocalEntryService adds to sync_queue; SyncWorker syncs when online
   }
 
   // Save self care
@@ -328,22 +230,7 @@ class EntryService {
     );
 
     await _localService.upsertSelfCare(entrySelfCare);
-
-    // Sync to cloud - ensure entry exists first (unless skipped for batch save)
-    if (await _isOnline()) {
-      if (!skipEntrySync) {
-        // FIRST: Ensure entry exists in Supabase
-        final entrySynced = await _syncService.syncEntry(entry);
-        
-        // THEN: Sync self-care (only if entry sync succeeded)
-        if (entrySynced) {
-          _syncService.syncSelfCare(entrySelfCare);
-        }
-      } else {
-        // Entry already synced in batch, just sync self-care
-        _syncService.syncSelfCare(entrySelfCare);
-      }
-    }
+    // LocalEntryService adds to sync_queue; SyncWorker syncs when online
   }
 
   // Save shower bath
@@ -363,22 +250,7 @@ class EntryService {
     );
 
     await _localService.upsertShowerBath(entryShowerBath);
-
-    // Sync to cloud - ensure entry exists first (unless skipped for batch save)
-    if (await _isOnline()) {
-      if (!skipEntrySync) {
-        // FIRST: Ensure entry exists in Supabase
-        final entrySynced = await _syncService.syncEntry(entry);
-        
-        // THEN: Sync shower/bath (only if entry sync succeeded)
-        if (entrySynced) {
-          _syncService.syncShowerBath(entryShowerBath);
-        }
-      } else {
-        // Entry already synced in batch, just sync shower/bath
-        _syncService.syncShowerBath(entryShowerBath);
-      }
-    }
+    // LocalEntryService adds to sync_queue; SyncWorker syncs when online
   }
 
   // Save tomorrow notes
@@ -396,22 +268,7 @@ class EntryService {
     );
 
     await _localService.upsertTomorrowNotes(entryTomorrowNotes);
-
-    // Sync to cloud - ensure entry exists first (unless skipped for batch save)
-    if (await _isOnline()) {
-      if (!skipEntrySync) {
-        // FIRST: Ensure entry exists in Supabase
-        final entrySynced = await _syncService.syncEntry(entry);
-        
-        // THEN: Sync tomorrow notes (only if entry sync succeeded)
-        if (entrySynced) {
-          _syncService.syncTomorrowNotes(entryTomorrowNotes);
-        }
-      } else {
-        // Entry already synced in batch, just sync tomorrow notes
-        _syncService.syncTomorrowNotes(entryTomorrowNotes);
-      }
-    }
+    // LocalEntryService adds to sync_queue; SyncWorker syncs when online
   }
 
   // Save mood score
@@ -429,15 +286,7 @@ class EntryService {
     );
 
     await _localService.upsertEntry(updatedEntry);
-
-    // Sync to cloud (non-blocking)
-    if (await _isOnline()) {
-      _syncService.syncEntry(updatedEntry).then((success) {
-        if (success) {
-          _localService.markAsSynced(updatedEntry.id);
-        }
-      });
-    }
+    // LocalEntryService adds to sync_queue; SyncWorker syncs when online
   }
 
   // Save tags
@@ -451,15 +300,7 @@ class EntryService {
     );
 
     await _localService.upsertEntry(updatedEntry);
-
-    // Sync to cloud (non-blocking)
-    if (await _isOnline()) {
-      _syncService.syncEntry(updatedEntry).then((success) {
-        if (success) {
-          _localService.markAsSynced(updatedEntry.id);
-        }
-      });
-    }
+    // LocalEntryService adds to sync_queue; SyncWorker syncs when online
   }
 
   // Cache for entry creation (prevents repeated queries)
@@ -536,8 +377,8 @@ class EntryService {
     return await _localService.getEntriesInRange(userId, start, end);
   }
 
-  // Clean up old entries (7-day retention policy)
-  Future<void> cleanupOldEntries({int retentionDays = 7}) async {
+  // Clean up old entries (60-day retention policy)
+  Future<void> cleanupOldEntries({int retentionDays = 60}) async {
     await _localService.clearOldEntries(retentionDays: retentionDays);
   }
 }

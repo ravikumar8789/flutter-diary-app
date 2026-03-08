@@ -23,24 +23,6 @@ class HistoryDailyInsight {
     this.status = 'success',
   });
 
-  /// Convert from DailyInsight and add topics
-  factory HistoryDailyInsight.fromDailyInsight(
-    DailyInsight insight,
-    List<String> topics,
-    String status,
-  ) {
-    return HistoryDailyInsight(
-      id: insight.id,
-      entryId: insight.entryId,
-      insightText: insight.insightText,
-      sentimentLabel: insight.sentimentLabel,
-      processedAt: insight.processedAt,
-      insightDetails: insight.insightDetails,
-      topics: topics,
-      status: status,
-    );
-  }
-
   bool get hasInsights => status == 'success' && insightText.isNotEmpty;
 }
 
@@ -76,8 +58,6 @@ class HistoryEntry {
   int get selfCareCount => _countSelfCare();
 
   int get mealsCount => _countMeals();
-
-  List<String> get tags => insight?.topics ?? [];
 
   bool get hasInsights => insight?.hasInsights ?? false;
 

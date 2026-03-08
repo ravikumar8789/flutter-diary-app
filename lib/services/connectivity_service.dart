@@ -3,6 +3,8 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'sync/sync_worker.dart';
 import 'error_logging_service.dart';
 import '../models/error_models.dart';
+import 'connectivity_check_stub.dart'
+    if (dart.library.io) 'connectivity_check_io.dart' as connectivity_check;
 
 class ConnectivityService {
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
@@ -27,7 +29,6 @@ class ConnectivityService {
         );
 
         if (hasConnection) {
-          // Only sync if there's pending data (smart optimization)
           _syncWorker.processSyncQueue();
         }
       } catch (e) {
@@ -59,10 +60,18 @@ class ConnectivityService {
     _connectivitySubscription = null;
   }
 
-  // Check current connectivity status
+  /// Check current connectivity status.
+  /// Uses Connectivity + DNS lookup to catch "connected but no internet".
   Future<bool> isOnline() async {
-    final results = await Connectivity().checkConnectivity();
-    return results.any((result) => result != ConnectivityResult.none);
+    try {
+      final results = await Connectivity().checkConnectivity();
+      if (results.isEmpty || results.every((r) => r == ConnectivityResult.none)) {
+        return false;
+      }
+      return await connectivity_check.hasRealInternet();
+    } catch (_) {
+      return false;
+    }
   }
 
   // Dispose resources

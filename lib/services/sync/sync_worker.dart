@@ -1,9 +1,7 @@
-import 'dart:async';
 import 'dart:io';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../database/local_entry_service.dart';
 import 'supabase_sync_service.dart';
-import '../../models/entry_models.dart';
 import '../error_logging_service.dart';
 import '../../models/error_models.dart';
 
@@ -17,55 +15,51 @@ class SyncWorker {
   Future<bool> _isOnline() async {
     try {
       final connectivityResult = await _connectivity.checkConnectivity();
-      if (connectivityResult == ConnectivityResult.none) return false;
-
-      // Additional check with actual internet connection
+      // connectivity_plus 7.x returns List<ConnectivityResult>
+      final results = List<ConnectivityResult>.from(connectivityResult);
+      final isNone = results.isEmpty ||
+          results.every((r) => r == ConnectivityResult.none);
+      if (isNone) return false;
       final result = await InternetAddress.lookup('google.com');
       return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
     } catch (e) {
-      // Log network error with code ERRNET011
       return false;
     }
   }
 
-  // Smart sync processing - only sync if there's pending data
+  // Smart sync processing - entries first, then sync_queue (streak, user_profile, user_settings)
   Future<void> processSyncQueue() async {
-    // Prevent multiple simultaneous syncs
-    if (_isProcessing) {
-      return;
-    }
-
+    if (_isProcessing) return;
     _isProcessing = true;
 
     try {
-      // Check if there are unsynced entries first (smart optimization)
-      final hasUnsyncedData = await _localService.hasUnsyncedEntries();
-      if (!hasUnsyncedData) {
-        return;
-      }
+      // Early exit: nothing to sync
+      final hasUnsyncedEntries = await _localService.hasUnsyncedEntries();
+      final hasQueueItems = await _localService.hasSyncQueueItems(
+        ['streak', 'user_profile', 'user_settings', 'user_profiles', 'error_log'],
+      );
+      if (!hasUnsyncedEntries && !hasQueueItems) return;
 
-      // Get all unsynced entries
+      if (!await _isOnline()) return;
+
+      // 1. Process unsynced entries (batchSaveEntry with full data)
       final unsyncedEntries = await _localService.getUnsyncedEntries();
-
-      if (unsyncedEntries.isEmpty) {
-        return;
-      }
-
-      // Check if online before processing
-      if (!await _isOnline()) {
-        return;
-      }
-
-      // Process each unsynced entry
       for (final entry in unsyncedEntries) {
         try {
-          final success = await _syncService.syncEntry(entry);
-
-          if (success) {
-            await _localService.markAsSynced(entry.id);
-          }
+          final full = await _localService.getFullEntryForSync(entry.id);
+          if (full == null) continue;
+          final success = await _syncService.batchSaveEntry(
+            entry: full.entry,
+            affirmations: full.affirmations,
+            priorities: full.priorities,
+            meals: full.meals,
+            gratitude: full.gratitude,
+            selfCare: full.selfCare,
+            showerBath: full.showerBath,
+            tomorrowNotes: full.tomorrowNotes,
+          );
+          if (success) await _localService.markAsSynced(entry.id);
         } catch (e) {
-          // Log sync error to Supabase
           await ErrorLoggingService.logHighError(
             error: ErrorContext.fromException(
               errorCode: 'ERRDATA021',
@@ -81,46 +75,78 @@ class SyncWorker {
           );
         }
       }
+
+      // 2. Process sync_queue for streak, user_profile, user_settings
+      final queueItems = await _localService.getSyncQueueByEntityTypes(
+        ['streak', 'user_profile', 'user_settings', 'user_profiles', 'error_log'],
+      );
+      for (final item in queueItems) {
+        try {
+          bool success = false;
+          if (item.entityType == 'streak') {
+            final streakData = {
+              'current': item.data['current'] ?? 0,
+              'longest': item.data['longest'] ?? 0,
+              'last_entry_date': item.data['last_entry_date'],
+              'freeze_credits': item.data['freeze_credits'] ?? 0,
+              'grace_pieces_total': item.data['grace_pieces_total'] ?? 0.0,
+              'today_date': item.data['today_date'],
+              'today_diary': (item.data['today_diary'] as int? ?? 0) == 1,
+              'today_affirmations':
+                  (item.data['today_affirmations'] as int? ?? 0) == 1,
+              'today_gratitude': (item.data['today_gratitude'] as int? ?? 0) == 1,
+              'today_self_care_count': item.data['today_self_care_count'] ?? 0,
+              'today_grace_pieces': item.data['today_grace_pieces'] ?? 0.0,
+            };
+            success = await _syncService.batchUpdateStreakData(
+              userId: item.entityId,
+              streakData: streakData,
+            );
+          } else if (item.entityType == 'user_profile') {
+            success = await _syncService.syncUserProfile(
+              item.entityId,
+              item.data,
+            );
+          } else if (item.entityType == 'user_settings') {
+            success = await _syncService.syncUserSettings(
+              item.entityId,
+              item.data,
+            );
+          } else if (item.entityType == 'user_profiles') {
+            success = await _syncService.syncUserProfiles(
+              item.entityId,
+              item.data,
+            );
+          } else if (item.entityType == 'error_log') {
+            success = await _syncService.insertErrorLog(item.data);
+          }
+          if (success) {
+            await _localService.removeSyncQueueItem(item.id);
+          } else {
+            await _localService.incrementRetryCount(item.id);
+          }
+        } catch (e) {
+          await ErrorLoggingService.logHighError(
+            error: ErrorContext.fromException(
+              errorCode: 'ERRDATA022',
+              severity: ErrorSeverity.high,
+              exception: e,
+              stackTrace: StackTrace.current,
+              errorContext: {
+                'entity_type': item.entityType,
+                'entity_id': item.entityId,
+                'sync_attempt': 'sync_queue',
+              },
+            ),
+          );
+          await _localService.incrementRetryCount(item.id);
+        }
+      }
     } catch (e) {
-      // Error handling - sync will retry later
+      // Sync will retry on next trigger
     } finally {
       _isProcessing = false;
     }
   }
 
-  // Retry sync with exponential backoff (for future use)
-  Future<void> retrySync(Entry entry, {int attempt = 1}) async {
-    final delays = [Duration.zero, Duration(minutes: 5), Duration(minutes: 15)];
-
-    if (attempt <= delays.length) {
-      await Future.delayed(delays[attempt - 1]);
-
-      if (await _isOnline()) {
-        try {
-          final success = await _syncService.syncEntry(entry);
-          if (success) {
-            await _localService.markAsSynced(entry.id);
-          } else if (attempt < delays.length) {
-            await retrySync(entry, attempt: attempt + 1);
-          }
-        } catch (e) {
-          if (attempt < delays.length) {
-            await retrySync(entry, attempt: attempt + 1);
-          }
-        }
-      }
-    }
-  }
-
-  // Start periodic sync (every 15 minutes)
-  void startPeriodicSync() {
-    Timer.periodic(Duration(minutes: 15), (timer) {
-      processSyncQueue();
-    });
-  }
-
-  // Stop periodic sync
-  void stopPeriodicSync() {
-    // Timer will be automatically cancelled when the app is disposed
-  }
 }

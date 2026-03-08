@@ -27,6 +27,43 @@ class LocalEntryService {
     return Entry.fromJson(results.first);
   }
 
+  // Fetch entry by id (for sync)
+  Future<Entry?> getEntryById(String entryId) async {
+    final db = await _dbManager.database;
+    final results = await db.query(
+      'entries',
+      where: 'id = ?',
+      whereArgs: [entryId],
+    );
+    if (results.isEmpty) return null;
+    return Entry.fromJson(results.first);
+  }
+
+  /// Load entry + affirmations, priorities, meals, gratitude, self_care, shower_bath, tomorrow_notes for sync
+  Future<({
+    Entry entry,
+    EntryAffirmations? affirmations,
+    EntryPriorities? priorities,
+    EntryMeals? meals,
+    EntryGratitude? gratitude,
+    EntrySelfCare? selfCare,
+    EntryShowerBath? showerBath,
+    EntryTomorrowNotes? tomorrowNotes,
+  })?> getFullEntryForSync(String entryId) async {
+    final entry = await getEntryById(entryId);
+    if (entry == null) return null;
+    return (
+      entry: entry,
+      affirmations: await getAffirmations(entryId),
+      priorities: await getPriorities(entryId),
+      meals: await getMeals(entryId),
+      gratitude: await getGratitude(entryId),
+      selfCare: await getSelfCare(entryId),
+      showerBath: await getShowerBath(entryId),
+      tomorrowNotes: await getTomorrowNotes(entryId),
+    );
+  }
+
   // Upsert entry (insert or update)
   Future<void> upsertEntry(Entry entry) async {
     try {
@@ -492,6 +529,8 @@ class LocalEntryService {
         where: 'id = ?',
         whereArgs: [entryId],
       );
+      // Remove redundant sync_queue rows for this entry (SyncWorker uses entries.is_synced)
+      await db.delete('sync_queue', where: 'entry_id = ?', whereArgs: [entryId]);
     } catch (e) {
       await ErrorLoggingService.logHighError(
         error: ErrorContext.fromException(
@@ -517,6 +556,81 @@ class LocalEntryService {
     return results.map((json) => SyncQueueItem.fromJson(json)).toList();
   }
 
+  /// Get sync queue items for streak, user_profile, user_settings (non-entry entities)
+  Future<List<SyncQueueItem>> getSyncQueueForEntityTypes(
+    List<String> entityTypes,
+  ) async {
+    if (entityTypes.isEmpty) return [];
+    final db = await _dbManager.database;
+    final placeholders = entityTypes.map((_) => '?').join(',');
+    final results = await db.query(
+      'sync_queue',
+      where: 'entity_type IN ($placeholders)',
+      whereArgs: entityTypes,
+      orderBy: 'created_at ASC',
+    );
+    return results.map((json) => SyncQueueItem.fromJson(json)).toList();
+  }
+
+  /// Get sync queue items by entity types with retry filter (retry_count < 10)
+  Future<List<SyncQueueItem>> getSyncQueueByEntityTypes(
+    List<String> entityTypes,
+  ) async {
+    if (entityTypes.isEmpty) return [];
+    final db = await _dbManager.database;
+    final placeholders = entityTypes.map((_) => '?').join(',');
+    final results = await db.query(
+      'sync_queue',
+      where:
+          'entity_type IN ($placeholders) AND (retry_count IS NULL OR retry_count < 10)',
+      whereArgs: entityTypes,
+      orderBy: 'created_at ASC',
+    );
+    return results.map((json) => SyncQueueItem.fromJson(json)).toList();
+  }
+
+  /// Check if sync queue has items for given entity types (retry_count < 10)
+  Future<bool> hasSyncQueueItems(List<String> entityTypes) async {
+    if (entityTypes.isEmpty) return false;
+    final db = await _dbManager.database;
+    final placeholders = entityTypes.map((_) => '?').join(',');
+    final r = await db.rawQuery(
+      'SELECT COUNT(*) as c FROM sync_queue WHERE entity_type IN ($placeholders) AND (retry_count IS NULL OR retry_count < 10)',
+      entityTypes,
+    );
+    return ((r.first['c'] as int?) ?? 0) > 0;
+  }
+
+  /// Add streak to sync queue when local streaks row has is_synced=0.
+  /// Dedupes: removes existing pending streak for same user before adding.
+  static Future<void> addStreakToSyncQueue(String userId) async {
+    final db = await DatabaseManager().database;
+    final streak = await db.query(
+      'streaks',
+      where: 'user_id = ?',
+      whereArgs: [userId],
+      limit: 1,
+    );
+    if (streak.isEmpty) return;
+    final row = streak.first;
+    if ((row['is_synced'] as int? ?? 1) == 1) return;
+
+    final localService = LocalEntryService();
+    await db.delete(
+      'sync_queue',
+      where: "entity_type = 'streak' AND entity_id = ?",
+      whereArgs: [userId],
+    );
+    final rowMap = Map<String, dynamic>.from(row);
+    await localService.addToSyncQueue(
+      entityType: 'streak',
+      entityId: userId,
+      tableName: 'streaks',
+      operation: 'upsert',
+      data: rowMap,
+    );
+  }
+
   // Remove sync queue item
   Future<void> removeSyncQueueItem(int id) async {
     final db = await _dbManager.database;
@@ -526,11 +640,9 @@ class LocalEntryService {
   // Increment retry count
   Future<void> incrementRetryCount(int id) async {
     final db = await _dbManager.database;
-    await db.update(
-      'sync_queue',
-      {'retry_count': 'retry_count + 1'},
-      where: 'id = ?',
-      whereArgs: [id],
+    await db.rawUpdate(
+      'UPDATE sync_queue SET retry_count = retry_count + 1 WHERE id = ?',
+      [id],
     );
   }
 
@@ -545,16 +657,37 @@ class LocalEntryService {
     );
   }
 
-  // Add to sync queue
+  // Add to sync queue (entry-centric, calls generic addToSyncQueue)
   Future<void> _addToSyncQueue(
     String entryId,
     String tableName,
     String operation,
     Map<String, dynamic> data,
   ) async {
+    await addToSyncQueue(
+      entityType: 'entry',
+      entityId: entryId,
+      tableName: tableName,
+      operation: operation,
+      data: data,
+      entryId: entryId,
+    );
+  }
+
+  /// Add to sync queue (generic, supports entry, streak, user_profile, user_settings)
+  Future<void> addToSyncQueue({
+    required String entityType,
+    required String entityId,
+    required String tableName,
+    required String operation,
+    required Map<String, dynamic> data,
+    String? entryId,
+  }) async {
     final db = await _dbManager.database;
     await db.insert('sync_queue', {
-      'entry_id': entryId,
+      'entry_id': entityType == 'entry' ? entityId : (entryId ?? ''),
+      'entity_type': entityType,
+      'entity_id': entityId,
       'table_name': tableName,
       'operation': operation,
       'data': jsonEncode(data),
@@ -563,8 +696,8 @@ class LocalEntryService {
     });
   }
 
-  // Clean up old entries (7-day retention policy)
-  Future<void> clearOldEntries({int retentionDays = 7}) async {
+  // Clean up old entries (60-day retention policy)
+  Future<void> clearOldEntries({int retentionDays = 60}) async {
     await _dbManager.clearOldEntries(retentionDays: retentionDays);
   }
 
@@ -574,7 +707,8 @@ class LocalEntryService {
     final result = await db.rawQuery(
       'SELECT COUNT(*) as count FROM entries WHERE is_synced = 0',
     );
-    return (result.first['count'] as int) > 0;
+    final count = (result.first['count'] as int?) ?? 0;
+    return count > 0;
   }
 
   // Get all unsynced entries for sync processing
@@ -592,7 +726,9 @@ class LocalEntryService {
 // Sync queue item model
 class SyncQueueItem {
   final int id;
-  final String entryId;
+  final String? entryId;
+  final String entityType;
+  final String entityId;
   final String tableName;
   final String operation;
   final Map<String, dynamic> data;
@@ -601,7 +737,9 @@ class SyncQueueItem {
 
   SyncQueueItem({
     required this.id,
-    required this.entryId,
+    this.entryId,
+    required this.entityType,
+    required this.entityId,
     required this.tableName,
     required this.operation,
     required this.data,
@@ -611,7 +749,9 @@ class SyncQueueItem {
 
   Map<String, dynamic> toJson() => {
     'id': id,
-    'entry_id': entryId,
+    'entry_id': entryId ?? '',
+    'entity_type': entityType,
+    'entity_id': entityId,
     'table_name': tableName,
     'operation': operation,
     'data': jsonEncode(data),
@@ -621,13 +761,15 @@ class SyncQueueItem {
 
   factory SyncQueueItem.fromJson(Map<String, dynamic> json) {
     return SyncQueueItem(
-      id: json['id'],
-      entryId: json['entry_id'],
-      tableName: json['table_name'],
-      operation: json['operation'],
-      data: jsonDecode(json['data']),
-      createdAt: DateTime.parse(json['created_at']),
-      retryCount: json['retry_count'],
+      id: json['id'] as int,
+      entryId: json['entry_id'] as String?,
+      entityType: json['entity_type'] as String? ?? 'entry',
+      entityId: json['entity_id'] as String? ?? json['entry_id'] as String? ?? '',
+      tableName: json['table_name'] as String,
+      operation: json['operation'] as String,
+      data: jsonDecode(json['data'] as String) as Map<String, dynamic>,
+      createdAt: DateTime.parse(json['created_at'] as String),
+      retryCount: json['retry_count'] as int? ?? 0,
     );
   }
 }

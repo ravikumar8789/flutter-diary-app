@@ -1,15 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../services/connectivity_service.dart';
 import '../services/user_data_service.dart';
-import '../services/entry_service.dart';
-import '../services/sync/sync_worker.dart';
 import '../providers/user_data_provider.dart';
 import '../providers/data_providers.dart';
+import '../providers/home_summary_provider.dart';
 import '../services/data_sync_flag_service.dart';
 import '../services/data_prefetch_service.dart';
-import '../services/error_logging_service.dart';
-import '../models/error_models.dart';
 import '../screens/home_screen.dart';
 import '../screens/login_screen.dart';
 import '../ui/responsive/responsive_info.dart';
@@ -98,189 +96,74 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       // Step 2: Clear any stale user data first
       ref.read(userDataProvider.notifier).clearUserData();
 
-      // Step 3: Fetch fresh user data
-      if (mounted && !_isDisposed) {
-        setState(() {
-          _loadingMessage = 'Loading your data...';
-        });
-      }
-      await Future.delayed(const Duration(milliseconds: 300));
+      // Step 3: Check connectivity
+      final connectivityService = ConnectivityService();
+      final isOnline = await connectivityService.isOnline();
 
+      // Offline path: zero network calls, read from SQLite only
+      if (!isOnline) {
+        if (mounted && !_isDisposed) {
+          setState(() => _loadingMessage = 'Loading your journal...');
+        }
+        await Future.delayed(const Duration(milliseconds: 200));
+        if (_isDisposed) return;
+
+        await ref.read(userDataProvider.notifier).loadUserData(useLocalOnly: true);
+        if (_isDisposed) return;
+
+        await _navigateToHomeOrAuthBasedOnUserData();
+        return;
+      }
+
+      // Online path
+      final dataFetchService = ref.read(dataFetchServiceProvider);
+      if (mounted && !_isDisposed) {
+        setState(() => _loadingMessage = 'Syncing your journal...');
+      }
+      await Future.delayed(const Duration(milliseconds: 200));
       if (_isDisposed) return;
 
-      final dataFetchService = ref.read(dataFetchServiceProvider);
-      bool refreshHomeSummary = false;
-      bool didPrefetch7Days = false;
+      final lastFetchDate = await DataSyncFlagService.getLastFetchDate();
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final sixtyDaysAgo = today.subtract(const Duration(days: 60));
 
-      // Calculate streak on app launch FIRST (check gaps, auto-use grace days)
-      // This must run before loadUserData() so the updated streak value is available
-      await UserDataService.calculateStreakOnAppLaunch(user.id);
+      final DateTime fetchStart;
+      if (lastFetchDate == null) {
+        fetchStart = sixtyDaysAgo;
+      } else {
+        final startDate = lastFetchDate.isBefore(sixtyDaysAgo)
+            ? sixtyDaysAgo
+            : lastFetchDate;
+        fetchStart = DateTime(startDate.year, startDate.month, startDate.day);
+      }
 
-      // Invalidate streaks cache to ensure fresh data is read
-      dataFetchService.invalidateStreaksCache(user.id);
-      refreshHomeSummary = true;
+      await Future.wait([
+        DataPrefetchService.fetchAndMergeUserProfile(user.id, dataFetchService),
+        DataPrefetchService.fetchAndMergeUserSettings(user.id, dataFetchService),
+        DataPrefetchService.fetchAndMergeStreaks(user.id, dataFetchService),
+        DataPrefetchService.fetchAndMergeEntriesWithJoins(
+          user.id,
+          fetchStart,
+          today,
+          dataFetchService,
+        ),
+        DataPrefetchService.fetchAndStoreYesterdayInsight(
+          user.id,
+          dataFetchService,
+        ),
+      ]);
 
-      // Use the global provider to load user data (will now read updated streak value)
+      await DataPrefetchService.ensureHabitsDailyFromEntries(user.id);
+
+      await DataSyncFlagService.setLastFetchDate(today);
+      ref.invalidate(homeSummaryProvider);
+      ref.invalidate(yesterdayInsightProvider);
+
+      // Step 4: Load user data (reads from local — data now in SQLite)
       await ref.read(userDataProvider.notifier).loadUserData();
 
-      // Step 4: Check if data fetch is needed (after logout or fresh install)
-      final needsFetch = await DataSyncFlagService.needsDataFetch();
-
-      if (needsFetch) {
-        if (mounted && !_isDisposed) {
-          setState(() {
-            _loadingMessage = 'Syncing your journal...';
-          });
-        }
-        await Future.delayed(const Duration(milliseconds: 200));
-
-        if (_isDisposed) return;
-
-        // Prefetch 7 days data (with all related fields)
-        // This includes today's data, so no separate today fetch needed here
-        try {
-          await DataPrefetchService.prefetch7DaysData(
-            user.id,
-            dataFetchService,
-          );
-
-          // Set flag to false after successful fetch
-          await DataSyncFlagService.clearNeedsDataFetch();
-
-          didPrefetch7Days = true;
-          refreshHomeSummary = true;
-        } catch (e) {
-          // Log error but continue - data will be fetched on-demand
-          await ErrorLoggingService.logHighError(
-            error: ErrorContext.fromException(
-              errorCode: 'ERRSYS170',
-              severity: ErrorSeverity.high,
-              exception: e,
-              stackTrace: StackTrace.current,
-              errorContext: {
-                'user_id': user.id,
-                'operation': 'splash_prefetch_7days',
-              },
-            ),
-          );
-          // Keep flag as true so it retries next time
-        }
-      }
-
-      // Step 4.5: Prefetch today's data for multi-device sync (only if 7-day fetch didn't run)
-      // This ensures today's data is always fresh on every app startup
-      if (!didPrefetch7Days) {
-        if (mounted && !_isDisposed) {
-          setState(() {
-            _loadingMessage = 'Updating today\'s data...';
-          });
-        }
-        await Future.delayed(const Duration(milliseconds: 200));
-
-        if (_isDisposed) return;
-
-        try {
-          await DataPrefetchService.prefetchTodayData(user.id, dataFetchService);
-          refreshHomeSummary = true;
-        } catch (e) {
-          // Log error but continue - data will be fetched on-demand
-          await ErrorLoggingService.logHighError(
-            error: ErrorContext.fromException(
-              errorCode: 'ERRSYS171',
-              severity: ErrorSeverity.high,
-              exception: e,
-              stackTrace: StackTrace.current,
-              errorContext: {
-                'user_id': user.id,
-                'operation': 'splash_prefetch_today',
-              },
-            ),
-          );
-          // Continue - today's data will be fetched on-demand when user opens entry screen
-        }
-      }
-
-      if (refreshHomeSummary) {
-        dataFetchService.invalidateHomeSummaryCache(user.id);
-        ref.invalidate(homeSummaryProvider);
-      }
-
-      // Step 5: Clean up old entries (7-day retention policy)
-      if (mounted && !_isDisposed) {
-        setState(() {
-          _loadingMessage = 'Cleaning up old data...';
-        });
-      }
-      await Future.delayed(const Duration(milliseconds: 200));
-
-      if (_isDisposed) return;
-
-      // Import EntryService and cleanup old entries
-      final entryService = await _getEntryService();
-      await entryService.cleanupOldEntries(retentionDays: 7);
-
-      // Step 6: Smart sync check (only if there's pending data)
-      if (mounted && !_isDisposed) {
-        setState(() {
-          _loadingMessage = 'Checking for pending syncs...';
-        });
-      }
-      await Future.delayed(const Duration(milliseconds: 200));
-
-      if (_isDisposed) return;
-
-      // Import SyncWorker and check for pending syncs
-      final syncWorker = await _getSyncWorker();
-      await syncWorker.processSyncQueue();
-
-      final userDataState = ref.read(userDataProvider);
-
-      if (userDataState.userData != null && !userDataState.isLoading) {
-        if (mounted && !_isDisposed) {
-          setState(() {
-            _userData = userDataState.userData;
-            _loadingMessage = 'Welcome back, ${_userData!.displayName}';
-          });
-        }
-
-        // Wait a bit to show the welcome message
-        await Future.delayed(const Duration(milliseconds: 800));
-
-        if (_isDisposed) return;
-
-        // Navigate to home screen
-        if (mounted && !_isDisposed) {
-          await _navigateToHome();
-        }
-      } else if (userDataState.error != null) {
-        // Error fetching user data, still go to home but with limited functionality
-        if (mounted && !_isDisposed) {
-          setState(() {
-            _loadingMessage = 'Setting up your journal...';
-          });
-        }
-        await Future.delayed(const Duration(milliseconds: 500));
-
-        if (_isDisposed) return;
-
-        if (mounted && !_isDisposed) {
-          await _navigateToHome();
-        }
-      } else {
-        // Still loading or no data, wait a bit more
-        if (mounted && !_isDisposed) {
-          setState(() {
-            _loadingMessage = 'Preparing your journal...';
-          });
-        }
-        await Future.delayed(const Duration(milliseconds: 1000));
-
-        if (_isDisposed) return;
-
-        if (mounted && !_isDisposed) {
-          await _navigateToHome();
-        }
-      }
+      await _navigateToHomeOrAuthBasedOnUserData();
     } catch (e) {
       // Handle any errors gracefully
       if (mounted && !_isDisposed) {
@@ -297,6 +180,37 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       if (mounted && !_isDisposed) {
         await _navigateToAuth();
       }
+    }
+  }
+
+  Future<void> _navigateToHomeOrAuthBasedOnUserData() async {
+    if (!mounted || _isDisposed) return;
+    final userDataState = ref.read(userDataProvider);
+
+    if (userDataState.userData != null && !userDataState.isLoading) {
+      if (mounted && !_isDisposed) {
+        setState(() {
+          _userData = userDataState.userData;
+          _loadingMessage = 'Welcome back, ${_userData!.displayName}';
+        });
+      }
+      await Future.delayed(const Duration(milliseconds: 800));
+      if (_isDisposed) return;
+      await _navigateToHome();
+    } else if (userDataState.error != null) {
+      if (mounted && !_isDisposed) {
+        setState(() => _loadingMessage = 'Setting up your journal...');
+      }
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (_isDisposed) return;
+      await _navigateToHome();
+    } else {
+      if (mounted && !_isDisposed) {
+        setState(() => _loadingMessage = 'Preparing your journal...');
+      }
+      await Future.delayed(const Duration(milliseconds: 1000));
+      if (_isDisposed) return;
+      await _navigateToHome();
     }
   }
 
@@ -540,16 +454,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
         ),
       ),
     );
-  }
-
-  // Helper method to get EntryService instance
-  Future<EntryService> _getEntryService() async {
-    return EntryService();
-  }
-
-  // Helper method to get SyncWorker instance
-  Future<SyncWorker> _getSyncWorker() async {
-    return SyncWorker();
   }
 }
 

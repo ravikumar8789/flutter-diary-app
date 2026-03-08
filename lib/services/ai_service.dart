@@ -129,41 +129,6 @@ class AIService {
     }
   }
 
-  /// Trigger weekly AI analysis for a user
-  Future<void> triggerWeeklyAnalysis(String userId, DateTime weekStart) async {
-    try {
-      // Format week_start as YYYY-MM-DD
-      final weekStartStr = '${weekStart.year.toString().padLeft(4, '0')}-'
-          '${weekStart.month.toString().padLeft(2, '0')}-'
-          '${weekStart.day.toString().padLeft(2, '0')}';
-
-      // Call Edge Function
-      final response = await _supabase.functions.invoke('ai-analyze-weekly', body: {
-        'user_id': userId,
-        'week_start': weekStartStr,
-      });
-
-      if (response.status != 200) {
-        throw Exception('Weekly analysis failed: ${response.data}');
-      }
-    } catch (e) {
-      await ErrorLoggingService.logError(
-        ErrorContext.fromException(
-          errorCode: 'ERRAI006',
-          severity: ErrorSeverity.medium,
-          exception: e,
-          stackTrace: StackTrace.current,
-          errorContext: {
-            'user_id': userId,
-            'week_start': weekStart.toIso8601String(),
-            'operation': 'trigger_weekly_analysis',
-          },
-        ),
-      );
-      rethrow;
-    }
-  }
-
   /// Fetch weekly insight for a user
   Future<WeeklyInsight?> getWeeklyInsight(String userId, DateTime weekStart) async {
     try {

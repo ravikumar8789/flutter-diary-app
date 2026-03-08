@@ -39,7 +39,6 @@ class AppLifecycleService extends WidgetsBindingObserver {
     try {
       switch (state) {
         case AppLifecycleState.resumed:
-          // Only sync if there's pending data (smart optimization)
           _syncWorker.processSyncQueue();
 
           // Check privacy lock auto-lock

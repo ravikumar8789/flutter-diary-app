@@ -3,8 +3,16 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/analytics_models.dart';
 import '../models/error_models.dart';
 import '../services/analytics_service.dart';
+import '../services/connectivity_service.dart';
 import '../services/error_logging_service.dart';
 import 'data_providers.dart';
+
+/// Connectivity check for Analytics screen. Returns true if online.
+/// When false, screen shows offline UI and does not fetch.
+final analyticsConnectivityProvider =
+    FutureProvider.autoDispose<bool>((ref) async {
+  return await ConnectivityService().isOnline();
+});
 
 /// Period selector provider
 final analyticsPeriodProvider =

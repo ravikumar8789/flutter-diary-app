@@ -5,7 +5,7 @@ import '../../models/error_models.dart';
 
 class DatabaseManager {
   static Database? _database;
-  static const int _version = 3;
+  static const int _version = 9;
   static const String _databaseName = 'diary_app.db';
 
   Future<Database> get database async {
@@ -65,10 +65,31 @@ class DatabaseManager {
         // Migration from version 2 to 3: Add today_* fields to streaks table
         await _addTodayFieldsToStreaks(db);
       }
-      // For future migrations, add more conditions here
-      if (oldVersion < newVersion && oldVersion >= 3) {
-        // Recreate all tables if needed for other migrations
-        await _createTables(db);
+      if (oldVersion < 4) {
+        // Migration from version 3 to 4: Add users and user_settings tables
+        await _createUsersAndUserSettingsTables(db);
+      }
+      if (oldVersion < 5) {
+        // Migration from version 4 to 5: Add entity_type, entity_id to sync_queue
+        await db.execute(
+          "ALTER TABLE sync_queue ADD COLUMN entity_type TEXT DEFAULT 'entry'",
+        );
+        await db.execute('ALTER TABLE sync_queue ADD COLUMN entity_id TEXT');
+        await db.execute(
+          "UPDATE sync_queue SET entity_type='entry', entity_id=COALESCE(entry_id,'') WHERE entity_id IS NULL",
+        );
+      }
+      if (oldVersion < 6) {
+        await _createUserProfilesTable(db);
+      }
+      if (oldVersion < 7) {
+        await _createYesterdayInsightTable(db);
+      }
+      if (oldVersion < 8) {
+        await _createEntryInsightsLocalTable(db);
+      }
+      if (oldVersion < 9) {
+        await _createCleanupTrigger(db);
       }
     } catch (e) {
       await ErrorLoggingService.logCriticalError(
@@ -184,7 +205,9 @@ class DatabaseManager {
     await db.execute('''
       CREATE TABLE sync_queue (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        entry_id TEXT NOT NULL,
+        entry_id TEXT,
+        entity_type TEXT NOT NULL DEFAULT 'entry',
+        entity_id TEXT NOT NULL,
         table_name TEXT NOT NULL,
         operation TEXT NOT NULL,
         data TEXT NOT NULL,
@@ -231,6 +254,54 @@ class DatabaseManager {
       )
     ''');
 
+    // Users table (local cache for user profile)
+    await db.execute('''
+      CREATE TABLE users (
+        id TEXT PRIMARY KEY,
+        email TEXT,
+        email_verified INTEGER DEFAULT 0,
+        display_name TEXT,
+        avatar_url TEXT,
+        locale TEXT,
+        timezone TEXT,
+        marketing_opt_in INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        is_synced INTEGER DEFAULT 0,
+        last_sync_at TEXT
+      )
+    ''');
+
+    // User settings table (local cache)
+    await db.execute('''
+      CREATE TABLE user_settings (
+        user_id TEXT PRIMARY KEY,
+        reminder_enabled INTEGER DEFAULT 1,
+        reminder_time_local TEXT,
+        reminder_days TEXT DEFAULT '[1,2,3,4,5,6,7]',
+        grace_system_enabled INTEGER DEFAULT 1,
+        privacy_lock_enabled INTEGER DEFAULT 0,
+        region_preference TEXT,
+        export_format_default TEXT DEFAULT 'json',
+        updated_at TEXT NOT NULL,
+        is_synced INTEGER DEFAULT 0,
+        last_sync_at TEXT
+      )
+    ''');
+
+    // User profiles table (theme, font - local cache)
+    await db.execute('''
+      CREATE TABLE user_profiles (
+        user_id TEXT PRIMARY KEY,
+        theme_preference TEXT DEFAULT 'system',
+        diary_font TEXT,
+        font_size INTEGER,
+        paper_style TEXT DEFAULT 'ruled',
+        is_synced INTEGER DEFAULT 0,
+        last_sync_at TEXT
+      )
+    ''');
+
     // Create indexes for performance
     await db.execute(
       'CREATE INDEX idx_entries_user_date ON entries(user_id, entry_date)',
@@ -247,6 +318,118 @@ class DatabaseManager {
     await db.execute(
       'CREATE INDEX idx_habits_user_date ON habits_daily(user_id, date)',
     );
+    await db.execute('CREATE INDEX idx_users_id ON users(id)');
+    await db.execute(
+      'CREATE INDEX idx_user_settings_user_id ON user_settings(user_id)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_user_profiles_user_id ON user_profiles(user_id)',
+    );
+
+    // Yesterday insight (single row per user, overwrite on fetch)
+    await db.execute('''
+      CREATE TABLE yesterday_insight (
+        user_id TEXT PRIMARY KEY,
+        id TEXT NOT NULL,
+        entry_id TEXT NOT NULL,
+        entry_date TEXT NOT NULL,
+        summary TEXT,
+        insight_text TEXT,
+        insight_details TEXT,
+        sentiment_label TEXT,
+        processed_at TEXT NOT NULL
+      )
+    ''');
+
+    // Entry insights local (60-day cache for History screen)
+    await db.execute('''
+      CREATE TABLE entry_insights_local (
+        entry_id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        entry_date TEXT NOT NULL,
+        id TEXT NOT NULL,
+        summary TEXT,
+        insight_text TEXT,
+        insight_details TEXT,
+        sentiment_label TEXT,
+        topics TEXT,
+        processed_at TEXT NOT NULL
+      )
+    ''');
+
+    await _createCleanupTrigger(db);
+  }
+
+  // Helper method to create cleanup trigger (60-day FILO retention)
+  Future<void> _createCleanupTrigger(Database db) async {
+    await db.execute('DROP TRIGGER IF EXISTS cleanup_old_entries_after_insert');
+    await db.execute('''
+      CREATE TRIGGER cleanup_old_entries_after_insert
+      AFTER INSERT ON entries
+      BEGIN
+        DELETE FROM entry_affirmations
+        WHERE entry_id IN (SELECT id FROM entries WHERE entry_date < date('now', 'localtime', '-60 days'));
+        DELETE FROM entry_priorities
+        WHERE entry_id IN (SELECT id FROM entries WHERE entry_date < date('now', 'localtime', '-60 days'));
+        DELETE FROM entry_meals
+        WHERE entry_id IN (SELECT id FROM entries WHERE entry_date < date('now', 'localtime', '-60 days'));
+        DELETE FROM entry_gratitude
+        WHERE entry_id IN (SELECT id FROM entries WHERE entry_date < date('now', 'localtime', '-60 days'));
+        DELETE FROM entry_self_care
+        WHERE entry_id IN (SELECT id FROM entries WHERE entry_date < date('now', 'localtime', '-60 days'));
+        DELETE FROM entry_shower_bath
+        WHERE entry_id IN (SELECT id FROM entries WHERE entry_date < date('now', 'localtime', '-60 days'));
+        DELETE FROM entry_tomorrow_notes
+        WHERE entry_id IN (SELECT id FROM entries WHERE entry_date < date('now', 'localtime', '-60 days'));
+        DELETE FROM sync_queue
+        WHERE entry_id IN (SELECT id FROM entries WHERE entry_date < date('now', 'localtime', '-60 days'));
+        DELETE FROM entry_insights_local
+        WHERE entry_date < date('now', 'localtime', '-60 days');
+        DELETE FROM entries
+        WHERE entry_date < date('now', 'localtime', '-60 days');
+      END;
+    ''');
+  }
+
+  // Helper method to create entry_insights_local table (migration v7 to v8)
+  Future<void> _createEntryInsightsLocalTable(Database db) async {
+    final exists = await _tableExists(db, 'entry_insights_local');
+    if (!exists) {
+      await db.execute('''
+        CREATE TABLE entry_insights_local (
+          entry_id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          entry_date TEXT NOT NULL,
+          id TEXT NOT NULL,
+          summary TEXT,
+          insight_text TEXT,
+          insight_details TEXT,
+          sentiment_label TEXT,
+          topics TEXT,
+          processed_at TEXT NOT NULL
+        )
+      ''');
+    }
+  }
+
+  // Helper method to create yesterday_insight table (migration v6 to v7)
+  Future<void> _createYesterdayInsightTable(Database db) async {
+    final exists = await _tableExists(db, 'yesterday_insight');
+    if (!exists) {
+      await db.execute('''
+        CREATE TABLE yesterday_insight (
+          user_id TEXT PRIMARY KEY,
+          id TEXT NOT NULL,
+          entry_id TEXT NOT NULL,
+          entry_date TEXT NOT NULL,
+          summary TEXT,
+          insight_text TEXT,
+          insight_details TEXT,
+          sentiment_label TEXT,
+          processed_at TEXT NOT NULL
+        )
+      ''');
+    }
   }
 
   // Helper method to create streaks and habits tables (for migration)
@@ -349,6 +532,74 @@ class DatabaseManager {
     }
   }
 
+  // Helper method to create user_profiles table (migration v5 to v6)
+  Future<void> _createUserProfilesTable(Database db) async {
+    final exists = await _tableExists(db, 'user_profiles');
+    if (!exists) {
+      await db.execute('''
+        CREATE TABLE user_profiles (
+          user_id TEXT PRIMARY KEY,
+          theme_preference TEXT DEFAULT 'system',
+          diary_font TEXT,
+          font_size INTEGER,
+          paper_style TEXT DEFAULT 'ruled',
+          is_synced INTEGER DEFAULT 0,
+          last_sync_at TEXT
+        )
+      ''');
+      await db.execute(
+        'CREATE INDEX idx_user_profiles_user_id ON user_profiles(user_id)',
+      );
+    }
+  }
+
+  // Helper method to create users and user_settings tables (migration v3 to v4)
+  Future<void> _createUsersAndUserSettingsTables(Database db) async {
+    final usersExists = await _tableExists(db, 'users');
+    final userSettingsExists = await _tableExists(db, 'user_settings');
+
+    if (!usersExists) {
+      await db.execute('''
+        CREATE TABLE users (
+          id TEXT PRIMARY KEY,
+          email TEXT,
+          email_verified INTEGER DEFAULT 0,
+          display_name TEXT,
+          avatar_url TEXT,
+          locale TEXT,
+          timezone TEXT,
+          marketing_opt_in INTEGER DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          is_synced INTEGER DEFAULT 0,
+          last_sync_at TEXT
+        )
+      ''');
+      await db.execute('CREATE INDEX idx_users_id ON users(id)');
+    }
+
+    if (!userSettingsExists) {
+      await db.execute('''
+        CREATE TABLE user_settings (
+          user_id TEXT PRIMARY KEY,
+          reminder_enabled INTEGER DEFAULT 1,
+          reminder_time_local TEXT,
+          reminder_days TEXT DEFAULT '[1,2,3,4,5,6,7]',
+          grace_system_enabled INTEGER DEFAULT 1,
+          privacy_lock_enabled INTEGER DEFAULT 0,
+          region_preference TEXT,
+          export_format_default TEXT DEFAULT 'json',
+          updated_at TEXT NOT NULL,
+          is_synced INTEGER DEFAULT 0,
+          last_sync_at TEXT
+        )
+      ''');
+      await db.execute(
+        'CREATE INDEX idx_user_settings_user_id ON user_settings(user_id)',
+      );
+    }
+  }
+
   // Helper method to check if table exists
   Future<bool> _tableExists(Database db, String tableName) async {
     try {
@@ -384,10 +635,14 @@ class DatabaseManager {
     await db.delete('entries');
     await db.delete('habits_daily');
     await db.delete('streaks');
+    await db.delete('user_profiles');
+    await db.delete('user_settings');
+    await db.delete('users');
+    await db.delete('yesterday_insight');
   }
 
-  // Clean up old entries (7-day retention policy)
-  Future<void> clearOldEntries({int retentionDays = 7}) async {
+  // Clean up old entries (60-day retention policy)
+  Future<void> clearOldEntries({int retentionDays = 60}) async {
     final db = await database;
     final cutoffDate = DateTime.now().subtract(Duration(days: retentionDays));
     final cutoffDateStr = cutoffDate.toIso8601String().split(

@@ -1,9 +1,10 @@
-import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/entry_models.dart';
 import '../models/history_entry_model.dart';
 import '../models/analytics_models.dart';
+import 'connectivity_service.dart';
+import 'entry_insight_storage_helper.dart';
 import 'error_logging_service.dart';
 import '../models/error_models.dart';
 import 'data_fetch_service.dart';
@@ -16,10 +17,12 @@ class HistoryService {
     : _dataFetchService = dataFetchService;
 
   /// Fetch entries for a month with all related data using JOIN query
+  /// [useLocalOnly] when true, reads from local SQLite only (no Supabase).
   Future<List<HistoryEntry>> getEntriesForMonth(
     String userId,
-    DateTime month, // First day of month
-  ) async {
+    DateTime month, {
+    bool useLocalOnly = false,
+  }) async {
     try {
       // 1. Calculate month start/end dates
       final monthStart = DateTime(month.year, month.month, 1);
@@ -31,14 +34,14 @@ class HistoryService {
       List<Map<String, dynamic>> response;
 
       if (_dataFetchService != null) {
-        // Use cached fetchEntriesWithJoins
         response = await _dataFetchService.fetchEntriesWithJoins(
           userId: userId,
           startDate: monthStart,
           endDate: monthEnd,
+          useLocalOnly: useLocalOnly,
         );
-      } else {
-        // Fallback to direct query
+      } else if (!useLocalOnly) {
+        // Fallback to direct Supabase query when DataFetchService not available
         final queryResponse = await _supabase
             .from('entries')
             .select('''
@@ -55,6 +58,9 @@ class HistoryService {
             .lte('entry_date', endDateStr)
             .order('entry_date', ascending: false);
         response = List<Map<String, dynamic>>.from(queryResponse);
+      } else {
+        // useLocalOnly but no DataFetchService - cannot read local
+        return [];
       }
 
       if (response.isEmpty) return [];
@@ -140,7 +146,12 @@ class HistoryService {
   }
 
   /// Fetch entry with full details by date (for bottom sheet) using JOIN query
-  Future<HistoryEntry?> getEntryByDate(String userId, DateTime date) async {
+  /// [useLocalOnly] when true, reads from local SQLite only (no Supabase).
+  Future<HistoryEntry?> getEntryByDate(
+    String userId,
+    DateTime date, {
+    bool useLocalOnly = false,
+  }) async {
     try {
       final dateStr = DateFormat('yyyy-MM-dd').format(date);
 
@@ -148,15 +159,14 @@ class HistoryService {
       Map<String, dynamic>? response;
 
       if (_dataFetchService != null) {
-        // Use cached fetchEntryByDate - but we need JOIN data, so use fetchEntriesWithJoins for single date
         final entries = await _dataFetchService.fetchEntriesWithJoins(
           userId: userId,
           startDate: date,
           endDate: date,
+          useLocalOnly: useLocalOnly,
         );
         response = entries.isNotEmpty ? entries.first : null;
-      } else {
-        // Fallback to direct query
+      } else if (!useLocalOnly) {
         response = await _supabase
             .from('entries')
             .select('''
@@ -171,6 +181,8 @@ class HistoryService {
             .eq('user_id', userId)
             .eq('entry_date', dateStr)
             .maybeSingle();
+      } else {
+        return null;
       }
 
       if (response == null) return null;
@@ -242,14 +254,23 @@ class HistoryService {
     }
   }
 
-  /// Fetch insight for a specific entry (public method for on-demand fetching)
+  /// Fetch insight for a specific entry (local-first, lazy store).
   ///
-  /// Note: Insights are fetched on-demand, so caching is less critical.
-  /// Using direct query for simplicity (insights change infrequently).
-  Future<HistoryDailyInsight?> fetchInsightForEntry(String entryId) async {
+  /// 1. Check local first. 2. If missing and online, fetch from Supabase and store.
+  Future<HistoryDailyInsight?> fetchInsightForEntry(
+    String entryId, {
+    required String userId,
+    required DateTime entryDate,
+  }) async {
     try {
-      // For insights, we use direct query since they're fetched on-demand
-      // and caching is handled at a higher level if needed
+      final local = await EntryInsightStorageHelper.getEntryInsightFromLocal(
+        entryId,
+      );
+      if (local != null) return local;
+
+      final isOnline = await ConnectivityService().isOnline();
+      if (!isOnline) return null;
+
       final response = await _supabase
           .from('entry_insights')
           .select('''
@@ -269,7 +290,18 @@ class HistoryService {
 
       if (response == null) return null;
 
-      // Parse insight_details
+      final entryDateStr =
+          '${entryDate.year.toString().padLeft(4, '0')}-'
+          '${entryDate.month.toString().padLeft(2, '0')}-'
+          '${entryDate.day.toString().padLeft(2, '0')}';
+
+      await EntryInsightStorageHelper.storeEntryInsightLocal(
+        userId,
+        entryId,
+        entryDateStr,
+        Map<String, dynamic>.from(response),
+      );
+
       InsightDetails? insightDetails;
       if (response['insight_details'] != null) {
         try {
@@ -281,7 +313,6 @@ class HistoryService {
         }
       }
 
-      // Parse topics
       final topics = List<String>.from(response['topics'] as List? ?? []);
 
       return HistoryDailyInsight(
@@ -323,12 +354,7 @@ class HistoryService {
     int offset = 0,
   }) async {
     try {
-      debugPrint(
-        'HISTORY DEBUG: getEntriesByMood START moodScore=$moodScore '
-        'endDate=$endDate offset=$offset limit=$limit',
-      );
       if (_dataFetchService == null) {
-        debugPrint('HISTORY DEBUG: getEntriesByMood EXIT - _dataFetchService null');
         return [];
       }
 
@@ -341,7 +367,6 @@ class HistoryService {
         offset: offset,
       );
 
-      debugPrint('HISTORY DEBUG: getEntriesByMood raw response length=${response.length}');
       if (response.isEmpty) return [];
 
       final historyEntries = <HistoryEntry>[];
@@ -402,10 +427,8 @@ class HistoryService {
         (a, b) => b.entry.entryDate.compareTo(a.entry.entryDate),
       );
 
-      debugPrint('HISTORY DEBUG: getEntriesByMood SUCCESS returning ${historyEntries.length} entries');
       return historyEntries;
     } catch (e) {
-      debugPrint('HISTORY DEBUG: getEntriesByMood ERROR: $e');
       await ErrorLoggingService.logError(
         ErrorContext.fromException(
           errorCode: 'ERRHIST011',
@@ -423,131 +446,52 @@ class HistoryService {
     }
   }
 
-  /// Get mood map for date range (lightweight - only date + mood)
-  /// Used for calendar view to show mood indicators without loading full entries
-  /// Fetches from Supabase - no date limit (fetches all mood data)
-  Future<Map<String, int>> getMoodMapForDateRange(
-    String userId,
-    DateTime? startDate,
-    DateTime? endDate,
-  ) async {
+  /// Single fetch for mood map + months with entries (online refresh).
+  /// Returns both moodMap and monthsWithEntries from one Supabase call.
+  Future<({Map<String, int> moodMap, List<String> monthsWithEntries})?>
+      getMoodMapAndMonthsWithEntries(String userId) async {
     try {
-      List<Map<String, dynamic>> response;
+      if (_dataFetchService == null) return null;
 
-      if (_dataFetchService != null) {
-        // Use cached fetchEntriesWithSelect
-        final now = DateTime.now();
-        final actualStartDate =
-            startDate ??
-            DateTime(now.year - 10, 1, 1); // 10 years ago if not provided
-        final actualEndDate = endDate ?? now;
+      final now = DateTime.now();
+      final startDate = DateTime(now.year - 10, 1, 1);
+      final endDate = now;
 
-        response = await _dataFetchService.fetchEntriesWithSelect(
-          userId: userId,
-          startDate: actualStartDate,
-          endDate: actualEndDate,
-          select: 'entry_date, mood_score',
-        );
-      } else {
-        // Fallback to direct query
-        var query = _supabase
-            .from('entries')
-            .select('entry_date, mood_score')
-            .eq('user_id', userId);
-
-        // Apply date filters if provided (for calendar view, fetch all if not provided)
-        if (startDate != null) {
-          final startDateStr = DateFormat('yyyy-MM-dd').format(startDate);
-          query = query.gte('entry_date', startDateStr);
-        }
-        if (endDate != null) {
-          final endDateStr = DateFormat('yyyy-MM-dd').format(endDate);
-          query = query.lte('entry_date', endDateStr);
-        }
-
-        response = List<Map<String, dynamic>>.from(await query);
-      }
+      final response = await _dataFetchService.fetchEntriesWithSelect(
+        userId: userId,
+        startDate: startDate,
+        endDate: endDate,
+        select: 'entry_date, mood_score',
+      );
 
       final moodMap = <String, int>{};
+      final months = <String>{};
+
       for (var row in response) {
         final dateStr = row['entry_date'] as String;
-        // Default mood to 3 if NULL (consistent with card display)
         final moodScore = row['mood_score'] as int? ?? 3;
         moodMap[dateStr] = moodScore;
-      }
 
-      return moodMap;
-    } catch (e) {
-      await ErrorLoggingService.logLowError(
-        error: ErrorContext.fromException(
-          errorCode: 'ERRHIST008',
-          severity: ErrorSeverity.low,
-          exception: e,
-          stackTrace: StackTrace.current,
-          errorContext: {
-            'user_id': userId,
-            'start_date': startDate != null
-                ? DateFormat('yyyy-MM-dd').format(startDate)
-                : 'all',
-            'end_date': endDate != null
-                ? DateFormat('yyyy-MM-dd').format(endDate)
-                : 'all',
-          },
-        ),
-      );
-      return {};
-    }
-  }
-
-  /// Get list of months that have entries (for Load More button)
-  /// Returns list of month keys (e.g., ["2024-01", "2024-02"]) sorted oldest first
-  Future<List<String>> getMonthsWithEntries(String userId) async {
-    try {
-      // Fetch all entry dates from Supabase
-      List<Map<String, dynamic>> response;
-
-      if (_dataFetchService != null) {
-        // Use cached fetchEntriesWithSelect
-        final now = DateTime.now();
-        final startDate = DateTime(now.year - 10, 1, 1); // 10 years ago
-        response = await _dataFetchService.fetchEntriesWithSelect(
-          userId: userId,
-          startDate: startDate,
-          endDate: now,
-          select: 'entry_date',
-        );
-      } else {
-        // Fallback to direct query
-        final queryResponse = await _supabase
-            .from('entries')
-            .select('entry_date')
-            .eq('user_id', userId)
-            .order('entry_date', ascending: true);
-        response = List<Map<String, dynamic>>.from(queryResponse);
-      }
-
-      // Extract unique months
-      final months = <String>{};
-      for (var row in response) {
-        final dateStr = row['entry_date'] as String;
         final date = DateTime.parse(dateStr);
-        final monthKey =
-            '${date.year}-${date.month.toString().padLeft(2, '0')}';
-        months.add(monthKey);
+        months.add(
+            '${date.year}-${date.month.toString().padLeft(2, '0')}');
       }
 
-      return months.toList()..sort();
+      return (
+        moodMap: moodMap,
+        monthsWithEntries: months.toList()..sort(),
+      );
     } catch (e) {
-      await ErrorLoggingService.logLowError(
-        error: ErrorContext.fromException(
-          errorCode: 'ERRHIST009',
-          severity: ErrorSeverity.low,
+      await ErrorLoggingService.logError(
+        ErrorContext.fromException(
+          errorCode: 'ERRHIST013',
+          severity: ErrorSeverity.medium,
           exception: e,
           stackTrace: StackTrace.current,
           errorContext: {'user_id': userId},
         ),
       );
-      return [];
+      return null;
     }
   }
 }

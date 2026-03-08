@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import '../../models/entry_models.dart';
@@ -9,221 +10,13 @@ class SupabaseSyncService {
   final SupabaseClient _supabase = Supabase.instance.client;
   static final Map<String, Future<Entry?>> _inFlightEntryFetches = {};
 
-  // Sync entry to Supabase
-  Future<bool> syncEntry(Entry entry) async {
+  /// Insert error log to Supabase (used by SyncWorker for queued error_logs).
+  /// Does not call ErrorLoggingService to avoid recursion.
+  Future<bool> insertErrorLog(Map<String, dynamic> payload) async {
     try {
-      await _supabase.from('entries').upsert(entry.toSupabaseJson());
+      await _supabase.from('error_logs').insert(payload);
       return true;
     } catch (e) {
-      // Log error
-      await ErrorLoggingService.logHighError(
-        error: ErrorContext.fromException(
-        errorCode: 'ERRSYS101',
-          severity: ErrorSeverity.high,
-          exception: e,
-          stackTrace: StackTrace.current,
-        errorContext: {
-          'entry_id': entry.id,
-          'user_id': entry.userId,
-          'entry_date': entry.entryDate.toIso8601String(),
-          'operation': 'sync_entry',
-        },
-        ),
-      );
-      return false;
-    }
-  }
-
-  // Sync affirmations to Supabase (JSONB format)
-  // NOTE: Legacy method - kept for backward compatibility with EntryService
-  // New code should use batchSaveEntry() RPC function instead
-  Future<bool> syncAffirmations(EntryAffirmations affirmations) async {
-    try {
-      await _supabase.from('entry_affirmations').upsert({
-        'entry_id': affirmations.entryId,
-        'affirmations': affirmations.affirmations
-            .map((a) => a.toJson())
-            .toList(),
-      });
-      return true;
-    } catch (e) {
-      // Log error
-      await ErrorLoggingService.logHighError(
-        error: ErrorContext.fromException(
-        errorCode: 'ERRSYS102',
-            severity: ErrorSeverity.high,
-          exception: e,
-          stackTrace: StackTrace.current,
-        errorContext: {
-          'entry_id': affirmations.entryId,
-          'affirmations_count': affirmations.affirmations.length,
-          'operation': 'sync_affirmations',
-        },
-        ),
-      );
-      return false;
-    }
-  }
-
-  // Sync priorities to Supabase (JSONB format)
-  // NOTE: Legacy method - kept for backward compatibility with EntryService
-  // New code should use batchSaveEntry() RPC function instead
-  Future<bool> syncPriorities(EntryPriorities priorities) async {
-    try {
-      await _supabase.from('entry_priorities').upsert({
-        'entry_id': priorities.entryId,
-        'priorities': priorities.priorities.map((p) => p.toJson()).toList(),
-      });
-      return true;
-    } catch (e) {
-      // Log error
-      await ErrorLoggingService.logHighError(
-        error: ErrorContext.fromException(
-        errorCode: 'ERRSYS103',
-            severity: ErrorSeverity.high,
-          exception: e,
-          stackTrace: StackTrace.current,
-        errorContext: {
-          'entry_id': priorities.entryId,
-          'priorities_count': priorities.priorities.length,
-          'operation': 'sync_priorities',
-        },
-        ),
-      );
-      return false;
-    }
-  }
-
-  // Sync meals to Supabase
-  // NOTE: Legacy method - kept for backward compatibility with EntryService
-  // New code should use batchSaveEntry() RPC function instead
-  Future<bool> syncMeals(EntryMeals meals) async {
-    try {
-      await _supabase.from('entry_meals').upsert(meals.toJson());
-      return true;
-    } catch (e) {
-      // Log error
-      await ErrorLoggingService.logHighError(
-        error: ErrorContext.fromException(
-        errorCode: 'ERRSYS104',
-          severity: ErrorSeverity.high,
-          exception: e,
-          stackTrace: StackTrace.current,
-        errorContext: {'entry_id': meals.entryId, 'operation': 'sync_meals'},
-        ),
-      );
-      return false;
-    }
-  }
-
-  // Sync gratitude to Supabase (JSONB format)
-  // NOTE: Legacy method - kept for backward compatibility with EntryService
-  // New code should use batchSaveEntry() RPC function instead
-  Future<bool> syncGratitude(EntryGratitude gratitude) async {
-    try {
-      await _supabase.from('entry_gratitude').upsert({
-        'entry_id': gratitude.entryId,
-        'grateful_items': gratitude.gratefulItems
-            .map((g) => g.toJson())
-            .toList(),
-      });
-      return true;
-    } catch (e) {
-      // Log error
-      await ErrorLoggingService.logHighError(
-        error: ErrorContext.fromException(
-        errorCode: 'ERRSYS105',
-          severity: ErrorSeverity.high,
-          exception: e,
-          stackTrace: StackTrace.current,
-        errorContext: {
-          'entry_id': gratitude.entryId,
-          'grateful_items_count': gratitude.gratefulItems.length,
-          'operation': 'sync_gratitude',
-        },
-        ),
-      );
-      return false;
-    }
-  }
-
-  // Sync self care to Supabase
-  // NOTE: Legacy method - kept for backward compatibility with EntryService
-  // New code should use batchSaveEntry() RPC function instead
-  Future<bool> syncSelfCare(EntrySelfCare selfCare) async {
-    try {
-      await _supabase.from('entry_self_care').upsert(selfCare.toJson());
-      return true;
-    } catch (e) {
-      // Log error
-      await ErrorLoggingService.logHighError(
-        error: ErrorContext.fromException(
-        errorCode: 'ERRSYS106',
-          severity: ErrorSeverity.high,
-          exception: e,
-          stackTrace: StackTrace.current,
-        errorContext: {
-          'entry_id': selfCare.entryId,
-          'operation': 'sync_self_care',
-        },
-        ),
-      );
-      return false;
-    }
-  }
-
-  // Sync shower bath to Supabase
-  // NOTE: Legacy method - kept for backward compatibility with EntryService
-  // New code should use batchSaveEntry() RPC function instead
-  Future<bool> syncShowerBath(EntryShowerBath showerBath) async {
-    try {
-      await _supabase.from('entry_shower_bath').upsert(showerBath.toJson());
-      return true;
-    } catch (e) {
-      // Log error
-      await ErrorLoggingService.logHighError(
-        error: ErrorContext.fromException(
-        errorCode: 'ERRSYS107',
-          severity: ErrorSeverity.high,
-          exception: e,
-          stackTrace: StackTrace.current,
-        errorContext: {
-          'entry_id': showerBath.entryId,
-          'operation': 'sync_shower_bath',
-        },
-        ),
-      );
-      return false;
-    }
-  }
-
-  // Sync tomorrow notes to Supabase (JSONB format)
-  // NOTE: Legacy method - kept for backward compatibility with EntryService
-  // New code should use batchSaveEntry() RPC function instead
-  Future<bool> syncTomorrowNotes(EntryTomorrowNotes tomorrowNotes) async {
-    try {
-      await _supabase.from('entry_tomorrow_notes').upsert({
-        'entry_id': tomorrowNotes.entryId,
-        'tomorrow_notes': tomorrowNotes.tomorrowNotes
-            .map((t) => t.toJson())
-            .toList(),
-      });
-      return true;
-    } catch (e) {
-      // Log error
-      await ErrorLoggingService.logHighError(
-        error: ErrorContext.fromException(
-        errorCode: 'ERRSYS108',
-          severity: ErrorSeverity.high,
-          exception: e,
-          stackTrace: StackTrace.current,
-        errorContext: {
-          'entry_id': tomorrowNotes.entryId,
-          'tomorrow_notes_count': tomorrowNotes.tomorrowNotes.length,
-          'operation': 'sync_tomorrow_notes',
-        },
-        ),
-      );
       return false;
     }
   }
@@ -471,98 +264,117 @@ class SupabaseSyncService {
     }
   }
 
-  // Sync streak to Supabase
-  Future<bool> syncStreak(String userId, Map<String, dynamic> streakData) async {
+  /// Sync user profile to Supabase (upsert from local row)
+  Future<bool> syncUserProfile(String userId, Map<String, dynamic> data) async {
     try {
-      await _supabase.from('streaks').upsert({
-        'user_id': userId,
-        'current': streakData['current'],
-        'longest': streakData['longest'],
-        'last_entry_date': streakData['last_entry_date'],
-        'freeze_credits': streakData['freeze_credits'],
-        'grace_pieces_total': streakData['grace_pieces_total'],
+      await _supabase.from('users').upsert({
+        'id': data['id'] ?? userId,
+        'email': data['email'],
+        'email_verified': (data['email_verified'] as int? ?? 0) == 1,
+        'display_name': data['display_name'],
+        'avatar_url': data['avatar_url'],
+        'locale': data['locale'],
+        'timezone': data['timezone'],
+        'marketing_opt_in': (data['marketing_opt_in'] as int? ?? 0) == 1,
+        'created_at': data['created_at'],
         'updated_at': DateTime.now().toIso8601String(),
       });
-
-      // Mark as synced in local SQLite
       final db = await DatabaseManager().database;
       await db.update(
-        'streaks',
-        {
-          'is_synced': 1,
-          'last_sync_at': DateTime.now().toIso8601String(),
-        },
+        'users',
+        {'is_synced': 1, 'last_sync_at': DateTime.now().toIso8601String()},
+        where: 'id = ?',
+        whereArgs: [userId],
+      );
+      return true;
+    } catch (e) {
+      await ErrorLoggingService.logHighError(
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS170',
+          severity: ErrorSeverity.high,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {'user_id': userId, 'operation': 'sync_user_profile'},
+        ),
+      );
+      return false;
+    }
+  }
+
+  /// Sync user settings to Supabase (upsert from local row)
+  Future<bool> syncUserSettings(String userId, Map<String, dynamic> data) async {
+    try {
+      final reminderDays = data['reminder_days'];
+      final reminderDaysList = reminderDays is String
+          ? (jsonDecode(reminderDays) as List)
+          : (reminderDays is List ? reminderDays : [1, 2, 3, 4, 5, 6, 7]);
+      await _supabase.from('user_settings').upsert({
+        'user_id': data['user_id'] ?? userId,
+        'reminder_enabled': (data['reminder_enabled'] as int? ?? 1) == 1,
+        'reminder_time_local': data['reminder_time_local'],
+        'reminder_days': reminderDaysList,
+        'grace_system_enabled': (data['grace_system_enabled'] as int? ?? 1) == 1,
+        'privacy_lock_enabled': (data['privacy_lock_enabled'] as int? ?? 0) == 1,
+        'region_preference': data['region_preference'],
+        'export_format_default': data['export_format_default'],
+        'updated_at': DateTime.now().toIso8601String(),
+      });
+      final db = await DatabaseManager().database;
+      await db.update(
+        'user_settings',
+        {'is_synced': 1, 'last_sync_at': DateTime.now().toIso8601String()},
         where: 'user_id = ?',
         whereArgs: [userId],
       );
-
       return true;
     } catch (e) {
       await ErrorLoggingService.logHighError(
         error: ErrorContext.fromException(
-        errorCode: 'ERRSYS117',
+          errorCode: 'ERRSYS171',
           severity: ErrorSeverity.high,
           exception: e,
           stackTrace: StackTrace.current,
-        errorContext: {
-          'user_id': userId,
-          'operation': 'sync_streak',
-        },
+          errorContext: {'user_id': userId, 'operation': 'sync_user_settings'},
         ),
       );
       return false;
     }
   }
 
-  // Sync habits daily to Supabase
-  Future<bool> syncHabitsDaily(
-    String userId,
-    String date,
-    Map<String, dynamic> habitsData,
-  ) async {
+  /// Sync user profiles (theme, font) to Supabase
+  Future<bool> syncUserProfiles(String userId, Map<String, dynamic> data) async {
     try {
-      await _supabase.from('habits_daily').upsert({
-        'id': habitsData['id'],
-        'user_id': userId,
-        'date': date,
-        'wrote_entry': habitsData['wrote_entry'],
-        'filled_affirmations': habitsData['filled_affirmations'],
-        'filled_gratitude': habitsData['filled_gratitude'],
-        'self_care_completed_count': habitsData['self_care_completed_count'],
-        'grace_pieces_earned': habitsData['grace_pieces_earned'],
-      });
-
-      // Mark as synced in local SQLite
+      await _supabase.from('user_profiles').upsert({
+        'user_id': data['user_id'] ?? userId,
+        'theme_preference': data['theme_preference'] ?? 'system',
+        'diary_font': data['diary_font'],
+        'font_size': data['font_size'],
+        'paper_style': data['paper_style'] ?? 'ruled',
+      }, onConflict: 'user_id');
       final db = await DatabaseManager().database;
       await db.update(
-        'habits_daily',
-        {
-          'is_synced': 1,
-          'last_sync_at': DateTime.now().toIso8601String(),
-        },
-        where: 'user_id = ? AND date = ?',
-        whereArgs: [userId, date],
+        'user_profiles',
+        {'is_synced': 1, 'last_sync_at': DateTime.now().toIso8601String()},
+        where: 'user_id = ?',
+        whereArgs: [userId],
       );
-
       return true;
     } catch (e) {
       await ErrorLoggingService.logHighError(
         error: ErrorContext.fromException(
-        errorCode: 'ERRSYS118',
+          errorCode: 'ERRSYS172',
           severity: ErrorSeverity.high,
           exception: e,
           stackTrace: StackTrace.current,
-        errorContext: {
-          'user_id': userId,
-          'date': date,
-          'operation': 'sync_habits_daily',
-        },
+          errorContext: {'user_id': userId, 'operation': 'sync_user_profiles'},
         ),
       );
       return false;
     }
   }
 
+  // NOTE: syncStreak removed — sync queue uses batchUpdateStreakData RPC
+  // NOTE: syncHabitsDaily removed — habits_daily deprecated from Supabase, local-only
   // NOTE: syncAllStreaks() and syncAllHabits() removed
   // Replaced by batchUpdateStreakData() RPC method for efficient single-call syncing
 
@@ -665,11 +477,10 @@ class SupabaseSyncService {
   }
 
   /// Batch update streak data via RPC (single API call)
-  /// Updates both streaks and habits_daily tables in one transaction
+  /// Updates streaks table only (habits_daily deprecated from Supabase, local-only)
   Future<bool> batchUpdateStreakData({
     required String userId,
     required Map<String, dynamic> streakData,
-    List<Map<String, dynamic>>? habitsData,
   }) async {
     try {
       final params = {
@@ -697,7 +508,6 @@ class SupabaseSyncService {
       final result = response as Map<String, dynamic>;
 
       if (result['success'] == true) {
-        print('🔥 STREAK DEBUG: RPC call successful, marking as synced in local DB');
         // Mark as synced in local DB
         final db = await DatabaseManager().database;
         await db.update(
@@ -709,27 +519,8 @@ class SupabaseSyncService {
           where: 'user_id = ?',
           whereArgs: [userId],
         );
-        print('🔥 STREAK DEBUG: Streaks marked as synced');
-
-        // Mark habits as synced
-        if (habitsData != null) {
-          print('🔥 STREAK DEBUG: Marking ${habitsData.length} habits as synced');
-          for (final habit in habitsData) {
-            await db.update(
-              'habits_daily',
-              {
-                'is_synced': 1,
-                'last_sync_at': DateTime.now().toIso8601String(),
-              },
-              where: 'id = ?',
-              whereArgs: [habit['id']],
-            );
-          }
-        }
-        print('🔥 STREAK DEBUG: batchUpdateStreakData END - success');
         return true;
       } else {
-        print('🔥 STREAK DEBUG: RPC call failed - error: ${result['error_message']}');
         await ErrorLoggingService.logHighError(
           error: ErrorContext.create(
           errorCode: result['error_code'] ?? 'ERRSYS300',

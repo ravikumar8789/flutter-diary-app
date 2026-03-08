@@ -5,12 +5,14 @@ import '../models/entry_models.dart';
 import '../models/error_models.dart';
 import '../services/error_logging_service.dart';
 import '../services/user_data_service.dart';
-import '../services/sync/supabase_sync_service.dart';
+import '../services/sync/sync_worker.dart';
 import '../services/grace_system_service.dart';
 import '../services/database/database_manager.dart';
+import '../services/database/local_entry_service.dart';
 import 'sync_status_provider.dart';
 import 'grace_system_provider.dart';
 import 'data_providers.dart';
+import 'recent_entries_provider.dart';
 import 'streak_provider.dart';
 
 class EntryState {
@@ -462,94 +464,24 @@ class EntryNotifier extends Notifier<EntryState> {
       if (_pendingDiaryText != null)
         entry = entry.copyWith(diaryText: _pendingDiaryText);
 
-      // Save to local DB first
+      // Save to local DB first (adds to sync_queue via LocalEntryService)
       await _savePendingChangesToLocal(userId, date, entry);
 
-      // Prepare data for RPC
-      EntryAffirmations? affirmations = _pendingAffirmations != null
-          ? EntryAffirmations(
-              entryId: entry.id,
-              affirmations: _pendingAffirmations!,
-            )
-          : null;
-      EntryPriorities? priorities = _pendingPriorities != null
-          ? EntryPriorities(entryId: entry.id, priorities: _pendingPriorities!)
-          : null;
-      EntryMeals? meals = _pendingMeals != null
-          ? EntryMeals(
-              entryId: entry.id,
-              breakfast: _pendingMeals!.breakfast,
-              lunch: _pendingMeals!.lunch,
-              dinner: _pendingMeals!.dinner,
-              waterCups: _pendingMeals!.waterCups,
-            )
-          : null;
-      EntryGratitude? gratitude = _pendingGratitude != null
-          ? EntryGratitude(entryId: entry.id, gratefulItems: _pendingGratitude!)
-          : null;
-      EntrySelfCare? selfCare = _pendingSelfCare != null
-          ? EntrySelfCare(
-              entryId: entry.id,
-              sleep: _pendingSelfCare!.sleep,
-              getUpEarly: _pendingSelfCare!.getUpEarly,
-              freshAir: _pendingSelfCare!.freshAir,
-              learnNew: _pendingSelfCare!.learnNew,
-              balancedDiet: _pendingSelfCare!.balancedDiet,
-              podcast: _pendingSelfCare!.podcast,
-              meMoment: _pendingSelfCare!.meMoment,
-              hydrated: _pendingSelfCare!.hydrated,
-              readBook: _pendingSelfCare!.readBook,
-              exercise: _pendingSelfCare!.exercise,
-            )
-          : null;
-      EntryShowerBath? showerBath = _pendingShowerBath != null
-          ? EntryShowerBath(
-              entryId: entry.id,
-              tookShower: _pendingShowerBath!.tookShower,
-              note: _pendingShowerBath!.note,
-            )
-          : null;
-      EntryTomorrowNotes? tomorrowNotes = _pendingTomorrowNotes != null
-          ? EntryTomorrowNotes(
-              entryId: entry.id,
-              tomorrowNotes: _pendingTomorrowNotes!,
-            )
-          : null;
+      // Refresh providers
+      ref.invalidate(entriesProvider);
+      ref.invalidate(homeSummaryProvider);
+      ref.invalidate(recentEntriesProvider);
 
-      // Call RPC (single API call)
-      final syncService = SupabaseSyncService();
-      final success = await syncService.batchSaveEntry(
-        entry: entry,
-        affirmations: affirmations,
-        priorities: priorities,
-        meals: meals,
-        gratitude: gratitude,
-        selfCare: selfCare,
-        showerBath: showerBath,
-        tomorrowNotes: tomorrowNotes,
-      );
+      // Track grace system (may add streak to sync queue)
+      await _batchTrackGraceTasks(userId, date);
 
-      if (success) {
-        await _markAllAsSynced(entry.id);
+      // Check for gaps and recalculate streak (adds streak to sync queue if changed)
+      await _checkGapsAndRecalculateStreak(userId);
 
-        // Invalidate cache
-        final fetchService = ref.read(dataFetchServiceProvider);
-        fetchService.invalidateEntriesCache(userId, date);
-        fetchService.invalidateMonthlyCache(userId, date);
+      // Trigger sync when online (entries + streak from queue)
+      await SyncWorker().processSyncQueue();
 
-        // Track grace system
-        await _batchTrackGraceTasks(userId, date);
-
-        // Check for gaps and recalculate streak (with gap detection)
-        await _checkGapsAndRecalculateStreak(userId);
-
-        ref.read(syncStatusProvider.notifier).setSaved();
-      } else {
-        ref
-            .read(syncStatusProvider.notifier)
-            .setError('ERRSYS200: Batch save failed');
-      }
-
+      ref.read(syncStatusProvider.notifier).setSaved();
       _clearPendingChanges();
     } catch (e) {
       await ErrorLoggingService.logHighError(
@@ -582,9 +514,11 @@ class EntryNotifier extends Notifier<EntryState> {
   ) async {
     final localService = _entryService.localService;
 
-    // Save entry
+    // Save entry (mark unsynced so SyncWorker will pick it up)
     try {
-      await localService.upsertEntry(entry);
+      await localService.upsertEntry(
+        entry.copyWith(isSynced: false, updatedAt: DateTime.now()),
+      );
     } catch (e) {
       await ErrorLoggingService.logHighError(
         error: ErrorContext.fromException(
@@ -808,11 +742,6 @@ class EntryNotifier extends Notifier<EntryState> {
     }
   }
 
-  /// Mark all entry data as synced
-  Future<void> _markAllAsSynced(String entryId) async {
-    await _entryService.localService.markAsSynced(entryId);
-  }
-
   /// Force immediate save (cancel debounce and save now)
   void forceImmediateSave() {
     _debounceTimer?.cancel();
@@ -886,13 +815,10 @@ class EntryNotifier extends Notifier<EntryState> {
     }
   }
 
-  /// Check for gaps in streak and auto-use grace days if needed
+  /// Check for gaps in streak and auto-use grace days if needed (local-only)
   Future<void> _checkGapsAndRecalculateStreak(String userId) async {
     try {
       final db = await DatabaseManager().database;
-      final dataFetchService = ref.read(dataFetchServiceProvider);
-
-      // Get current streak data
       final streaks = await db.query(
         'streaks',
         where: 'user_id = ?',
@@ -901,14 +827,7 @@ class EntryNotifier extends Notifier<EntryState> {
       );
 
       if (streaks.isEmpty) {
-        // No streak data, recalculate from scratch
-        await UserDataService.recalculateStreak(
-          userId,
-          dataFetchService: dataFetchService,
-        );
-        dataFetchService.invalidateStreaksCache(userId);
-        dataFetchService.invalidateHomeSummaryCache(userId);
-        // Refresh providers to reflect UI changes
+        await UserDataService.recalculateStreak(userId);
         ref.read(streakProvider.notifier).refresh();
         ref.invalidate(homeSummaryProvider);
         return;
@@ -918,14 +837,7 @@ class EntryNotifier extends Notifier<EntryState> {
       final lastEntryDateStr = streak['last_entry_date'] as String?;
 
       if (lastEntryDateStr == null) {
-        // No previous entry, recalculate from scratch
-        await UserDataService.recalculateStreak(
-          userId,
-          dataFetchService: dataFetchService,
-        );
-        dataFetchService.invalidateStreaksCache(userId);
-        dataFetchService.invalidateHomeSummaryCache(userId);
-        // Refresh providers to reflect UI changes
+        await UserDataService.recalculateStreak(userId);
         ref.read(streakProvider.notifier).refresh();
         ref.invalidate(homeSummaryProvider);
         return;
@@ -942,55 +854,31 @@ class EntryNotifier extends Notifier<EntryState> {
       final daysDiff = todayDateOnly.difference(lastDateOnly).inDays;
 
       if (daysDiff == 0) {
-        // Same day, just recalculate
-        await UserDataService.recalculateStreak(
-          userId,
-          dataFetchService: dataFetchService,
-        );
-        dataFetchService.invalidateStreaksCache(userId);
-        dataFetchService.invalidateHomeSummaryCache(userId);
-        // Refresh providers to reflect UI changes
+        await UserDataService.recalculateStreak(userId);
         ref.read(streakProvider.notifier).refresh();
         ref.invalidate(homeSummaryProvider);
         return;
       }
 
       if (daysDiff > 0) {
-        // Gap detected
         final graceDays = streak['freeze_credits'] as int? ?? 0;
 
         if (daysDiff == 1 && graceDays > 0) {
-          // 1 day gap - auto-use grace day
-          await GraceSystemService.useGraceDay(
-            userId,
-            dataFetchService: dataFetchService,
-          );
-          // Recalculate streak (maintains current streak)
-          await UserDataService.recalculateStreak(
-            userId,
-            dataFetchService: dataFetchService,
-          );
-          dataFetchService.invalidateStreaksCache(userId);
-          dataFetchService.invalidateHomeSummaryCache(userId);
-          // Refresh providers to reflect UI changes
+          await GraceSystemService.useGraceDay(userId);
+          await UserDataService.recalculateStreak(userId);
+          ref.read(streakProvider.notifier).refresh();
+          ref.invalidate(homeSummaryProvider);
+        } else if (daysDiff == 1) {
+          // Consecutive: last_entry_date was yesterday, user completed today
+          await UserDataService.recalculateStreak(userId);
           ref.read(streakProvider.notifier).refresh();
           ref.invalidate(homeSummaryProvider);
         } else if (daysDiff > 1) {
-          // Multiple days gap
           if (graceDays >= daysDiff - 1) {
-            // Use multiple grace days
             for (int i = 0; i < daysDiff - 1; i++) {
-              await GraceSystemService.useGraceDay(
-                userId,
-                dataFetchService: dataFetchService,
-              );
+              await GraceSystemService.useGraceDay(userId);
             }
-            await UserDataService.recalculateStreak(
-              userId,
-              dataFetchService: dataFetchService,
-            );
-            dataFetchService.invalidateStreaksCache(userId);
-            dataFetchService.invalidateHomeSummaryCache(userId);
+            await UserDataService.recalculateStreak(userId);
             // Refresh providers to reflect UI changes
             ref.read(streakProvider.notifier).refresh();
             ref.invalidate(homeSummaryProvider);
@@ -1007,20 +895,7 @@ class EntryNotifier extends Notifier<EntryState> {
               where: 'user_id = ?',
               whereArgs: [userId],
             );
-            // Sync reset
-            final syncService = SupabaseSyncService();
-            await syncService.batchUpdateStreakData(
-              userId: userId,
-              streakData: {
-                'current': 0,
-                'longest': streak['longest'] ?? 0,
-                'last_entry_date': null,
-                'freeze_credits': graceDays,
-                'grace_pieces_total': streak['grace_pieces_total'] ?? 0.0,
-              },
-            );
-            dataFetchService.invalidateStreaksCache(userId);
-            dataFetchService.invalidateHomeSummaryCache(userId);
+            await LocalEntryService.addStreakToSyncQueue(userId);
             // Refresh providers to reflect UI changes
             ref.read(streakProvider.notifier).refresh();
             ref.invalidate(homeSummaryProvider);

@@ -8,6 +8,7 @@ import '../providers/user_data_provider.dart';
 import '../providers/grace_system_provider.dart';
 import '../widgets/grace_system_info_card.dart';
 import '../providers/data_providers.dart'; // Use new cached providers (homeSummaryProvider)
+import '../providers/home_summary_provider.dart';
 import '../models/home_summary_models.dart';
 import '../widgets/yesterday_insight_card.dart';
 import '../providers/recent_entries_provider.dart';
@@ -15,9 +16,11 @@ import '../models/history_entry_model.dart';
 import '../services/streak_motivation_service.dart';
 import '../services/data_sync_flag_service.dart';
 import '../services/data_prefetch_service.dart';
+import '../services/sync/sync_worker.dart';
 import '../services/error_logging_service.dart';
 import '../models/error_models.dart';
 import '../widgets/debug_notification_bottom_sheet.dart';
+import '../widgets/debug_local_db_bottom_sheet.dart';
 import '../ui/responsive/responsive_grid.dart';
 import '../ui/responsive/responsive_body.dart';
 import '../ui/responsive/responsive_info.dart';
@@ -98,10 +101,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // Load user data when HomeScreen mounts
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadUserData();
+      _triggerSyncIfFromSplash();
     });
+  }
+
+  /// Trigger sync when coming from Splash (lastFetchDate set). Login path triggers in _runPrefetchAndWait finally.
+  void _triggerSyncIfFromSplash() async {
+    final lastFetch = await DataSyncFlagService.getLastFetchDate();
+    if (lastFetch != null && mounted) {
+      _triggerSyncOnLand();
+    }
+  }
+
+  void _triggerSyncOnLand() {
+    SyncWorker().processSyncQueue();
   }
 
   Widget _buildAiInsightCard(BuildContext context) {
@@ -115,24 +130,47 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
-  /// Run prefetch after login and wait for completion before showing content.
+  /// Run prefetch when Home loads without Splash (e.g. auth nav). Uses same login/resume logic.
   /// Non-blocking: on failure, sets _prefetchComplete so user can proceed.
   void _runPrefetchAndWait(String userId) async {
     try {
-      final needsFetch = await DataSyncFlagService.needsDataFetch();
+      final lastFetchDate = await DataSyncFlagService.getLastFetchDate();
+      final needsFetch = lastFetchDate == null;
       if (!mounted) return;
       setState(() => _needsFetch = needsFetch);
 
       if (needsFetch) {
         try {
           final dataFetchService = ref.read(dataFetchServiceProvider);
-          await DataPrefetchService.prefetch7DaysData(
+          final now = DateTime.now();
+          final today = DateTime(now.year, now.month, now.day);
+          final sixtyDaysAgo = today.subtract(const Duration(days: 60));
+          await DataPrefetchService.fetchAndMergeUserProfile(
             userId,
             dataFetchService,
           );
-          await DataSyncFlagService.clearNeedsDataFetch();
-          dataFetchService.invalidateHomeSummaryCache(userId);
+          await DataPrefetchService.fetchAndMergeUserSettings(
+            userId,
+            dataFetchService,
+          );
+          await DataPrefetchService.fetchAndMergeStreaks(
+            userId,
+            dataFetchService,
+          );
+          await DataPrefetchService.fetchAndMergeEntriesWithJoins(
+            userId,
+            sixtyDaysAgo,
+            today,
+            dataFetchService,
+          );
+          await DataPrefetchService.fetchAndStoreYesterdayInsight(
+            userId,
+            dataFetchService,
+          );
+          await DataPrefetchService.ensureHabitsDailyFromEntries(userId);
+          await DataSyncFlagService.setLastFetchDate(today);
           ref.invalidate(homeSummaryProvider);
+          ref.invalidate(yesterdayInsightProvider);
         } catch (e) {
           await ErrorLoggingService.logHighError(
             error: ErrorContext.fromException(
@@ -148,9 +186,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           );
         } finally {
           if (mounted) setState(() => _prefetchComplete = true);
+          _triggerSyncOnLand();
         }
       } else {
         if (mounted) setState(() => _prefetchComplete = true);
+        _triggerSyncOnLand();
       }
     } catch (e) {
       await ErrorLoggingService.logHighError(
@@ -159,10 +199,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           severity: ErrorSeverity.high,
           exception: e,
           stackTrace: StackTrace.current,
-          errorContext: {
-            'user_id': userId,
-            'operation': 'home_check_prefetch',
-          },
+          errorContext: {'user_id': userId, 'operation': 'home_check_prefetch'},
         ),
       );
       if (mounted) {
@@ -257,6 +294,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       ),
                     ),
                     child: const DebugNotificationBottomSheet(),
+                  ),
+                );
+              },
+            ),
+            // Temporary debug button - TODO: Remove after debugging
+            IconButton(
+              icon: const Icon(Icons.storage),
+              tooltip: 'Debug Local DB',
+              onPressed: () {
+                showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  builder: (context) => Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).scaffoldBackgroundColor,
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(20),
+                      ),
+                    ),
+                    child: const DebugLocalDbBottomSheet(),
                   ),
                 );
               },
@@ -637,19 +695,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   // InnerGlow Design Builder Methods
-  
-  Widget _buildDateAndGreeting(
-    BuildContext context,
-    userData,
-    user,
-  ) {
+
+  Widget _buildDateAndGreeting(BuildContext context, userData, user) {
     final now = DateTime.now();
     final dateFormat = DateFormat('EEEE, MMMM d').format(now);
-    final name = userData?.displayName ?? 
-                 user?.userMetadata?['display_name'] ?? 
-                 user?.email?.split('@')[0] ?? 
-                 'User';
-    
+    final name =
+        userData?.displayName ??
+        user?.userMetadata?['display_name'] ??
+        user?.email?.split('@')[0] ??
+        'User';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -662,28 +717,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         const SizedBox(height: 8),
         Text(
           'Hello, $name 👋',
-          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
+          style: Theme.of(
+            context,
+          ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w600),
         ),
       ],
     );
   }
-  
-  Widget _buildStreakSection(
-    BuildContext context,
-    userStats,
-    user,
-  ) {
+
+  Widget _buildStreakSection(BuildContext context, userStats, user) {
     final currentStreak = userStats?['current_streak'] ?? 0;
     final bestStreak = userStats?['longest_streak'] ?? currentStreak;
-    
+
     return Consumer(
       builder: (context, ref, _) {
         final summaryAsync = ref.watch(homeSummaryProvider);
-        final currentStreakValue = summaryAsync.value?.streak?.current ?? currentStreak;
-        final bestStreakValue = summaryAsync.value?.streak?.longest ?? bestStreak;
-        
+        final currentStreakValue =
+            summaryAsync.value?.streak?.current ?? currentStreak;
+        final bestStreakValue =
+            summaryAsync.value?.streak?.longest ?? bestStreak;
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -709,16 +762,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               children: [
                                 Text(
                                   'Current Streak',
-                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                  ),
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
+                                      ),
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
                                   '$currentStreakValue days',
-                                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                  style: Theme.of(context).textTheme.titleLarge
+                                      ?.copyWith(fontWeight: FontWeight.bold),
                                 ),
                               ],
                             ),
@@ -749,16 +804,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               children: [
                                 Text(
                                   'Best',
-                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                  ),
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
+                                      ),
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
                                   '$bestStreakValue days',
-                                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                  style: Theme.of(context).textTheme.titleLarge
+                                      ?.copyWith(fontWeight: FontWeight.bold),
                                 ),
                               ],
                             ),
@@ -773,7 +830,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             // Motivational message OUTSIDE the card
             const SizedBox(height: 12),
             Text(
-              StreakMotivationService.getMotivationalMessage(currentStreakValue),
+              StreakMotivationService.getMotivationalMessage(
+                currentStreakValue,
+              ),
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(context).colorScheme.primary,
               ),
@@ -783,7 +842,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       },
     );
   }
-  
+
   Widget _buildStartEntryButton(BuildContext context) {
     return Card(
       child: InkWell(
@@ -842,12 +901,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
     );
   }
-  
+
   Widget _buildThisWeekSection(BuildContext context) {
     return Consumer(
       builder: (context, ref, _) {
         final summaryAsync = ref.watch(homeSummaryProvider);
-        
+
         return summaryAsync.when(
           loading: () => const SizedBox(height: 200),
           error: (_, __) => const SizedBox.shrink(),
@@ -858,9 +917,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               children: [
                 Text(
                   'This Week',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 16),
                 LayoutBuilder(
@@ -878,40 +937,40 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         SizedBox(
                           width: cardWidth,
                           child: _buildWeekMetricCard(
-                            context, 
-                            weekly?.moodAvg?.toStringAsFixed(1) ?? '0.0', 
-                            'Avg Mood', 
-                            'out of 5', 
+                            context,
+                            weekly?.moodAvg?.toStringAsFixed(1) ?? '0.0',
+                            'Avg Mood',
+                            'out of 5',
                             Icons.mood,
                           ),
                         ),
                         SizedBox(
                           width: cardWidth,
                           child: _buildWeekMetricCard(
-                            context, 
-                            weekly?.cupsAvg?.toStringAsFixed(1) ?? '0.0', 
-                            'Water', 
-                            'Avg cups/day', 
+                            context,
+                            weekly?.cupsAvg?.toStringAsFixed(1) ?? '0.0',
+                            'Water',
+                            'Avg cups/day',
                             Icons.water_drop,
                           ),
                         ),
                         SizedBox(
                           width: cardWidth,
                           child: _buildWeekMetricCard(
-                            context, 
-                            '${((weekly?.selfCareRate ?? 0) * 100).toStringAsFixed(0)}%', 
-                            'Self-Care', 
-                            'Avg completion', 
+                            context,
+                            '${((weekly?.selfCareRate ?? 0) * 100).toStringAsFixed(0)}%',
+                            'Self-Care',
+                            'Avg completion',
                             Icons.favorite,
                           ),
                         ),
                         SizedBox(
                           width: cardWidth,
                           child: _buildWeekMetricCard(
-                            context, 
-                            '${((weekly?.consistency ?? 0) * 100).toStringAsFixed(0)}%', 
-                            'Consistency', 
-                            'this week', 
+                            context,
+                            '${((weekly?.consistency ?? 0) * 100).toStringAsFixed(0)}%',
+                            'Consistency',
+                            'this week',
                             Icons.check_circle,
                           ),
                         ),
@@ -926,8 +985,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       },
     );
   }
-  
-  Widget _buildWeekMetricCard(BuildContext context, String value, String label, String subtitle, IconData icon) {
+
+  Widget _buildWeekMetricCard(
+    BuildContext context,
+    String value,
+    String label,
+    String subtitle,
+    IconData icon,
+  ) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -971,12 +1036,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
     );
   }
-  
+
   Widget _buildRecentEntriesSection(BuildContext context) {
     return Consumer(
       builder: (context, ref, _) {
         final recentEntriesAsync = ref.watch(recentEntriesProvider);
-        
+
         return recentEntriesAsync.when(
           loading: () => const SizedBox(height: 200),
           error: (_, __) => const SizedBox.shrink(),
@@ -984,7 +1049,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             if (entries.isEmpty) {
               return const SizedBox.shrink();
             }
-            
+
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1022,15 +1087,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       },
     );
   }
-  
+
   Widget _buildEntryCard(BuildContext context, HistoryEntry entry) {
     final dateFormat = DateFormat('EEEE, MMMM d').format(entry.entry.entryDate);
     final moodEmoji = _getMoodEmoji(entry.entry.moodScore ?? 3);
-    final preview = entry.preview.length > 100 
-        ? '${entry.preview.substring(0, 100)}...' 
+    final preview = entry.preview.length > 100
+        ? '${entry.preview.substring(0, 100)}...'
         : entry.preview;
     final selfCareScore = entry.selfCareCount;
-    
+
     return Card(
       child: InkWell(
         onTap: () {
@@ -1095,7 +1160,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
     );
   }
-  
+
   String _getMoodEmoji(int mood) {
     switch (mood) {
       case 1:
@@ -1112,5 +1177,4 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         return '😐';
     }
   }
-
 }

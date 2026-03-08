@@ -1,7 +1,9 @@
 import 'dart:io';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 import '../models/error_models.dart';
+import 'database/local_entry_service.dart';
 
 class ErrorLoggingService {
   static final SupabaseClient _supabase = Supabase.instance.client;
@@ -33,8 +35,18 @@ class ErrorLoggingService {
         },
       );
 
-      // Insert using model's toJson
-      await _supabase.from('error_logs').insert(finalError.toJson());
+      final payload = finalError.toJson();
+      final isOnline = await _isOnline();
+
+      if (isOnline) {
+        try {
+          await _supabase.from('error_logs').insert(payload);
+        } catch (_) {
+          await _addErrorLogToSyncQueue(payload);
+        }
+      } else {
+        await _addErrorLogToSyncQueue(payload);
+      }
     } catch (e) {
       // CRITICAL: Never throw - error logging must never fail
       if (kDebugMode) {
@@ -86,6 +98,30 @@ class ErrorLoggingService {
   static String _getCurrentSyncStatus() {
     // This will be enhanced with actual sync status
     return 'unknown';
+  }
+
+  static Future<bool> _isOnline() async {
+    try {
+      final results = await Connectivity().checkConnectivity();
+      return results.isNotEmpty &&
+          results.any((r) => r != ConnectivityResult.none);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<void> _addErrorLogToSyncQueue(Map<String, dynamic> payload) async {
+    try {
+      await LocalEntryService().addToSyncQueue(
+        entityType: 'error_log',
+        entityId: '${DateTime.now().millisecondsSinceEpoch}',
+        tableName: 'error_logs',
+        operation: 'insert',
+        data: payload,
+      );
+    } catch (_) {
+      // Never throw - silently fail
+    }
   }
 
   // Get device information

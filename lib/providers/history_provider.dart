@@ -1,10 +1,10 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import '../models/history_entry_model.dart';
 import '../models/error_models.dart';
 import '../services/history_service.dart';
+import '../services/connectivity_service.dart';
 import '../services/error_logging_service.dart';
 import 'data_providers.dart';
 
@@ -73,7 +73,7 @@ class HistoryNotifier extends Notifier<HistoryState> {
 
   /// Load current month on init
   /// Loads 2 months initially (current + previous) with full data
-  /// Also loads months with entries list for Load More button
+  /// Offline: local-only. Online: local-first; monthsWithEntries from loadCalendarMoodData
   Future<void> loadCurrentMonth() async {
     final userId = _getUserId();
     if (userId == null) {
@@ -87,52 +87,57 @@ class HistoryNotifier extends Notifier<HistoryState> {
     state = state.copyWith(isLoading: true, error: null);
 
     try {
+      final isOnline = await ConnectivityService().isOnline();
       final now = DateTime.now();
       final currentMonth = DateTime(now.year, now.month, 1);
       final previousMonth = DateTime(now.year, now.month - 1, 1);
-      
+
       final loadedMonthsSet = <String>{};
       final allEntries = <HistoryEntry>[];
       final allMoodMap = <String, int>{};
 
-      // Load 2 months initially (current + previous) in parallel
-      final results = await Future.wait([
-        _service.getEntriesForMonth(userId, currentMonth),
-        _service.getEntriesForMonth(userId, previousMonth),
-        _service.getMonthsWithEntries(userId), // Get all months with entries for Load More button
-      ]);
-
-      final currentMonthEntries = results[0] as List<HistoryEntry>;
-      final previousMonthEntries = results[1] as List<HistoryEntry>;
-      final monthsWithEntries = results[2] as List<String>;
+      // Load 2 months (current + previous)
+      final currentMonthEntries = await _service.getEntriesForMonth(
+        userId,
+        currentMonth,
+        useLocalOnly: !isOnline,
+      );
+      final previousMonthEntries = await _service.getEntriesForMonth(
+        userId,
+        previousMonth,
+        useLocalOnly: !isOnline,
+      );
 
       // Add current month entries
       if (currentMonthEntries.isNotEmpty) {
         allEntries.addAll(currentMonthEntries);
-        final currentMonthKey = DateFormat('yyyy-MM').format(currentMonth);
-        loadedMonthsSet.add(currentMonthKey);
-        final moodMap = _buildMoodMap(currentMonthEntries);
-        allMoodMap.addAll(moodMap);
+        loadedMonthsSet.add(DateFormat('yyyy-MM').format(currentMonth));
+        allMoodMap.addAll(_buildMoodMap(currentMonthEntries));
       }
 
       // Add previous month entries
       if (previousMonthEntries.isNotEmpty) {
         allEntries.addAll(previousMonthEntries);
-        final previousMonthKey = DateFormat('yyyy-MM').format(previousMonth);
-        loadedMonthsSet.add(previousMonthKey);
-        final moodMap = _buildMoodMap(previousMonthEntries);
-        allMoodMap.addAll(moodMap);
+        loadedMonthsSet.add(DateFormat('yyyy-MM').format(previousMonth));
+        allMoodMap.addAll(_buildMoodMap(previousMonthEntries));
       }
 
       // Sort all entries by date (newest first)
       allEntries.sort((a, b) => b.entry.entryDate.compareTo(a.entry.entryDate));
+
+      // Derive monthsWithEntries from loaded entries (loadCalendarMoodData overwrites when online)
+      final monthsFromEntries = allEntries
+          .map((e) => DateFormat('yyyy-MM').format(e.entry.entryDate))
+          .toSet()
+          .toList()
+        ..sort();
 
       state = state.copyWith(
         entries: allEntries,
         loadedMonths: loadedMonthsSet,
         isLoading: false,
         moodMap: {...state.moodMap, ...allMoodMap},
-        monthsWithEntries: monthsWithEntries,
+        monthsWithEntries: monthsFromEntries,
         loadedMoodEntries: {},
         moodFilterPagination: {},
       );
@@ -154,27 +159,54 @@ class HistoryNotifier extends Notifier<HistoryState> {
     }
   }
 
-  /// Load calendar mood data (lightweight - only date + mood)
-  /// Fetches ALL mood data from Supabase (no date limit) for calendar view
+  /// Load calendar mood data (runs after loadCurrentMonth)
+  /// Offline: build from state.entries. Online: single fetch for moodMap + monthsWithEntries
   Future<void> loadCalendarMoodData() async {
     final userId = _getUserId();
     if (userId == null) return;
 
     try {
-      // Fetch all mood data (no date limit)
-      final calendarMoodMap = await _service.getMoodMapForDateRange(
-        userId,
-        null, // No start date - fetch all
-        null, // No end date - fetch all
-      );
+      final isOnline = await ConnectivityService().isOnline();
 
-      // Merge with existing mood map (calendar data takes precedence for dates)
+      if (!isOnline) {
+        // Offline: build from loaded entries only
+        final moodMapFromEntries = _buildMoodMap(state.entries);
+        final monthsFromEntries = state.entries
+            .map((e) => DateFormat('yyyy-MM').format(e.entry.entryDate))
+            .toSet()
+            .toList()
+          ..sort();
+        state = state.copyWith(
+          moodMap: {...state.moodMap, ...moodMapFromEntries},
+          monthsWithEntries: monthsFromEntries,
+        );
+        return;
+      }
+
+      // Online: single fetch for mood map + months
+      final result = await _service.getMoodMapAndMonthsWithEntries(userId);
+      if (result == null) {
+        await ErrorLoggingService.logLowError(
+          error: ErrorContext.fromException(
+            errorCode: 'ERRHIST014',
+            severity: ErrorSeverity.low,
+            exception: Exception('getMoodMapAndMonthsWithEntries returned null'),
+            stackTrace: StackTrace.current,
+            errorContext: {'user_id': userId},
+          ),
+        );
+        return;
+      }
+
       final mergedMoodMap = <String, int>{
         ...state.moodMap,
-        ...calendarMoodMap,
+        ...result.moodMap,
       };
 
-      state = state.copyWith(moodMap: mergedMoodMap);
+      state = state.copyWith(
+        moodMap: mergedMoodMap,
+        monthsWithEntries: result.monthsWithEntries,
+      );
     } catch (e) {
       await ErrorLoggingService.logLowError(
         error: ErrorContext.fromException(
@@ -185,27 +217,29 @@ class HistoryNotifier extends Notifier<HistoryState> {
           errorContext: {'user_id': userId},
         ),
       );
-      // Don't update state on error - use existing mood map
     }
   }
 
   /// Load previous month (pagination)
-  Future<void> loadPreviousMonth(String monthKey) async {
-    debugPrint('HISTORY DEBUG: loadPreviousMonth START monthKey=$monthKey');
+  /// Returns: true = success, false = offline (no fetch), null = error
+  Future<bool?> loadPreviousMonth(String monthKey) async {
     final userId = _getUserId();
     if (userId == null) {
-      debugPrint('HISTORY DEBUG: loadPreviousMonth EXIT - userId null');
       state = state.copyWith(
         error: 'User not authenticated',
         isLoadingMore: false,
       );
-      return;
+      return null;
+    }
+
+    final isOnline = await ConnectivityService().isOnline();
+    if (!isOnline) {
+      return false;
     }
 
     // Check if already loaded
     if (state.loadedMonths.contains(monthKey)) {
-      debugPrint('HISTORY DEBUG: loadPreviousMonth EXIT - month already loaded');
-      return;
+      return true;
     }
 
     // Parse monthKey (e.g., "2024-01")
@@ -215,17 +249,15 @@ class HistoryNotifier extends Notifier<HistoryState> {
         error: 'Invalid month key format',
         isLoadingMore: false,
       );
-      return;
+      return null;
     }
 
     final month = DateTime(int.parse(parts[0]), int.parse(parts[1]), 1);
 
     state = state.copyWith(isLoadingMore: true);
-    debugPrint('HISTORY DEBUG: loadPreviousMonth fetching month=$monthKey');
 
     try {
       final entries = await _service.getEntriesForMonth(userId, month);
-      debugPrint('HISTORY DEBUG: loadPreviousMonth fetched ${entries.length} entries');
       final newMoodMap = _buildMoodMap(entries);
 
       state = state.copyWith(
@@ -234,11 +266,8 @@ class HistoryNotifier extends Notifier<HistoryState> {
         isLoadingMore: false,
         moodMap: {...state.moodMap, ...newMoodMap},
       );
-      debugPrint(
-        'HISTORY DEBUG: loadPreviousMonth SUCCESS totalEntries=${state.entries.length}',
-      );
+      return true;
     } catch (e) {
-      debugPrint('HISTORY DEBUG: loadPreviousMonth ERROR: $e');
       await ErrorLoggingService.logError(
         ErrorContext.fromException(
           errorCode: 'ERRHIST006',
@@ -248,6 +277,7 @@ class HistoryNotifier extends Notifier<HistoryState> {
           errorContext: {
             'user_id': userId,
             'month_key': monthKey,
+            'offline_blocked': false,
           },
         ),
       );
@@ -256,6 +286,7 @@ class HistoryNotifier extends Notifier<HistoryState> {
         isLoadingMore: false,
         error: 'Failed to load month: ${e.toString()}',
       );
+      return null;
     }
   }
 
@@ -265,12 +296,28 @@ class HistoryNotifier extends Notifier<HistoryState> {
   }
 
   /// Get entry by date (for calendar tap)
-  Future<HistoryEntry?> getEntryByDate(DateTime date) async {
+  /// Returns (entry, wasOffline). When wasOffline true and entry null = show "No internet"
+  Future<({HistoryEntry? entry, bool wasOffline})> getEntryByDate(DateTime date) async {
     final userId = _getUserId();
-    if (userId == null) return null;
+    if (userId == null) return (entry: null, wasOffline: false);
 
     try {
-      return await _service.getEntryByDate(userId, date);
+      final isOnline = await ConnectivityService().isOnline();
+
+      if (!isOnline) {
+        // Check if date is in loaded entries (2 months)
+        final dateStr = DateFormat('yyyy-MM-dd').format(date);
+        final found = state.entries
+            .where((e) => DateFormat('yyyy-MM-dd').format(e.entry.entryDate) == dateStr)
+            .toList();
+        if (found.isNotEmpty) {
+          return (entry: found.first, wasOffline: false);
+        }
+        return (entry: null, wasOffline: true);
+      }
+
+      final entry = await _service.getEntryByDate(userId, date);
+      return (entry: entry, wasOffline: false);
     } catch (e) {
       await ErrorLoggingService.logError(
         ErrorContext.fromException(
@@ -284,29 +331,31 @@ class HistoryNotifier extends Notifier<HistoryState> {
           },
         ),
       );
-      return null;
+      return (entry: null, wasOffline: false);
     }
   }
 
   /// Load entries for a specific mood when filter is applied
   ///
   /// Skips last 2 months (already loaded). Fetches from older months with pagination.
-  Future<void> loadMoodFilteredEntries(int moodScore) async {
-    debugPrint('HISTORY DEBUG: loadMoodFilteredEntries START moodScore=$moodScore');
+  /// Returns: true = fetch attempted/success, false = offline (no fetch)
+  Future<bool> loadMoodFilteredEntries(int moodScore) async {
     final userId = _getUserId();
     if (userId == null) {
-      debugPrint('HISTORY DEBUG: loadMoodFilteredEntries EXIT - userId null');
-      return;
+      return true;
+    }
+
+    final isOnline = await ConnectivityService().isOnline();
+    if (!isOnline) {
+      return false;
     }
 
     if (state.isLoadingMoodFilter) {
-      debugPrint('HISTORY DEBUG: loadMoodFilteredEntries EXIT - already loading');
-      return;
+      return true;
     }
 
     if (state.loadedMoodEntries.contains('mood_$moodScore')) {
-      debugPrint('HISTORY DEBUG: loadMoodFilteredEntries EXIT - mood already loaded');
-      return;
+      return true;
     }
 
     final totalCount =
@@ -315,18 +364,11 @@ class HistoryNotifier extends Notifier<HistoryState> {
         .where((e) => e.entry.moodScore == moodScore)
         .length;
 
-    debugPrint(
-      'HISTORY DEBUG: loadMoodFilteredEntries totalCount=$totalCount '
-      'loadedCount=$loadedCount moodMap.size=${state.moodMap.length}',
-    );
-
     if (loadedCount >= totalCount) {
-      debugPrint('HISTORY DEBUG: loadMoodFilteredEntries EXIT - loadedCount>=totalCount');
-      return;
+      return true;
     }
 
     state = state.copyWith(isLoadingMoodFilter: true, error: null);
-    debugPrint('HISTORY DEBUG: loadMoodFilteredEntries set isLoadingMoodFilter=true');
 
     try {
       final now = DateTime.now();
@@ -338,11 +380,6 @@ class HistoryNotifier extends Notifier<HistoryState> {
       final currentOffset =
           state.moodFilterPagination['mood_$moodScore'] ?? 0;
 
-      debugPrint(
-        'HISTORY DEBUG: loadMoodFilteredEntries skipUntilDate=$skipUntilDate '
-        'currentOffset=$currentOffset limit=$limit',
-      );
-
       final fetchedEntries = await _service.getEntriesByMood(
         userId: userId,
         moodScore: moodScore,
@@ -352,19 +389,10 @@ class HistoryNotifier extends Notifier<HistoryState> {
         offset: currentOffset,
       );
 
-      debugPrint(
-        'HISTORY DEBUG: loadMoodFilteredEntries fetched ${fetchedEntries.length} entries',
-      );
-
       final existingIds = state.entries.map((e) => e.entry.id).toSet();
       final newEntries = fetchedEntries
           .where((e) => !existingIds.contains(e.entry.id))
           .toList();
-
-      debugPrint(
-        'HISTORY DEBUG: loadMoodFilteredEntries newEntries=${newEntries.length} '
-        'existingIds=${existingIds.length}',
-      );
 
       final allEntries = [...state.entries, ...newEntries];
       allEntries.sort(
@@ -388,11 +416,6 @@ class HistoryNotifier extends Notifier<HistoryState> {
 
       final newMoodMap = _buildMoodMap(newEntries);
 
-      debugPrint(
-        'HISTORY DEBUG: loadMoodFilteredEntries SUCCESS allEntries=${allEntries.length} '
-        'isFullyLoaded=$isFullyLoaded updatedLoadedCount=$updatedLoadedCount',
-      );
-
       state = state.copyWith(
         entries: allEntries,
         loadedMoodEntries: updatedLoadedMoodEntries,
@@ -400,8 +423,8 @@ class HistoryNotifier extends Notifier<HistoryState> {
         isLoadingMoodFilter: false,
         moodMap: {...state.moodMap, ...newMoodMap},
       );
+      return true;
     } catch (e) {
-      debugPrint('HISTORY DEBUG: loadMoodFilteredEntries ERROR: $e');
       await ErrorLoggingService.logError(
         ErrorContext.fromException(
           errorCode: 'ERRHIST012',
@@ -411,6 +434,7 @@ class HistoryNotifier extends Notifier<HistoryState> {
           errorContext: {
             'user_id': userId,
             'mood_score': moodScore,
+            'offline_blocked': false,
           },
         ),
       );
@@ -419,6 +443,7 @@ class HistoryNotifier extends Notifier<HistoryState> {
         isLoadingMoodFilter: false,
         error: 'Failed to load entries: ${e.toString()}',
       );
+      return true;
     }
   }
 

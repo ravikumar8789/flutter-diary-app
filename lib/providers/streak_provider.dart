@@ -1,8 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../services/data_fetch_service.dart';
+import '../services/database/database_manager.dart';
 import '../services/user_data_service.dart';
 import '../services/grace_system_service.dart';
-import '../repositories/data_repository.dart';
 
 /// Streak state
 class StreakState {
@@ -45,9 +44,8 @@ class StreakState {
   }
 }
 
-/// Streak provider
+/// Streak provider — local-only (reads from streaks table)
 class StreakNotifier extends Notifier<StreakState> {
-  final DataFetchService _dataFetchService = DataFetchService(repository: DataRepository());
   String? _userId;
 
   @override
@@ -55,27 +53,28 @@ class StreakNotifier extends Notifier<StreakState> {
     return StreakState();
   }
 
-  /// Initialize streak data
+  /// Initialize streak data from local DB
   Future<void> initialize(String userId) async {
     if (_userId == userId && !state.isLoading) return;
-    
     _userId = userId;
     state = state.copyWith(isLoading: true, error: null);
 
     try {
-      // Fetch streak data
-      final streakData = await _dataFetchService.fetchStreaks(userId);
-      
-      // Fetch grace status
-      final graceStatus = await GraceSystemService.getGraceStatus(
-        userId,
-        dataFetchService: _dataFetchService,
+      final db = await DatabaseManager().database;
+      final streaks = await db.query(
+        'streaks',
+        where: 'user_id = ?',
+        whereArgs: [userId],
+        limit: 1,
       );
 
-      if (streakData != null && graceStatus != null) {
+      final graceStatus = await GraceSystemService.getGraceStatus(userId);
+
+      if (streaks.isNotEmpty && graceStatus != null) {
+        final s = streaks.first;
         state = state.copyWith(
-          current: streakData['current'] as int? ?? 0,
-          longest: streakData['longest'] as int? ?? 0,
+          current: s['current'] as int? ?? 0,
+          longest: s['longest'] as int? ?? 0,
           graceDaysAvailable: graceStatus['grace_days_available'] as int? ?? 0,
           gracePiecesTotal: graceStatus['grace_pieces_total'] as double? ?? 0.0,
           piecesToday: graceStatus['pieces_today'] as double? ?? 0.0,
@@ -85,10 +84,7 @@ class StreakNotifier extends Notifier<StreakState> {
         state = state.copyWith(isLoading: false);
       }
     } catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        error: e.toString(),
-      );
+      state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
 
@@ -101,13 +97,8 @@ class StreakNotifier extends Notifier<StreakState> {
   /// Recalculate streak (after task completion or entry save)
   Future<void> recalculate() async {
     if (_userId == null) return;
-    
     try {
-      await UserDataService.recalculateStreak(
-        _userId!,
-        dataFetchService: _dataFetchService,
-      );
-      // Refresh state
+      await UserDataService.recalculateStreak(_userId!);
       await refresh();
     } catch (e) {
       state = state.copyWith(error: e.toString());

@@ -44,13 +44,17 @@ class UserDataNotifier extends Notifier<UserDataState> {
   UserDataState build() => UserDataState();
 
   /// Load user data (called from splash screen)
-  Future<void> loadUserData() async {
+  /// forceRefresh: when true (startup), fetches from Supabase and stores locally.
+  /// useLocalOnly: when true (offline), reads from local SQLite only, never hits Supabase.
+  Future<void> loadUserData({bool forceRefresh = false, bool useLocalOnly = false}) async {
     state = state.copyWith(isLoading: true, error: null);
 
     try {
       final dataFetchService = ref.read(dataFetchServiceProvider);
       final result = await UserDataService.fetchUserData(
         dataFetchService: dataFetchService,
+        forceRefresh: forceRefresh,
+        useLocalOnly: useLocalOnly,
       );
 
       if (result.success && result.userData != null) {

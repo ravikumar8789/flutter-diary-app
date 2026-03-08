@@ -69,6 +69,17 @@ class UserDataCleanupService {
         where: 'entry_id IN (SELECT id FROM entries WHERE user_id = ?)',
         whereArgs: [userId],
       );
+
+      await db.delete(
+        'entry_insights_local',
+        where: 'user_id = ?',
+        whereArgs: [userId],
+      );
+      await db.delete(
+        'yesterday_insight',
+        where: 'user_id = ?',
+        whereArgs: [userId],
+      );
       
       // 3. Clear main entries table
       await db.delete(
@@ -88,6 +99,20 @@ class UserDataCleanupService {
       await db.delete(
         'streaks',
         where: 'user_id = ?',
+        whereArgs: [userId],
+      );
+
+      // 6. Clear user_settings
+      await db.delete(
+        'user_settings',
+        where: 'user_id = ?',
+        whereArgs: [userId],
+      );
+
+      // 7. Clear users
+      await db.delete(
+        'users',
+        where: 'id = ?',
         whereArgs: [userId],
       );
       

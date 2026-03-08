@@ -90,14 +90,11 @@ class GraceSystemNotifier extends Notifier<GraceSystemState> {
     }
 
     try {
-      final date = DateTime.now();
-      final fetchService = ref.read(dataFetchServiceProvider);
       await GraceSystemService.trackTaskCompletion(
         userId: _currentUserId!,
-        date: date,
+        date: DateTime.now(),
         taskType: taskType,
         completed: completed,
-        dataFetchService: fetchService,
       );
 
       // Refresh status with debounced delay (cache invalidation is already debounced)
@@ -111,7 +108,6 @@ class GraceSystemNotifier extends Notifier<GraceSystemState> {
       
       // Refresh streak provider and home summary to reflect UI changes
       ref.read(streakProvider.notifier).refresh();
-      fetchService.invalidateHomeSummaryCache(_currentUserId!);
       ref.invalidate(homeSummaryProvider);
     } catch (e) {
       await ErrorLoggingService.logHighError(
@@ -135,15 +131,10 @@ class GraceSystemNotifier extends Notifier<GraceSystemState> {
     if (_currentUserId == null) return false;
 
     try {
-      final fetchService = ref.read(dataFetchServiceProvider);
-      final success = await GraceSystemService.useGraceDay(
-        _currentUserId!,
-        dataFetchService: fetchService,
-      );
+      final success = await GraceSystemService.useGraceDay(_currentUserId!);
       if (success) {
         await _refreshGraceStatus();
         ref.read(streakProvider.notifier).refresh();
-        fetchService.invalidateHomeSummaryCache(_currentUserId!);
         ref.invalidate(homeSummaryProvider);
       }
       return success;
@@ -171,11 +162,7 @@ class GraceSystemNotifier extends Notifier<GraceSystemState> {
 
     _isRefreshing = true;
     try {
-      final fetchService = ref.read(dataFetchServiceProvider);
-      final graceStatus = await GraceSystemService.getGraceStatus(
-        _currentUserId!,
-        dataFetchService: fetchService,
-      );
+      final graceStatus = await GraceSystemService.getGraceStatus(_currentUserId!);
 
       if (graceStatus != null) {
         state = state.copyWith(

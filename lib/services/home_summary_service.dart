@@ -3,6 +3,7 @@ import '../models/home_summary_models.dart';
 import '../services/error_logging_service.dart';
 import '../models/error_models.dart';
 import 'ai_service.dart';
+import 'connectivity_service.dart';
 import '../services/database/local_entry_service.dart';
 import '../models/entry_models.dart';
 import 'data_fetch_service.dart';
@@ -22,70 +23,69 @@ class HomeSummaryService {
        _dataFetchService = dataFetchService;
 
   Future<HomeSummary> fetchAll(String userId) async {
+    final now = DateTime.now();
+    final thisWeekStart = now.subtract(
+      Duration(days: now.weekday == 7 ? 0 : now.weekday),
+    );
+    final prevWeekStart = thisWeekStart.subtract(const Duration(days: 7));
+
+    final results = await Future.wait([
+      _safeFetch(() => _fetchStreak(userId), 'fetchStreak', userId),
+      _safeFetch(() => _fetchTodayProgress(userId, now), 'fetchToday', userId),
+      _safeFetch(
+        () => _fetchWeeklySnapshot(userId, thisWeekStart, prevWeekStart),
+        'fetchWeekly',
+        userId,
+      ),
+    ]);
+
+    return HomeSummary(
+      streak: results[0] as StreakSummary?,
+      today: results[1] as TodayProgressSummary?,
+      weekly: results[2] as WeeklySnapshotSummary?,
+    );
+  }
+
+  /// Wraps a fetch in try/catch; logs error and returns null on failure.
+  Future<T?> _safeFetch<T>(
+    Future<T?> Function() fn,
+    String operation,
+    String userId,
+  ) async {
     try {
-      final now = DateTime.now();
-      // Calculate Sunday of current week (weekday: Mon=1, Sun=7)
-      final thisWeekStart = now.subtract(
-        Duration(days: now.weekday == 7 ? 0 : now.weekday),
-      );
-      final prevWeekStart = thisWeekStart.subtract(const Duration(days: 7));
-
-      final results = await Future.wait([
-        _fetchStreak(userId),
-        _fetchTodayProgress(userId, now),
-        _fetchWeeklySnapshot(userId, thisWeekStart, prevWeekStart),
-        _fetchPromptMotivation(userId),
-      ]);
-
-      return HomeSummary(
-        streak: results[0] as StreakSummary?,
-        today: results[1] as TodayProgressSummary?,
-        weekly: results[2] as WeeklySnapshotSummary?,
-        prompt: results[3] as PromptMotivationSummary?,
-      );
-    } catch (e) {
+      return await fn();
+    } catch (e, st) {
       await ErrorLoggingService.logError(
         ErrorContext.fromException(
           errorCode: 'ERRSYS151',
-          severity: ErrorSeverity.low,
+          severity: ErrorSeverity.medium,
           exception: e,
-          stackTrace: StackTrace.current,
-          errorContext: {'operation': 'home_summary_fetchAll', 'user_id': userId},
+          stackTrace: st,
+          errorContext: {'operation': operation, 'user_id': userId},
         ),
       );
-      rethrow;
+      return null;
     }
   }
 
   Future<StreakSummary?> _fetchStreak(String userId) async {
     try {
-      Map<String, dynamic>? res;
+      final db = await DatabaseManager().database;
+      final streaks = await db.query(
+        'streaks',
+        where: 'user_id = ?',
+        whereArgs: [userId],
+        limit: 1,
+      );
 
-      if (_dataFetchService != null) {
-        // Use cached fetchStreaks (now reconnected)
-        res = await _dataFetchService.fetchStreaks(userId);
-      } else {
-        // Fallback: read from local SQLite
-        final db = await DatabaseManager().database;
-        final streaks = await db.query(
-          'streaks',
-          where: 'user_id = ?',
-          whereArgs: [userId],
-          limit: 1,
-        );
-
-        if (streaks.isNotEmpty) {
-          final streak = streaks.first;
-          res = {
-            'current': streak['current'],
-            'longest': streak['longest'],
-            'freeze_credits': streak['freeze_credits'],
-            'grace_pieces_total': streak['grace_pieces_total'],
-          };
-        }
-      }
-
-      if (res == null) return null;
+      if (streaks.isEmpty) return null;
+      final streak = streaks.first;
+      final res = {
+        'current': streak['current'],
+        'longest': streak['longest'],
+        'freeze_credits': streak['freeze_credits'],
+        'grace_pieces_total': streak['grace_pieces_total'],
+      };
       return StreakSummary(
         current: (res['current'] ?? 0) as int,
         longest: (res['longest'] ?? 0) as int,
@@ -105,7 +105,7 @@ class HomeSummaryService {
           },
         ),
       );
-      rethrow;
+      return null;
     }
   }
 
@@ -126,7 +126,7 @@ class HomeSummaryService {
       Map<String, dynamic>? habits;
 
       if (_dataFetchService != null) {
-        // Use cached methods (now reconnected)
+        final isOnline = await ConnectivityService().isOnline();
         final habitsData = await _dataFetchService.fetchHabitsForDate(
           userId,
           today,
@@ -134,6 +134,7 @@ class HomeSummaryService {
         final entryData = await _dataFetchService.fetchEntryByDate(
           userId,
           today,
+          useLocalOnly: !isOnline,
         );
 
         if (habitsData != null) {
@@ -189,12 +190,17 @@ class HomeSummaryService {
 
       int waterCups = 0;
       if (entry != null) {
-        final meals = await _supabase
-            .from('entry_meals')
-            .select('water_cups')
-            .eq('entry_id', entry['id'] as String)
-            .maybeSingle();
-        if (meals != null) waterCups = (meals['water_cups'] ?? 0) as int;
+        final db = await DatabaseManager().database;
+        final mealsRows = await db.query(
+          'entry_meals',
+          columns: ['water_cups'],
+          where: 'entry_id = ?',
+          whereArgs: [entry['id'] as String],
+          limit: 1,
+        );
+        if (mealsRows.isNotEmpty) {
+          waterCups = mealsRows.first['water_cups'] as int? ?? 0;
+        }
       }
 
       // Return today's progress with habits data
@@ -220,7 +226,7 @@ class HomeSummaryService {
           },
         ),
       );
-      rethrow;
+      return null;
     }
   }
 
@@ -359,97 +365,6 @@ class HomeSummaryService {
     if (selfCare.readBook) count++;
     if (selfCare.exercise) count++;
     return count; // Returns 0-10
-  }
-
-  Future<PromptMotivationSummary?> _fetchPromptMotivation(String userId) async {
-    try {
-      final today = DateTime.now();
-      final local = DateTime(today.year, today.month, today.day);
-      final dateOnly =
-          '${local.year.toString().padLeft(4, '0')}-'
-          '${local.month.toString().padLeft(2, '0')}-'
-          '${local.day.toString().padLeft(2, '0')}';
-
-      String promptText = '';
-
-      final assigned = await _supabase
-          .from('prompt_assignments')
-          .select('prompt_id, prompts(text)')
-          .eq('user_id', userId)
-          .eq('assigned_for_date', dateOnly)
-          .limit(1)
-          .maybeSingle();
-
-      if (assigned != null) {
-        final nested = assigned['prompts'] as Map<String, dynamic>?;
-        if (nested != null && nested['text'] is String) {
-          promptText = nested['text'] as String;
-        }
-      }
-
-      if (promptText.isEmpty) {
-        final prompt = await _supabase
-            .from('prompts')
-            .select('text')
-            .eq('active', true)
-            .limit(1)
-            .maybeSingle();
-        promptText = (prompt != null && prompt['text'] is String)
-            ? prompt['text'] as String
-            : 'What’s on your mind today?';
-      }
-
-      // Fetch streak and settings using DataFetchService if available
-      Map<String, dynamic>? streak;
-      Map<String, dynamic>? settings;
-
-      if (_dataFetchService != null) {
-        // Use cached methods
-        streak = await _dataFetchService.fetchStreaks(userId);
-        settings = await _dataFetchService.fetchUserSettings(userId);
-      } else {
-        // Fallback to direct queries
-        streak = await _supabase
-            .from('streaks')
-            .select('freeze_credits')
-            .eq('user_id', userId)
-            .maybeSingle();
-
-        settings = await _supabase
-            .from('user_settings')
-            .select('reminder_time_local')
-            .eq('user_id', userId)
-            .maybeSingle();
-      }
-
-      final freeze = streak != null
-          ? (streak['freeze_credits'] ?? 0) as int
-          : 0;
-
-      final nextReminder = settings != null
-          ? (settings['reminder_time_local'] as String?)
-          : null;
-
-      return PromptMotivationSummary(
-        promptText: promptText,
-        freezeCredits: freeze,
-        nextReminderTime: nextReminder,
-      );
-    } catch (e) {
-      await ErrorLoggingService.logError(
-        ErrorContext.fromException(
-          errorCode: 'ERRSYS155',
-          severity: ErrorSeverity.low,
-          exception: e,
-          stackTrace: StackTrace.current,
-          errorContext: {
-            'operation': 'home_summary_fetchPrompt',
-            'user_id': userId,
-          },
-        ),
-      );
-      rethrow;
-    }
   }
 
   /// Fetch AI insight with fallback ladder

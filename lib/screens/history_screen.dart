@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -9,6 +9,9 @@ import '../widgets/bottom_navigation_bar.dart';
 import '../providers/history_provider.dart';
 import '../models/history_entry_model.dart';
 import '../models/entry_models.dart';
+import '../services/connectivity_service.dart';
+import '../services/error_logging_service.dart';
+import '../models/error_models.dart';
 import '../services/history_service.dart';
 import '../providers/data_providers.dart';
 import '../ui/responsive/responsive_info.dart';
@@ -26,6 +29,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   String? _selectedMood; // Only mood filter now
 
   Timer? _moodSelectionTimer;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
   // Cache variables for optimizations
   List<String>? _cachedSortedKeys;
@@ -36,44 +40,74 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   @override
   void initState() {
     super.initState();
-    // Load list data (2 months) and calendar mood data in parallel
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(historyProvider.notifier).loadCurrentMonth();
-      ref.read(historyProvider.notifier).loadCalendarMoodData();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await ref.read(historyProvider.notifier).loadCurrentMonth();
+      if (mounted) {
+        ref.read(historyProvider.notifier).loadCalendarMoodData();
+        _setupConnectivityListener();
+      }
     });
+  }
+
+  void _setupConnectivityListener() {
+    _connectivitySubscription?.cancel();
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen(
+      (results) async {
+        try {
+          if (results.any((r) => r != ConnectivityResult.none)) {
+            if (mounted) {
+              ref.read(historyProvider.notifier).loadCalendarMoodData();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: const Text('History refreshed'),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
+          }
+        } catch (e) {
+          ErrorLoggingService.logLowError(
+            error: ErrorContext.fromException(
+              errorCode: 'ERRHIST015',
+              severity: ErrorSeverity.low,
+              exception: e,
+              stackTrace: StackTrace.current,
+              errorContext: {'screen': 'history'},
+            ),
+          );
+        }
+      },
+    );
   }
 
   @override
   void dispose() {
     _moodSelectionTimer?.cancel();
+    _connectivitySubscription?.cancel();
     super.dispose();
   }
 
   void _handleMoodSelection(int moodScore) {
     _moodSelectionTimer?.cancel();
-    debugPrint('HISTORY DEBUG: _handleMoodSelection called, moodScore=$moodScore');
 
-    _moodSelectionTimer = Timer(const Duration(milliseconds: 300), () {
+    _moodSelectionTimer = Timer(const Duration(milliseconds: 300), () async {
       if (!mounted) return;
-      debugPrint('HISTORY DEBUG: Timer fired for moodScore=$moodScore');
       final historyState = ref.read(historyProvider);
       final totalCount = _moodCounts[moodScore] ?? 0;
       final loadedCount = historyState.entries
           .where((e) => e.entry.moodScore == moodScore)
           .length;
 
-      debugPrint(
-        'HISTORY DEBUG: totalCount=$totalCount loadedCount=$loadedCount '
-        'isLoadingMoodFilter=${historyState.isLoadingMoodFilter} entries.length=${historyState.entries.length}',
-      );
-
       if (totalCount > loadedCount && !historyState.isLoadingMoodFilter) {
-        debugPrint('HISTORY DEBUG: Calling loadMoodFilteredEntries($moodScore)');
-        ref.read(historyProvider.notifier).loadMoodFilteredEntries(moodScore);
-      } else {
-        debugPrint(
-          'HISTORY DEBUG: Skipping fetch - totalCount<=loadedCount or already loading',
-        );
+        final ok = await ref.read(historyProvider.notifier).loadMoodFilteredEntries(moodScore);
+        if (!ok && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('No internet. Connect to filter by mood.'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
       }
     });
   }
@@ -321,9 +355,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                     color: mood['color'] as Color,
                         onTap: () {
                           final newMood = count > 0 ? moodNum.toString() : null;
-                          debugPrint(
-                            'HISTORY DEBUG: Mood chip tapped moodNum=$moodNum count=$count newMood=$newMood',
-                          );
                           setState(() {
                             _selectedMood = newMood;
                           });
@@ -368,9 +399,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                         onTap: () {
                           final newMood =
                               count > 0 ? moodNum.toString() : null;
-                          debugPrint(
-                            'HISTORY DEBUG: Mood chip tapped (row) moodNum=$moodNum count=$count newMood=$newMood',
-                          );
                           setState(() {
                             _selectedMood = newMood;
                           });
@@ -468,10 +496,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       itemBuilder: (context, index) {
         // Load more button at the end
         if (index == sortedKeys.length && hasTrailingLoadMore) {
-          debugPrint(
-            'HISTORY DEBUG: Building trailing LoadMore moodLoadMore=$moodLoadMore '
-            'monthLoadMore=$monthLoadMore',
-          );
           if (moodLoadMore) {
             return _buildLoadMoreMoodButton(historyState);
           }
@@ -572,13 +596,19 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         child: InkWell(
           onTap: historyState.isLoadingMoodFilter
               ? null
-              : () {
-                  debugPrint(
-                    'HISTORY DEBUG: LoadMoreMood button tapped moodScore=$moodScore',
-                  );
-                  ref
+              : () async {
+                  final ok = await ref
                       .read(historyProvider.notifier)
                       .loadMoodFilteredEntries(moodScore);
+                  if (!ok && mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: const Text(
+                            'No internet. Connect to filter by mood.'),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
                 },
           borderRadius: BorderRadius.circular(16),
           child: Container(
@@ -690,11 +720,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     final month = DateTime(int.parse(parts[0]), int.parse(parts[1]), 1);
     final monthDisplayName = DateFormat('MMMM yyyy').format(month);
 
-    debugPrint(
-      'HISTORY DEBUG: _buildLoadMoreButton nextMonthKey=$nextMonthKey '
-      'loadedMonths=${historyState.loadedMonths.length}',
-    );
-
     return Container(
       margin: const EdgeInsets.all(16),
       child: Card(
@@ -703,13 +728,19 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         child: InkWell(
           onTap: historyState.isLoadingMore
               ? null
-              : () {
-                  debugPrint(
-                    'HISTORY DEBUG: LoadMoreMonth button tapped nextMonthKey=$nextMonthKey',
-                  );
-                  ref
+              : () async {
+                  final result = await ref
                       .read(historyProvider.notifier)
                       .loadPreviousMonth(nextMonthKey);
+                  if (result == false && mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: const Text(
+                            'No internet. Connect to load more.'),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
                 },
           borderRadius: BorderRadius.circular(16),
           child: Container(
@@ -1293,7 +1324,27 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       medium: 0.3,
       expanded: 0.35,
     );
-    // Show loading bottom sheet immediately
+
+    final isOnline = await ConnectivityService().isOnline();
+
+    if (!isOnline) {
+      // Offline: check if date is in loaded entries
+      final historyState = ref.read(historyProvider);
+      final dateStr = DateFormat('yyyy-MM-dd').format(date);
+      final found = historyState.entries
+          .where((e) => DateFormat('yyyy-MM-dd').format(e.entry.entryDate) == dateStr)
+          .toList();
+      if (found.isNotEmpty) {
+        _showEntryDetail(found.first);
+        return;
+      }
+      // Date outside 2 months - show "No internet"
+      if (!context.mounted) return;
+      _showNoInternetBottomSheet(info, date);
+      return;
+    }
+
+    // Online: show loading
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1328,112 +1379,192 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       },
     );
 
-    // Fetch entry from provider
-    final entry = await ref.read(historyProvider.notifier).getEntryByDate(date);
+    final result = await ref.read(historyProvider.notifier).getEntryByDate(date);
 
-    // Close loading sheet
     if (context.mounted) Navigator.pop(context);
 
-    if (context.mounted) {
-      if (entry != null) {
-        // Show entry detail
-        _showEntryDetail(entry);
-      } else {
-        // Show empty state
-        showModalBottomSheet(
-          context: context,
-          isScrollControlled: true,
-          backgroundColor: Colors.transparent,
-          builder: (context) => DraggableScrollableSheet(
-            initialChildSize: info.value(
-              compact: 0.35,
-              medium: 0.4,
-              expanded: 0.45,
+    if (!context.mounted) return;
+    if (result.entry != null) {
+      _showEntryDetail(result.entry!);
+    } else if (result.wasOffline) {
+      _showNoInternetBottomSheet(info, date);
+    } else {
+      _showNoEntryBottomSheet(info, date);
+    }
+  }
+
+  void _showNoInternetBottomSheet(ResponsiveInfo info, DateTime date) {
+    final colorScheme = Theme.of(context).colorScheme;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: info.value(
+          compact: 0.35,
+          medium: 0.4,
+          expanded: 0.45,
+        ),
+        maxChildSize: info.value(compact: 0.55, medium: 0.6, expanded: 0.7),
+        minChildSize: info.value(
+          compact: 0.25,
+          medium: 0.3,
+          expanded: 0.35,
+        ),
+        expand: false,
+        builder: (context, scrollController) {
+          return Container(
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(24),
+              ),
             ),
-            maxChildSize: info.value(compact: 0.55, medium: 0.6, expanded: 0.7),
-            minChildSize: info.value(
-              compact: 0.25,
-              medium: 0.3,
-              expanded: 0.35,
-            ),
-            expand: false,
-            builder: (context, scrollController) {
-              final colorScheme = Theme.of(context).colorScheme;
-              return Container(
-                decoration: BoxDecoration(
-                  color: colorScheme.surface,
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(24),
+            child: Column(
+              children: [
+                Container(
+                  margin: const EdgeInsets.only(top: 12),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: colorScheme.outlineVariant,
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-                child: Column(
-                  children: [
-                    Container(
-                      margin: const EdgeInsets.only(top: 12),
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: colorScheme.outlineVariant,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    Expanded(
-                      child: Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(24),
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [
-                                    colorScheme.surfaceVariant,
-                                    colorScheme.surface,
-                                  ],
-                                ),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(
-                                Icons.edit_note,
-                                size: 48,
-                                color: colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-                            Text(
-                              'No entry for this date',
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: colorScheme.onSurface,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 32,
-                              ),
-                              child: Text(
-                                'You haven\'t written an entry for ${DateFormat('MMMM d, y').format(date)}',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ),
-                          ],
+                Expanded(
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.cloud_off,
+                          size: 48,
+                          color: colorScheme.primary.withOpacity(0.7),
                         ),
-                      ),
+                        const SizedBox(height: 24),
+                        Text(
+                          'No internet',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: colorScheme.onSurface,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 32),
+                          child: Text(
+                            'Connect to load entries from other dates.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
-              );
-            },
-          ),
-        );
-      }
-    }
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _showNoEntryBottomSheet(ResponsiveInfo info, DateTime date) {
+    final colorScheme = Theme.of(context).colorScheme;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: info.value(
+          compact: 0.35,
+          medium: 0.4,
+          expanded: 0.45,
+        ),
+        maxChildSize: info.value(compact: 0.55, medium: 0.6, expanded: 0.7),
+        minChildSize: info.value(
+          compact: 0.25,
+          medium: 0.3,
+          expanded: 0.35,
+        ),
+        expand: false,
+        builder: (context, scrollController) {
+          return Container(
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(24),
+              ),
+            ),
+            child: Column(
+              children: [
+                Container(
+                  margin: const EdgeInsets.only(top: 12),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: colorScheme.outlineVariant,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Expanded(
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(24),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                colorScheme.surfaceVariant,
+                                colorScheme.surface,
+                              ],
+                            ),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.edit_note,
+                            size: 48,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        Text(
+                          'No entry for this date',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: colorScheme.onSurface,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 32),
+                          child: Text(
+                            'You haven\'t written an entry for ${DateFormat('MMMM d, y').format(date)}',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
   }
 
   Widget _buildEmptyState() {
@@ -1617,7 +1748,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
   /// Build expandable AI Insights card
   Widget _buildExpandableInsightsCard(HistoryEntry entry) {
-    return _ExpandableInsightsCard(entryId: entry.entry.id);
+    return _ExpandableInsightsCard(
+      entryId: entry.entry.id,
+      entryDate: entry.entry.entryDate,
+      userId: entry.entry.userId,
+    );
   }
 
   Widget _buildAffirmationsSection(EntryAffirmations? affirmations) {
@@ -2057,8 +2192,14 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 /// Expandable AI Insights Card Widget
 class _ExpandableInsightsCard extends ConsumerStatefulWidget {
   final String entryId;
+  final DateTime entryDate;
+  final String userId;
 
-  const _ExpandableInsightsCard({required this.entryId});
+  const _ExpandableInsightsCard({
+    required this.entryId,
+    required this.entryDate,
+    required this.userId,
+  });
 
   @override
   ConsumerState<_ExpandableInsightsCard> createState() =>
@@ -2109,6 +2250,8 @@ class _ExpandableInsightsCardState
       try {
         final insight = await _historyService.fetchInsightForEntry(
           widget.entryId,
+          userId: widget.userId,
+          entryDate: widget.entryDate,
         );
         setState(() {
           _insight = insight;

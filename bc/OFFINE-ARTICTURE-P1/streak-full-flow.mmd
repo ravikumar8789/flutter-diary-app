@@ -1,0 +1,121 @@
+graph TB
+    subgraph SPLASH["1. SPLASH (Online)"]
+        direction TB
+        A1[Auth check] --> A2[Connectivity check]
+        A2 --> A3{Online?}
+        A3 -->|No| A4[loadUserData local only]
+        A3 -->|Yes| A5[Future.wait: 5 parallel fetches]
+        A5 --> A6[fetchAndMergeUserProfile]
+        A5 --> A7[fetchAndMergeUserSettings]
+        A5 --> A8[fetchAndMergeStreaks]
+        A5 --> A9[fetchAndMergeEntriesWithJoins]
+        A5 --> A10[fetchAndStoreYesterdayInsight]
+        A8 --> A11[Supabase streaks → local SQLite]
+        A11 --> A12[Timestamp merge: skip if local newer]
+        A12 --> A13[applyGapIfNeeded]
+        A13 --> A14{last_entry_date < today?}
+        A14 -->|No| A15[Return]
+        A14 -->|Yes| A16{daysDiff?}
+        A16 -->|<=1| A15
+        A16 -->|>1| A17{graceDays >= daysDiff-1?}
+        A17 -->|Yes| A18[useGraceDay × gap]
+        A17 -->|No| A19[Reset streak: current=0, last_entry_date=null]
+        A18 --> A20[addStreakToSyncQueue]
+        A19 --> A20
+        A9 --> A21[ensureHabitsDailyFromEntries]
+        A21 --> A22[Get today's entry from entries]
+        A22 --> A23{Today entry exists?}
+        A23 -->|Yes| A24[Compute wrote_entry, affirmations, gratitude, self_care from entry + joins]
+        A23 -->|No| A25[Set 0/0/0/0]
+        A24 --> A26[Get grace_pieces from streaks.today_grace_pieces]
+        A25 --> A26
+        A26 --> A27[Delete old habits_daily rows]
+        A27 --> A28[Insert/Replace habits_daily for today]
+        A28 --> A29[setLastFetchDate, invalidate, loadUserData]
+    end
+
+    subgraph WRITE["2. USER WRITES (Entry Save)"]
+        direction TB
+        B1[_executeBatchSave] --> B2[_savePendingChangesToLocal]
+        B2 --> B3[upsertEntry + affirmations + gratitude + meals + selfCare]
+        B3 --> B4[Local SQLite: entries, entry_*]
+        B4 --> B5[_batchTrackGraceTasks]
+        B5 --> B6[trackTaskCompletion per task type]
+        B6 --> B7[diary / affirmations / gratitude / self_care]
+        B7 --> B8[_getOrCreateTodayHabitsRecord]
+        B8 --> B9[Update habits_daily: wrote_entry, filled_affirmations, etc.]
+        B9 --> B10[Calculate piecesEarned: 0.5 per task, max 2.0]
+        B10 --> B11[Update habits_daily.grace_pieces_earned]
+        B11 --> B12[Day changed? Delete old habits_daily row]
+        B12 --> B13[Update streaks: today_diary, today_affirmations, today_gratitude, today_self_care_count, today_grace_pieces, grace_pieces_total, freeze_credits]
+        B13 --> B14[streaks.is_synced = 0]
+        B14 --> B15[addStreakToSyncQueue]
+        B15 --> B16[_checkGapsAndRecalculateStreak]
+    end
+
+    subgraph GAP["3. GAP CHECK & RECALCULATE"]
+        direction TB
+        C1[Read streaks.last_entry_date] --> C2[daysDiff = today - last_entry_date]
+        C2 --> C3{daysDiff?}
+        C3 -->|0| C4[recalculateStreak]
+        C3 -->|1 + has grace| C5[useGraceDay]
+        C5 --> C4
+        C3 -->|1| C4
+        C3 -->|>1 + enough grace| C6[useGraceDay × daysDiff-1]
+        C6 --> C4
+        C3 -->|>1 + no grace| C7[Reset streak: current=0, last_entry_date=null]
+        C7 --> C8[addStreakToSyncQueue]
+        C4 --> C9[calculateStreakWithGrace]
+    end
+
+    subgraph CALC["4. STREAK CALCULATION (recalculateStreak → calculateStreakWithGrace)"]
+        direction TB
+        D1[_calculateStreakFromTodayHabits] --> D2[Read habits_daily for today]
+        D2 --> D3{Has activity today?}
+        D3 -->|No| D4[newStreak=0]
+        D3 -->|Yes| D5[Read streaks.current, last_entry_date]
+        D5 --> D6{daysDiff last_entry vs today?}
+        D6 -->|0| D7[newStreak = currentStreak]
+        D6 -->|1| D8[newStreak = currentStreak + 1]
+        D6 -->|>1| D4
+        D7 --> D9[Read streaks.last_entry_date, todayHabits]
+        D8 --> D9
+        D4 --> D9
+        D9 --> D10{completedToday?}
+        D10 -->|Yes| D11[_persistStreak with lastEntryIso=today]
+        D10 -->|No| D12{lastEntryDate null?}
+        D12 -->|Yes + grace>0| D13[useGraceDayForStreak]
+        D12 -->|Yes| D14[_persistStreak 0]
+        D12 -->|No| D15{daysDiff 1?}
+        D15 -->|Yes + grace>0| D13
+        D15 -->|Yes| D14
+        D15 -->|>1 + enough grace| D13
+        D15 -->|>1| D14
+        D15 -->|0| D11
+        D11 --> D16[Update streaks: current, longest, last_entry_date]
+        D13 --> D16
+        D14 --> D16
+        D16 --> D17[addStreakToSyncQueue]
+    end
+
+    subgraph SYNC["5. SYNC TO SUPABASE"]
+        direction TB
+        E1[SyncWorker.processSyncQueue] --> E2[Process unsynced entries: batchSaveEntry]
+        E2 --> E3[Process sync_queue: streak, user_profile, user_settings]
+        E3 --> E4{entity_type == streak?}
+        E4 -->|Yes| E5[batchUpdateStreakData RPC]
+        E5 --> E6[Supabase streaks table updated]
+        E6 --> E7[Local: is_synced=1, last_sync_at=now]
+    end
+
+    SPLASH --> WRITE
+    WRITE --> GAP
+    GAP --> CALC
+    CALC --> SYNC
+
+    subgraph TABLES["Tables Used"]
+        T1[(streaks)]
+        T2[(habits_daily)]
+        T3[(entries)]
+        T4[(sync_queue)]
+    end

@@ -56,26 +56,13 @@ class WeeklySnapshotSummary {
   });
 }
 
-class PromptMotivationSummary {
-  final String promptText;
-  final int freezeCredits;
-  final String? nextReminderTime;
-  const PromptMotivationSummary({
-    required this.promptText,
-    required this.freezeCredits,
-    this.nextReminderTime,
-  });
-}
-
 class HomeSummary {
   final StreakSummary? streak;
   final TodayProgressSummary? today;
   final WeeklySnapshotSummary? weekly;
-  final PromptMotivationSummary? prompt;
   const HomeSummary({
     this.streak,
     this.today,
     this.weekly,
-    this.prompt,
   });
 }
