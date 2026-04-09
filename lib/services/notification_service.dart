@@ -86,10 +86,10 @@ Future<void> _showNotification(int id, String title, String body) async {
       FlutterLocalNotificationsPlugin();
 
   await notifications.show(
-    id,
-    title,
-    body,
-    const NotificationDetails(
+    id: id,
+    title: title,
+    body: body,
+    notificationDetails: const NotificationDetails(
       android: AndroidNotificationDetails(
         'diary_reminders',
         'Diary Reminders',
@@ -223,29 +223,29 @@ class NotificationService {
 
   // Rotating messages (10 per category)
   static const List<String> _morningTitles = [
-    'Good morning! 🌅',
-    'Rise and shine! ☀️',
-    'Morning sunshine! 🌞',
-    'A fresh new day begins! 🌄',
-    'Good morning, beautiful soul! 💖',
-    'The sun is up, and so should your spirits! ☀️',
-    'Morning blessings! 🙏',
-    'Wake up with purpose! 🌅',
-    'A brand new day, a fresh start! 🌸',
-    'Good morning, sunshine! ☀️',
+    'Yesterday analysis is ready ✨',
+    'Your insight is ready 📊',
+    'Report ready for yesterday 🧠',
+    'Daily analysis is live 🌅',
+    'New insight unlocked 🔍',
+    'Your pattern report is ready 📈',
+    'Analysis complete ✅',
+    'Reflection insight ready 💡',
+    'Yesterday breakdown ready 🌟',
+    'Insight card is ready 📝',
   ];
 
   static const List<String> _morningBodies = [
-    'Time to start your day with positive energy and intention ✨',
-    'Your daily affirmation is waiting to set a beautiful tone for today 🌸',
-    'Take a moment to fill your heart with gratitude and affirmations 💫',
-    'Start it right with your daily affirmation practice 🌺',
-    'Time for your morning ritual of self-love and positivity 🌟',
-    'Let us begin with your daily affirmation 🌷',
-    'Take a peaceful moment to set your intentions for today 🕊️',
-    'Your daily affirmation practice awaits to brighten your day ✨',
-    'Begin with your morning affirmation ritual 💫',
-    'Time to nurture your soul with positive affirmations 🌺',
+    'Tap to view your key insight.',
+    'See what yesterday reveals.',
+    'Open your personalized summary.',
+    'Check yesterday\'s trends now.',
+    'Tap to view yesterday\'s analysis.',
+    'See highlights from yesterday.',
+    'Your yesterday insight is waiting.',
+    'Tap to check your day pattern.',
+    'Open and review your summary.',
+    'View yesterday\'s analysis now.',
   ];
 
   static const List<String> _reminder3hTitles = [
@@ -370,7 +370,7 @@ class NotificationService {
       );
 
       await _notifications.initialize(
-        initSettings,
+        settings: initSettings,
         onDidReceiveNotificationResponse: _onNotificationResponse,
       );
 
@@ -905,6 +905,7 @@ class NotificationService {
 
       final today = _dateOnly(DateTime.now());
 
+      // 10-day loop: bedtime + +6h follow-up (both independent of diary entry)
       for (var dayOffset = 0; dayOffset < _futureDays; dayOffset++) {
         final targetDate = today.add(Duration(days: dayOffset));
         if (!_isActiveDayForDate(targetDate, settings.activeDays)) {
@@ -916,17 +917,12 @@ class NotificationService {
             ? await _isDiaryCompletedToday(resolvedUserId)
             : false;
 
-        if (isToday && diaryCompleted && _prefs != null) {
-          await _prefs!.setBool(
-            NotificationStorageKeys.todayMorningCompleted,
-            true,
-          );
-        } else {
-          await _scheduleMorningNotificationsForDate(
+        // +6h follow-up: skip today if diary already written (no longer needed)
+        if (!(isToday && diaryCompleted)) {
+          await _scheduleFollowUpReminderForDate(
             targetDate,
             settings.morningTime,
             userId: resolvedUserId,
-            allowTomorrowShift: false,
           );
         }
 
@@ -937,6 +933,9 @@ class NotificationService {
           allowTomorrowShift: false,
         );
       }
+
+      // Morning (1001): entry-gated, only for tomorrow if today's diary was written
+      await _scheduleTomorrowMorningIfEntryExists(resolvedUserId, settings);
 
       print('🔔 DEBUG: Future window scheduled successfully!');
     } catch (e) {
@@ -1000,16 +999,12 @@ class NotificationService {
         : await _isDiaryCompletedToday(resolvedUserId);
 
     if (diaryCompleted) {
-      await cancelMorningReminders();
-    } else {
-      await _scheduleMorningNotificationsForDate(
-        today,
-        settings.morningTime,
-        userId: resolvedUserId,
-        allowTomorrowShift: false,
-      );
+      // Diary written today: cancel today's +6h (no longer needed) and schedule tomorrow morning
+      await cancelFollowUpReminder();
+      await _scheduleTomorrowMorningIfEntryExists(resolvedUserId, settings);
     }
 
+    // Bedtime is always independent — schedule regardless of diary status
     await _scheduleBedtimeNotificationForDate(
       targetDate: today,
       diaryCompleted: diaryCompleted,
@@ -1018,6 +1013,8 @@ class NotificationService {
     );
   }
 
+  /// Schedules only the first morning reminder (1001) for a given date.
+  /// +6h follow-up is now independent via _scheduleFollowUpReminderForDate().
   Future<void> _scheduleMorningNotificationsForDate(
     DateTime targetDate,
     TimeOfDay morningTime, {
@@ -1049,6 +1046,7 @@ class NotificationService {
     } else if (!allowTomorrowShift &&
         _isSameDay(scheduledDate, now) &&
         morningDateTime.isBefore(now)) {
+      print('🔔 DEBUG: Morning time already passed for ${scheduledDate.toString()}, skipping.');
       return;
     }
 
@@ -1060,24 +1058,9 @@ class NotificationService {
       messageIndex,
       context: 'morning_reminder_1',
     );
-    final secondMessage = _pickMessage(
-      _reminder3hTitles,
-      _reminder3hBodies,
-      messageIndex,
-      context: 'morning_reminder_2',
-    );
-    final thirdMessage = _pickMessage(
-      _reminder6hTitles,
-      _reminder6hBodies,
-      messageIndex,
-      context: 'morning_reminder_3',
-    );
 
     final reminder1Id = _alarmIdForDate(morningReminder1Id, scheduledDate);
-    final reminder2Id = _alarmIdForDate(morningReminder2Id, scheduledDate);
-    final reminder3Id = _alarmIdForDate(morningReminder3Id, scheduledDate);
 
-    // First reminder - at user's chosen time
     await _scheduleAlarmWithLogging(
       notificationId: reminder1Id,
       title: firstMessage.title,
@@ -1093,27 +1076,61 @@ class NotificationService {
       body: firstMessage.body,
       dateKey: dateKey,
     );
+  }
 
-    // Second reminder - +3 hours
-    final reminder2Time = morningDateTime.add(const Duration(hours: 3));
-    await _scheduleAlarmWithLogging(
-      notificationId: reminder2Id,
-      title: secondMessage.title,
-      body: secondMessage.body,
-      scheduledTime: reminder2Time,
-      context: 'morning_reminder_2',
-      userId: userId,
-    );
-    await _storeAlarmMetadata(
-      notificationId: reminder2Id,
-      scheduledTime: reminder2Time,
-      title: secondMessage.title,
-      body: secondMessage.body,
-      dateKey: dateKey,
+  /// Schedules the +6h follow-up reminder (1003) for a given date.
+  /// Independent of morning entry gate — scheduled for all active days (10-day window).
+  /// Skipped if +6h falls within 3 hours of bedtime (23:00).
+  Future<void> _scheduleFollowUpReminderForDate(
+    DateTime targetDate,
+    TimeOfDay morningTime, {
+    String? userId,
+  }) async {
+    final now = DateTime.now();
+    final scheduledDate = _dateOnly(targetDate);
+    final morningDateTime = DateTime(
+      scheduledDate.year,
+      scheduledDate.month,
+      scheduledDate.day,
+      morningTime.hour,
+      morningTime.minute,
     );
 
-    // Third reminder - +6 hours
     final reminder3Time = morningDateTime.add(const Duration(hours: 6));
+
+    if (_isSameDay(scheduledDate, now) && reminder3Time.isBefore(now)) {
+      print('🔔 DEBUG: +6h reminder already passed for ${scheduledDate.toString()}, skipping.');
+      return;
+    }
+
+    final bedtimeOnDay = DateTime(
+      scheduledDate.year,
+      scheduledDate.month,
+      scheduledDate.day,
+      23,
+      0,
+    );
+    final tooCloseToBedtime =
+        reminder3Time.isAfter(bedtimeOnDay) ||
+        reminder3Time.isAtSameMomentAs(bedtimeOnDay) ||
+        bedtimeOnDay.difference(reminder3Time) < const Duration(hours: 3);
+
+    if (tooCloseToBedtime) {
+      print('🔔 DEBUG: +6h too close to bedtime for ${scheduledDate.toString()}, skipping.');
+      return;
+    }
+
+    final dateKey = _formatDateKey(scheduledDate);
+    final messageIndex = _getRotationIndexForDate(morningDateTime);
+    final thirdMessage = _pickMessage(
+      _reminder6hTitles,
+      _reminder6hBodies,
+      messageIndex,
+      context: 'morning_reminder_3',
+    );
+
+    final reminder3Id = _alarmIdForDate(morningReminder3Id, scheduledDate);
+
     await _scheduleAlarmWithLogging(
       notificationId: reminder3Id,
       title: thirdMessage.title,
@@ -1131,6 +1148,53 @@ class NotificationService {
     );
   }
 
+  /// Schedules tomorrow's morning notification (1001) only if today's diary entry exists.
+  /// Uses habits_daily.wrote_entry as the gate condition.
+  Future<void> _scheduleTomorrowMorningIfEntryExists(
+    String? userId,
+    NotificationSettings settings,
+  ) async {
+    try {
+      if (userId == null) {
+        print('🔔 DEBUG: Skipping tomorrow morning schedule — userId null.');
+        return;
+      }
+
+      final todayEntryExists = await _isDiaryCompletedToday(userId);
+      if (!todayEntryExists) {
+        print('🔔 DEBUG: No diary entry today — skipping tomorrow morning notification.');
+        return;
+      }
+
+      final tomorrow = _dateOnly(DateTime.now()).add(const Duration(days: 1));
+      if (!_isActiveDayForDate(tomorrow, settings.activeDays)) {
+        print('🔔 DEBUG: Tomorrow (${_formatDateKey(tomorrow)}) is not an active day — skipping morning.');
+        return;
+      }
+
+      print('🔔 DEBUG: Diary written today — scheduling morning notification for tomorrow ${_formatDateKey(tomorrow)}.');
+      await _scheduleMorningNotificationsForDate(
+        tomorrow,
+        settings.morningTime,
+        userId: userId,
+        allowTomorrowShift: false,
+      );
+    } catch (e, stackTrace) {
+      await ErrorLoggingService.logMediumError(
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS188',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: stackTrace,
+          errorContext: {
+            'user_id': userId,
+            'operation': 'schedule_tomorrow_morning_if_entry_exists',
+          },
+        ),
+      );
+    }
+  }
+
   Future<void> _scheduleBedtimeNotificationForDate({
     required DateTime targetDate,
     required bool diaryCompleted,
@@ -1143,7 +1207,7 @@ class NotificationService {
       scheduledDate.year,
       scheduledDate.month,
       scheduledDate.day,
-      21, // 9:00 PM
+      23, // 11:00 PM
       0,
     );
 
@@ -1153,7 +1217,7 @@ class NotificationService {
         scheduledDate.year,
         scheduledDate.month,
         scheduledDate.day,
-        21,
+        23,
         0,
       );
       print(
@@ -1278,7 +1342,7 @@ class NotificationService {
           context: 'cancel_legacy_alarm',
           userId: _getCurrentUserId(),
         );
-        await _notifications.cancel(id);
+        await _notifications.cancel(id: id);
         await _clearAlarmMetadata(id);
       }
     }
@@ -1303,10 +1367,10 @@ class NotificationService {
   Future<void> testImmediateNotification() async {
     try {
       await _notifications.show(
-        9999,
-        'Test Notification',
-        'This is a test notification - if you see this, notifications are working!',
-        const NotificationDetails(
+        id: 9999,
+        title: 'Test Notification',
+        body: 'This is a test notification - if you see this, notifications are working!',
+        notificationDetails: const NotificationDetails(
           android: AndroidNotificationDetails(
             'diary_reminders',
             'Diary Reminders',
@@ -1417,9 +1481,9 @@ class NotificationService {
       await _clearAlarmMetadata(reminder3Id, dateKey: dateKey);
 
       // Also cancel any shown notifications
-      await _notifications.cancel(reminder1Id);
-      await _notifications.cancel(reminder2Id);
-      await _notifications.cancel(reminder3Id);
+      await _notifications.cancel(id: reminder1Id);
+      await _notifications.cancel(id: reminder2Id);
+      await _notifications.cancel(id: reminder3Id);
 
       // Update completion status
       if (_prefs != null) {
@@ -1446,6 +1510,43 @@ class NotificationService {
     }
   }
 
+  /// Cancel only the +6h follow-up reminder (1003) for today.
+  /// Called when user writes diary today — streak/fill reminder is no longer needed.
+  /// Does not touch morning (1001) or bedtime (2001).
+  Future<void> cancelFollowUpReminder() async {
+    final today = _dateOnly(DateTime.now());
+    final dateKey = _formatDateKey(today);
+    final reminder3Id = _alarmIdForDate(morningReminder3Id, today);
+
+    try {
+      final userId = _getCurrentUserId();
+
+      await _cancelAlarmWithLogging(
+        notificationId: reminder3Id,
+        context: 'cancel_followup_reminder_3',
+        userId: userId,
+      );
+      await _clearAlarmMetadata(reminder3Id, dateKey: dateKey);
+      await _notifications.cancel(id: reminder3Id);
+
+      print('🔔 DEBUG: Follow-up (+6h) reminder cancelled successfully');
+    } catch (e) {
+      await ErrorLoggingService.logMediumError(
+        error: ErrorContext.fromException(
+          errorCode: 'ERRSYS189',
+          severity: ErrorSeverity.medium,
+          exception: e,
+          stackTrace: StackTrace.current,
+          errorContext: {
+            'cancellation_time': DateTime.now().toIso8601String(),
+            'reminder_id': reminder3Id,
+            'operation': 'cancel_followup_reminder',
+          },
+        ),
+      );
+    }
+  }
+
   /// Cancel bedtime reminder using Native AlarmManager
   Future<void> cancelBedtimeReminder() async {
     final today = _dateOnly(DateTime.now());
@@ -1464,7 +1565,7 @@ class NotificationService {
       await _clearAlarmMetadata(bedtimeId, dateKey: dateKey);
 
       // Also cancel any shown notification
-      await _notifications.cancel(bedtimeId);
+      await _notifications.cancel(id: bedtimeId);
 
       // Update completion status
       if (_prefs != null) {

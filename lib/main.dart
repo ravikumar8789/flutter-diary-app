@@ -12,6 +12,7 @@ import 'screens/pin_lock_screen.dart';
 import 'services/connectivity_service.dart';
 import 'services/app_lifecycle_service.dart';
 import 'services/notification_service.dart';
+import 'services/premium_service.dart';
 
 /// App wrapper that handles privacy lock logic
 class AppWrapper extends ConsumerWidget {
@@ -47,6 +48,9 @@ void main() async {
     anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
   );
 
+  // Configure RevenueCat (premium). Requires REVENUECAT_API_KEY in .env
+  await PremiumService.configure();
+
   // Initialize Android Alarm Manager
   await AndroidAlarmManager.initialize();
 
@@ -60,7 +64,7 @@ void main() async {
     android: androidSettings,
   );
 
-  await notifications.initialize(initSettings);
+  await notifications.initialize(settings: initSettings);
 
   runApp(const ProviderScope(child: MyApp()));
 }

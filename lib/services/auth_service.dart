@@ -1,5 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart' as supabase;
+
 import 'error_logging_service.dart';
+import 'premium_service.dart';
 import '../models/error_models.dart';
 import 'timezone_service.dart';
 
@@ -112,6 +114,7 @@ class AuthService {
   // Sign out
   static Future<void> signOut() async {
     try {
+      await PremiumService.logOut();
       await _client.auth.signOut();
     } catch (e) {
       // Log error

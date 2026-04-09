@@ -57,13 +57,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               severity: ErrorSeverity.medium,
               exception: e,
               stackTrace: StackTrace.current,
-              errorContext: {
-                'operation': 'login_set_flag',
-              },
+              errorContext: {'operation': 'login_set_flag'},
             ),
           );
         }
 
+        if (!mounted) return;
         SnackbarUtils.showLoginSuccess(
           context,
           _emailController.text.split('@')[0],
@@ -117,10 +116,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             severity: severity == 'CRITICAL'
                 ? ErrorSeverity.critical
                 : severity == 'HIGH'
-                    ? ErrorSeverity.high
-                    : severity == 'MEDIUM'
-                        ? ErrorSeverity.medium
-                        : ErrorSeverity.low,
+                ? ErrorSeverity.high
+                : severity == 'MEDIUM'
+                ? ErrorSeverity.medium
+                : ErrorSeverity.low,
             exception: e,
             stackTrace: StackTrace.current,
             errorContext: {
@@ -130,6 +129,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             },
           ),
         );
+
+        if (!mounted) return;
 
         // Show user-friendly message
         if (errorCode == 'ERRAUTH001') {
@@ -171,8 +172,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       await supabase.Supabase.instance.client.auth.resetPasswordForEmail(
         _emailController.text.trim(),
       );
+      if (!mounted) return;
       SnackbarUtils.showPasswordResetSent(context);
     } catch (e) {
+      if (!mounted) return;
       SnackbarUtils.showGenericError(context);
     }
   }
@@ -300,9 +303,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               child: Text(
                                 'Forgot Password?',
                                 style: TextStyle(
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.primary,
+                                  color: Theme.of(context).colorScheme.primary,
                                 ),
                               ),
                             ),

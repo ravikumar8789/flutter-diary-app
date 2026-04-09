@@ -16,6 +16,8 @@ import '../providers/privacy_lock_provider.dart';
 import '../providers/grace_system_provider.dart';
 import '../widgets/grace_system_info_card.dart';
 import 'pin_setup_screen.dart';
+import 'premium_screen.dart';
+import '../providers/premium_provider.dart';
 import '../ui/responsive/responsive_body.dart';
 import '../ui/responsive/responsive_info.dart';
 import '../ui/responsive/responsive_tokens.dart';
@@ -272,6 +274,10 @@ class ProfileScreen extends ConsumerWidget {
           const Divider(),
           SizedBox(height: spacingM),
 
+          // Premium section (above Personal Information)
+          _buildPremiumSection(context, ref),
+          SizedBox(height: spacingL),
+
           // Profile information
           _buildInfoSection(context, 'Personal Information', [
             _buildInfoTile(
@@ -518,6 +524,111 @@ class ProfileScreen extends ConsumerWidget {
       final years = (difference.inDays / 365).floor();
       return years == 1 ? '1 year ago' : '$years years ago';
     }
+  }
+
+  Widget _buildPremiumSection(BuildContext context, WidgetRef ref) {
+    return Consumer(
+      builder: (context, ref, _) {
+        final premiumAsync = ref.watch(premiumProvider);
+        return premiumAsync.when(
+          data: (state) => InkWell(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const PremiumScreen(),
+                ),
+              ).then((_) => ref.invalidate(premiumProvider));
+            },
+            borderRadius: BorderRadius.circular(12),
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Icon(
+                      state.isPremium
+                          ? Icons.workspace_premium
+                          : Icons.star_outline,
+                      color: Theme.of(context).colorScheme.primary,
+                      size: 32,
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            state.isPremium ? 'Premium' : 'Upgrade to Premium',
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            state.isPremium
+                                ? 'Weekly & monthly insights'
+                                : 'Unlock weekly and monthly analysis',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      Icons.arrow_forward_ios,
+                      size: 16,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          loading: () => Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  const SizedBox(width: 16),
+                  Text(
+                    'Premium',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          error: (_, __) => Card(
+            child: ListTile(
+              leading: Icon(
+                Icons.workspace_premium,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              title: const Text('Premium'),
+              subtitle: const Text('Tap to view'),
+              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const PremiumScreen(),
+                  ),
+                ).then((_) => ref.invalidate(premiumProvider));
+              },
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildInfoSection(

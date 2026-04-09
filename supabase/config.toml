@@ -1,0 +1,6 @@
+# Supabase project config
+# https://supabase.com/docs/guides/functions/function-configuration
+
+# RevenueCat webhook - no JWT (uses custom Authorization header)
+[functions.revenuecat-webhook]
+verify_jwt = false

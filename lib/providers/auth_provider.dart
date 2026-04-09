@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/error_models.dart';
 import '../services/error_logging_service.dart';
+import '../services/premium_service.dart';
 import '../services/timezone_service.dart';
+
+import 'premium_provider.dart';
 
 // FIXED: Add StreamController to force stream updates
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
@@ -127,10 +130,13 @@ class AuthController {
 
   Future<void> signIn(String email, String password) async {
     try {
-      await Supabase.instance.client.auth.signInWithPassword(
+      final response = await Supabase.instance.client.auth.signInWithPassword(
         email: email,
         password: password,
       );
+      if (response.user != null) {
+        await PremiumService.logIn(response.user!.id);
+      }
     } catch (e) {
       // Log error
       await ErrorLoggingService.logHighError(
@@ -148,7 +154,9 @@ class AuthController {
 
   Future<void> signOut() async {
     try {
+      await PremiumService.logOut();
       await _ref.read(authRepositoryProvider).signOut();
+      _ref.invalidate(premiumProvider);
     } catch (e) {
       // Log error
       await ErrorLoggingService.logHighError(

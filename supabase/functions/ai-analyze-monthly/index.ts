@@ -126,9 +126,6 @@ serve(async (req) => {
       .select('entry_id, tomorrow_notes')
       .in('entry_id', entryIds)
 
-    // Extract topics from all entries (limit to 5-7)
-    const topics = extractTopics(entries).slice(0, 7)
-
     // Calculate consistency
     const consistencyScore = (entries.length / totalDaysInMonth) * 100
 
@@ -319,7 +316,6 @@ CRITICAL:
       .replace('{self_care_completion}', selfCareRates.completionRate.toFixed(1))
       .replace('{consistency_score}', consistencyScore.toFixed(1))
       .replace('{word_count_total}', wordCountTotal.toString())
-      .replace('{top_topics_list}', topics.join(', ') || 'None')
 
     // 7. Call OpenAI
     const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -366,6 +362,7 @@ CRITICAL:
     let keyMoments: string[] = []
     let reflectionQuestions: string[] = []
     let strengths: string[] = []
+    let topTopics: string[] = []
 
     try {
       const parsed = JSON.parse(insightText)
@@ -377,6 +374,7 @@ CRITICAL:
       keyMoments = Array.isArray(parsed.key_moments) ? parsed.key_moments : []
       reflectionQuestions = Array.isArray(parsed.reflection_questions) ? parsed.reflection_questions : []
       strengths = Array.isArray(parsed.strengths) ? parsed.strengths : []
+      topTopics = Array.isArray(parsed.top_topics) ? parsed.top_topics : []
       
       // Validate required fields
       if (!highlights || growthAreas.length === 0) {
@@ -426,7 +424,7 @@ CRITICAL:
         mood_avg: avgMood ? parseFloat(avgMood) : null,
         entries_count: entries.length,
         word_count_total: wordCountTotal,
-        top_topics: topics.slice(0, 7), // 5-7 topics
+        top_topics: topTopics.slice(0, 7),
         monthly_highlights: highlights,
         growth_areas: growthAreas.slice(0, 6), // 4-6 points
         achievements: achievements.slice(0, 6), // 4-6 points

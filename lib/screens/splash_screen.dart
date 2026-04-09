@@ -8,6 +8,7 @@ import '../providers/data_providers.dart';
 import '../providers/home_summary_provider.dart';
 import '../services/data_sync_flag_service.dart';
 import '../services/data_prefetch_service.dart';
+import '../services/premium_service.dart';
 import '../screens/home_screen.dart';
 import '../screens/login_screen.dart';
 import '../ui/responsive/responsive_info.dart';
@@ -108,7 +109,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
         await Future.delayed(const Duration(milliseconds: 200));
         if (_isDisposed) return;
 
-        await ref.read(userDataProvider.notifier).loadUserData(useLocalOnly: true);
+        await ref
+            .read(userDataProvider.notifier)
+            .loadUserData(useLocalOnly: true);
         if (_isDisposed) return;
 
         await _navigateToHomeOrAuthBasedOnUserData();
@@ -116,6 +119,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       }
 
       // Online path
+      await PremiumService.logIn(user.id);
+
       final dataFetchService = ref.read(dataFetchServiceProvider);
       if (mounted && !_isDisposed) {
         setState(() => _loadingMessage = 'Syncing your journal...');
@@ -140,7 +145,10 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
       await Future.wait([
         DataPrefetchService.fetchAndMergeUserProfile(user.id, dataFetchService),
-        DataPrefetchService.fetchAndMergeUserSettings(user.id, dataFetchService),
+        DataPrefetchService.fetchAndMergeUserSettings(
+          user.id,
+          dataFetchService,
+        ),
         DataPrefetchService.fetchAndMergeStreaks(user.id, dataFetchService),
         DataPrefetchService.fetchAndMergeEntriesWithJoins(
           user.id,
@@ -251,15 +259,27 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     final titleSize = info.value(compact: 28.0, medium: 32.0, expanded: 36.0);
     final taglineSize = info.value(compact: 14.0, medium: 15.0, expanded: 16.0);
     final loaderSize = info.value(compact: 28.0, medium: 30.0, expanded: 32.0);
-    final gapLogoToTitle =
-        info.value(compact: 28.0, medium: 34.0, expanded: 40.0);
-    final gapTitleToTagline =
-        info.value(compact: 12.0, medium: 16.0, expanded: 20.0);
-    final gapLoaderToText =
-        info.value(compact: 16.0, medium: 20.0, expanded: 24.0);
+    final gapLogoToTitle = info.value(
+      compact: 28.0,
+      medium: 34.0,
+      expanded: 40.0,
+    );
+    final gapTitleToTagline = info.value(
+      compact: 12.0,
+      medium: 16.0,
+      expanded: 20.0,
+    );
+    final gapLoaderToText = info.value(
+      compact: 16.0,
+      medium: 20.0,
+      expanded: 24.0,
+    );
     final bottomGap = info.value(compact: 48.0, medium: 64.0, expanded: 80.0);
-    final textMaxWidth =
-        info.value(compact: double.infinity, medium: 420.0, expanded: 480.0);
+    final textMaxWidth = info.value(
+      compact: double.infinity,
+      medium: 420.0,
+      expanded: 480.0,
+    );
 
     return Scaffold(
       body: Container(
@@ -351,15 +371,17 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
                                   // App Name with gentle gradient
                                   ConstrainedBox(
-                                    constraints:
-                                        BoxConstraints(maxWidth: textMaxWidth),
+                                    constraints: BoxConstraints(
+                                      maxWidth: textMaxWidth,
+                                    ),
                                     child: ShaderMask(
-                                      shaderCallback: (bounds) => LinearGradient(
-                                        colors: [
-                                          colorScheme.primary,
-                                          colorScheme.secondary,
-                                        ],
-                                      ).createShader(bounds),
+                                      shaderCallback: (bounds) =>
+                                          LinearGradient(
+                                            colors: [
+                                              colorScheme.primary,
+                                              colorScheme.secondary,
+                                            ],
+                                          ).createShader(bounds),
                                       child: Text(
                                         'Simple Journal',
                                         textAlign: TextAlign.center,
@@ -378,8 +400,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
                                   // Tagline with soft styling
                                   ConstrainedBox(
-                                    constraints:
-                                        BoxConstraints(maxWidth: textMaxWidth),
+                                    constraints: BoxConstraints(
+                                      maxWidth: textMaxWidth,
+                                    ),
                                     child: Text(
                                       'Your thoughts, beautifully captured',
                                       style: TextStyle(
@@ -423,8 +446,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                             ),
                             SizedBox(height: gapLoaderToText),
                             ConstrainedBox(
-                              constraints:
-                                  BoxConstraints(maxWidth: textMaxWidth),
+                              constraints: BoxConstraints(
+                                maxWidth: textMaxWidth,
+                              ),
                               child: Text(
                                 _loadingMessage,
                                 style: TextStyle(

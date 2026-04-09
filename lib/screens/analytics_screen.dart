@@ -23,6 +23,8 @@ import '../ui/responsive/responsive_wrap.dart';
 import '../models/analytics_models.dart';
 import '../providers/analytics_provider.dart';
 import '../providers/home_summary_provider.dart';
+import '../providers/premium_provider.dart';
+import '../widgets/paywall_content.dart';
 import '../services/analytics_service.dart';
 import '../services/ai_service.dart';
 import 'yesterday_insight_screen.dart';
@@ -88,11 +90,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
         child: Column(
           children: [
             Expanded(
-              child: ResponsiveBody(
-                useSafeArea: false,
-                useScrollView: true,
-                child: _buildAnalyticsBody(context, period, info),
-              ),
+              child: _buildAnalyticsExpandedContent(context, period, info),
             ),
             // Bottom Navigation Bar
             AppBottomNavigationBar(
@@ -107,28 +105,61 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
     );
   }
 
-  Widget _buildAnalyticsBody(
-      BuildContext context, AnalyticsPeriod period, ResponsiveInfo info) {
+  /// Paywall must not sit inside [ResponsiveBody] scroll so sticky CTA works.
+  Widget _buildAnalyticsExpandedContent(
+    BuildContext context,
+    AnalyticsPeriod period,
+    ResponsiveInfo info,
+  ) {
     final connectivityAsync = ref.watch(analyticsConnectivityProvider);
     final spacingL = ResponsiveTokens.spacingL(info);
 
-    return connectivityAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (_, __) => _buildOfflineAnalyticsUI(context),
-      data: (isOnline) {
-        if (!isOnline) return _buildOfflineAnalyticsUI(context);
-        return Column(
+    Widget scrollableAnalytics() {
+      return ResponsiveBody(
+        useSafeArea: false,
+        useScrollView: true,
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildPeriodHeader(context, period),
             SizedBox(height: spacingL),
-            if (period == AnalyticsPeriod.weekly) _buildWeekNavigation(context),
+            if (period == AnalyticsPeriod.weekly)
+              _buildWeekNavigation(context),
             if (period == AnalyticsPeriod.monthly)
               _buildMonthNavigation(context),
             period == AnalyticsPeriod.weekly
                 ? _buildWeeklyContentWithSwipe(context, info)
                 : _buildMonthlyContent(context, info),
           ],
+        ),
+      );
+    }
+
+    return connectivityAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (_, __) => ResponsiveBody(
+        useSafeArea: false,
+        useScrollView: true,
+        child: _buildOfflineAnalyticsUI(context),
+      ),
+      data: (isOnline) {
+        if (!isOnline) {
+          return ResponsiveBody(
+            useSafeArea: false,
+            useScrollView: true,
+            child: _buildOfflineAnalyticsUI(context),
+          );
+        }
+        final premiumAsync = ref.watch(premiumProvider);
+        return premiumAsync.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (_, __) => const PaywallContent(compactBottomGap: true),
+          data: (state) {
+            if (!state.isPremium) {
+              return const PaywallContent(compactBottomGap: true);
+            }
+            return scrollableAnalytics();
+          },
         );
       },
     );
